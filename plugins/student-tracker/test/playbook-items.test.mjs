@@ -8,11 +8,13 @@ import path from 'node:path';
 import { openStore } from '../lib/store.mjs';
 
 const NOW = new Date('2026-10-30T09:15:00');
+// A small fixed base Playbook, so these tests don't depend on the shipped content.
+const SEED = JSON.parse(fs.readFileSync(new URL('./fixtures/playbook-seed.json', import.meta.url), 'utf8')).items;
 
 function setUp() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'st-pbitems-'));
   let tick = 0;
-  const store = openStore({ dataDir, now: () => new Date(NOW.getTime() + 60_000 * tick++) });
+  const store = openStore({ dataDir, now: () => new Date(NOW.getTime() + 60_000 * tick++), base: () => SEED });
   store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' }, trainees: ['נועה', 'דני'] });
   const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
   return { store, id, dataDir };

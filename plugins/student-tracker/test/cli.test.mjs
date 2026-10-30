@@ -467,6 +467,6 @@ ${text}
 
   assert.equal(run(['--data', data, 'retire-playbook-item', item.id], { cwd }).code, 0);
   assert.equal(JSON.parse(run(['--data', data, 'read-cycle'], { cwd }).out).playbook[0].retired.at.slice(0, 4), new Date().getFullYear().toString());
-  assert.deepEqual(JSON.parse(run(['--data', data, 'hide-playbook-item', 'b-001'], { cwd }).out), { hidden: ['b-001'] });
-  assert.deepEqual(JSON.parse(run(['--data', data, 'unhide-playbook-item', 'b-001'], { cwd }).out), { hidden: [] });
+  assert.deepEqual(JSON.parse(run(['--data', data, 'hide-playbook-item', 'b-189'], { cwd }).out), { hidden: ['b-189'] });
+  assert.deepEqual(JSON.parse(run(['--data', data, 'unhide-playbook-item', 'b-189'], { cwd }).out), { hidden: [] });
 });

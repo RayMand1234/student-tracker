@@ -59,12 +59,12 @@ test('retiring an item keeps it stored, retired', () => {
 
 test('hiding a base item, and un-hiding one', () => {
   const hid = setUp();
-  const { hides } = confirmed(hid, 'אל תציע לי יותר את הטיפ לשבת ליד החניך על באג ולשאול מה ציפית שיקרה');
-  assert.deepEqual(hides, ['b-003']);
+  const { hides } = confirmed(hid, 'אל תציע לי יותר את הטיפ בדיבאג לשאול "מה ציפית שיקרה ומה קרה בפועל" לפני שמסתכלים על הקוד');
+  assert.deepEqual(hides, ['b-189']);
 
   const back = setUp();
-  back.store.hidePlaybookItem('b-012', true);
-  const after = confirmed(back, 'תחזיר לפלייבוק את הטיפ על זמן קצוב לנסות לבד');
+  back.store.hidePlaybookItem('b-046', true);
+  const after = confirmed(back, 'תחזיר לפלייבוק את הטיפ על רבע שעה ניסיון לבד לפני שפונים לעזרה');
   assert.deepEqual(after.hides, []);
 });
 

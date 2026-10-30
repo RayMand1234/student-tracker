@@ -37,7 +37,9 @@ Not done / to raise:
 - An accepted draft item is stored as the Commander's, with nothing marking that the agent drafted it. A later "which of my items did I write myself?" can't tell them apart. Adding a field would be cheap if wanted.
 - The router's "not in this version" row now only covers briefs and team status. Ticket 25 is editing the same row in parallel, so expect a merge conflict there.
 
-Tests: 219 unit tests (10 new Playbook-item store tests, 1 new CLI test). Eval `evals/playbook.eval.mjs` 5/5 (10 `claude` calls). Results:
+Tests: 220 unit tests after merging ticket 27 (10 new Playbook-item store tests, 1 new CLI test). Eval `evals/playbook.eval.mjs` 5/5 (10 `claude` calls).
+
+Merging ticket 27 (the reviewed base content) retired the seed ids. So the store tests now run on the seed fixture through `openStore({base})`, and `hidePlaybookItem` checks ids against that same injected base. The CLI test and the hide eval use shipped ids (`b-189`, `b-046`). The hide/un-hide eval was re-run on the new content and passed. Eval results: Results:
 - "תוסיף לפלייבוק של דיבאג: …" saved nothing until "כן", then one Commander item with the words verbatim, tagged `impl.debugging`.
 - Editing ("תשנה את הטיפ שלי … ל: …") kept the id and took the new words; retiring kept the item stored, retired.
 - Hiding by description found `b-003`, and un-hiding took `b-012` back out of the hides, each only after "כן".

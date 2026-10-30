@@ -723,7 +723,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       if (typeof hidden !== 'boolean') throw new StoreError('hidePlaybookItem takes hidden: true or false');
       if (OWN_ID.test(baseId ?? '')) throw new StoreError(`${baseId} is the Commander's own item: retire it instead`);
       const docs = open();
-      if (hidden && !basePlaybook(docs.get('meta/skills')?.data).some((i) => i.id === baseId)) {
+      if (hidden && !base(docs.get('meta/skills')?.data).some((i) => i.id === baseId)) {
         throw new StoreError(`no base Playbook item ${baseId}`);
       }
       const current = docs.get('commander/hides')?.data?.hidden ?? [];
