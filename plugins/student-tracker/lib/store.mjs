@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { openDocs, StoreError, VersionConflict, AlreadyExists, MAX_BATCH_WRITES, MAX_BATCH_BYTES } from './docs.mjs';
-import { basePlaybook, pickPlaybook } from './playbook.mjs';
+import { basePlaybook, pickPlaybook, ownItem } from './playbook.mjs';
 import { rating } from '../dashboard/derive.mjs';
 
 export { StoreError, VersionConflict };
@@ -671,6 +671,68 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       return writeChange(docs, tid, { type: 'left', date, how, reason: reason.trim(), by: 'commander', at, retracted: false });
     },
 
+    // Saves a new Playbook item of the Commander's (no `id`) or edits one (`id`): the item as
+    // stored, with its id. Only after the Commander confirms.
+    savePlaybookItem({ id, ...given } = {}) {
+      const docs = open();
+      const framework = docs.get('meta/skills')?.data;
+      const at = isoWithOffset(now());
+      if (id === undefined) {
+        const item = ownItem(given, framework);
+        checkSource(docs, item);
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          const pid = `p-${rand(4)}`;
+          if (docs.get(`playbook/${pid}`)) continue;
+          try {
+            docs.batch([{ op: 'create', path: `playbook/${pid}`, data: { ...item, at, retired: false } }]);
+            return { id: pid, ...docs.get(`playbook/${pid}`).data };
+          } catch (e) {
+            if (!(e instanceof AlreadyExists)) throw e;
+          }
+        }
+        throw new StoreError('could not find a free Playbook item id; try again');
+      }
+      if (/^b-/.test(id)) throw new StoreError(`${id} is a base Playbook item: it is never changed, only hidden`);
+      if (!OWN_ID.test(id)) throw new StoreError(`no Playbook item ${id} of the Commander's`);
+      if (given.source !== undefined) throw new StoreError('the source Entry of an item does not change');
+      if (!Object.keys(given).length) throw new StoreError('nothing to change');
+      const data = pinned(docs, `playbook/${id}`, (current) => {
+        if (current.retired) throw new StoreError(`${id} is retired; save a new item instead`);
+        return { ...current, ...ownItem(given, framework, current), edited: at };
+      }, `no Playbook item ${id} of the Commander's`);
+      return { id, ...data };
+    },
+
+    // Retires one of the Commander's Playbook items: it stays stored, out of Advice. Only after
+    // the Commander confirms.
+    retirePlaybookItem(id) {
+      if (/^b-/.test(id ?? '')) throw new StoreError(`${id} is a base Playbook item: hide it instead`);
+      if (!OWN_ID.test(id ?? '')) throw new StoreError(`no Playbook item ${id} of the Commander's`);
+      const data = pinned(open(), `playbook/${id}`, (current) => {
+        if (current.retired) throw new StoreError(`${id} is already retired`);
+        return { ...current, retired: { at: isoWithOffset(now()) } };
+      }, `no Playbook item ${id} of the Commander's`);
+      return { id, ...data };
+    },
+
+    // Hides a base Playbook item from the Commander's Advice (`hidden: true`) or brings it back
+    // (`false`). Returns `commander/hides`. Hiding twice, or un-hiding what is not hidden, is
+    // harmless. Only after the Commander confirms.
+    hidePlaybookItem(baseId, hidden) {
+      if (typeof hidden !== 'boolean') throw new StoreError('hidePlaybookItem takes hidden: true or false');
+      if (OWN_ID.test(baseId ?? '')) throw new StoreError(`${baseId} is the Commander's own item: retire it instead`);
+      const docs = open();
+      if (hidden && !basePlaybook(docs.get('meta/skills')?.data).some((i) => i.id === baseId)) {
+        throw new StoreError(`no base Playbook item ${baseId}`);
+      }
+      const current = docs.get('commander/hides')?.data?.hidden ?? [];
+      if (hidden === current.includes(baseId)) return { hidden: current };
+      return pinned(docs, 'commander/hides', (h) => ({
+        ...h,
+        hidden: hidden ? [...new Set([...(h.hidden ?? []), baseId])] : (h.hidden ?? []).filter((x) => x !== baseId),
+      }));
+    },
+
     // Commander name, role, Talk target and thresholds. Only after the Commander confirms.
     updateSettings(change = {}) {
       const { name, role, talk, ...rest } = change;
@@ -1056,6 +1118,25 @@ const CYCLE_CHANGES = {
 };
 
 // The Talk target and thresholds after `change`, refusing values that make no sense.
+// A Playbook item taken from an Entry: that Entry is live, holds the text word-for-word, and the
+// text repeats none of its sensitive parts (the Playbook outlives the Cycle and feeds Advice).
+function checkSource(docs, item) {
+  if (item.source === null) return;
+  const entry = docs.get(`entries/${item.source}`)?.data;
+  if (!entry || entry.deletion) throw new StoreError(`no Entry ${item.source}`);
+  if (entry.retracted !== false) throw new StoreError(`Entry ${item.source} is retracted`);
+  if (!entry.text.includes(item.text)) throw new StoreError(`the text is not word-for-word from Entry ${item.source}`);
+  const parts = flat(docs.list('sensitive')).filter((x) => x.entry === item.source && x.record === 'evidence').map((x) => x.excerpt);
+  const spans = parts.flatMap((p) => spansOf(entry.text, p));
+  const at = spansOf(entry.text, item.text);
+  if (repeatsSensitive(entry.text, parts, spans)(item.text) || spans.some((sp) => at.some((t) => overlaps(sp, t)))) {
+    throw new StoreError('the text repeats a sensitive part of its Entry; a Playbook item carries none');
+  }
+}
+
+// The Commander's Playbook item ids, `p-<rand4>`.
+const OWN_ID = /^p-[a-z0-9]+$/;
+
 function talkSettings(current, change = {}) {
   const unknown = Object.keys(change).find((k) => !(k in DEFAULT_TALK));
   if (unknown) throw new StoreError(`unknown Talk setting "${unknown}" (target, yellow, red)`);
@@ -1398,10 +1479,10 @@ const lostRace = (e) => e instanceof VersionConflict || e instanceof AlreadyExis
 
 // Replaces one existing document with `next(current data)`, pinned to the version read; on a
 // conflict reads again and redoes it. Returns the stored data.
-function pinned(docs, docPath, next) {
+function pinned(docs, docPath, next, missing = `${docPath} does not exist`) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const current = docs.get(docPath);
-    if (!current) throw new StoreError(`${docPath} does not exist`);
+    if (!current) throw new StoreError(missing);
     const data = next(current.data);
     try {
       docs.batch([{ op: 'set', path: docPath, data, ifVersion: current.version }]);

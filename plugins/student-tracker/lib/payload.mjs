@@ -309,3 +309,32 @@ export function parseCycleChange(input) {
     },
   });
 }
+
+// One of the Commander's Playbook items (new, or the fields an edit changes):
+// +kind: sign | tip | exercise | talk-question
+// +skills: <Skill id>, … | general
+// +band: low | mid | high | none
+// +source: <Entry id>            (an item taken from an Entry)
+// <the text, word-for-word, any number of lines; none on an edit that keeps it>
+export function parsePlaybookItem(input) {
+  const out = {};
+  const set = {
+    kind: (v) => (out.kind = v),
+    skills: (v) => (out.skills = list(v)),
+    band: (v) => (out.band = v === 'none' ? null : v),
+    source: (v) => (out.source = v),
+  };
+  const lines = input.split('\n');
+  let i = 0;
+  for (; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (!line.startsWith('+')) break;
+    const m = line.match(/^\+([\w-]+):\s*(.*)$/);
+    if (!m || !set[m[1]]) throw new StoreError(`unexpected line "${line}" (keys: ${Object.keys(set).map((k) => `+${k}:`).join(', ')})`);
+    set[m[1]](m[2].trim());
+  }
+  const text = lines.slice(i).join('\n').trim();
+  if (text) out.text = text;
+  return out;
+}

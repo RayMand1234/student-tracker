@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
-import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings } from './payload.mjs';
+import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings, parsePlaybookItem } from './payload.mjs';
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation> [args]
   connect
@@ -22,6 +22,11 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
                           < "--- assessment" blocks of one Trainee, citing stored Evidence ids,
                             optional "--- next-talk <tid>" + one question per line
                           (--insist: the Commander asked to record about a Trainee who left)
+  save-playbook-item [<item id>]
+                          < "+kind:", "+skills:", "+band: low|mid|high|none", "+source: <entry id>" lines,
+                            then the text word-for-word (with an id: an edit, only the lines that change)
+  retire-playbook-item <item id>
+  hide-playbook-item <base item id> | unhide-playbook-item <base item id>
   flip-sensitive <evidence id> [--category <category>]
   retract-entry [<entry id>]   (the last Entry when none is named)
   hard-delete <entry id>       (only on the Commander's explicit, confirmed request)
@@ -74,6 +79,10 @@ export async function main(argv) {
       'update-trainee': () => store.updateTrainee(rest[0] ?? null, parseTraineeChange(stdin())),
       'update-settings': () => store.updateSettings(parseSettings(stdin())),
       'update-cycle': () => store.updateCycle(parseCycleChange(stdin())),
+      'save-playbook-item': () => store.savePlaybookItem({ ...(rest[0] ? { id: rest[0] } : {}), ...parsePlaybookItem(stdin()) }),
+      'retire-playbook-item': () => store.retirePlaybookItem(rest[0]),
+      'hide-playbook-item': () => store.hidePlaybookItem(rest[0], true),
+      'unhide-playbook-item': () => store.hidePlaybookItem(rest[0], false),
       'flip-sensitive': () => store.flipSensitive(rest[0], { category }),
       'retract-entry': () => store.retractEntry(rest[0]),
       'hard-delete': () => store.hardDelete(rest[0]),

@@ -99,7 +99,7 @@ The evaluation process (רף מקס …) is not sensitive by default. Course mat
 
 ## Confirmation reply
 
-One line per Trainee saying what was recorded (kind and date, Test and score when given), each followed by its Assessment lines ([assess.md](assess.md)) and its Status, stage and improve/keep lines ([state.md](state.md)), then any professional-help line, then any question (unknown Test, a proposal's "לעדכן?" or "לשנות?", a new-Skill proposal), then the Retraction line, last:
+One line per Trainee saying what was recorded (kind and date, Test and score when given), each followed by its Assessment lines ([assess.md](assess.md)) and its Status, stage and improve/keep lines ([state.md](state.md)), then any professional-help line, then any question (unknown Test, a proposal's "לעדכן?" or "לשנות?", a new-Skill proposal, or, when there is no other question, an offer to save what worked to the Playbook by [playbook.md](playbook.md)), then the Retraction line, last:
 
 ```
 נועה — שיחה (30/10). [פרט אישי — בתיק] סומן כרגיש (משפחה) — 'זה לא רגיש' לביטול הסימון. נקודה פתוחה: "סיכמנו שתשב עם דני על זה".
@@ -113,5 +113,5 @@ One line per Trainee saying what was recorded (kind and date, Test and score whe
 
 - Dates as `DD/MM`. Mention a closed Follow-up as "נסגרה: …".
 - For each sensitive part: "[פרט אישי — בתיק] סומן כרגיש (<category in Hebrew: בריאות / משפחה / מצוקה / כספים / זוגיות / משמעת>)", then once per reply "'זה לא רגיש' לביטול הסימון". Never repeat a word of the sensitive part, nor of a Follow-up it opened (write that one as "נקודה פתוחה: [פרט אישי — בתיק]").
-- No Advice on the confirmation reply; the proposals "(הצעה) מציע לעדכן …" and "(הצעה) מציע לשנות סטטוס …" and your own improve/keep items are the only suggestions it carries.
+- No Advice on the confirmation reply; the proposals "(הצעה) מציע לעדכן …" and "(הצעה) מציע לשנות סטטוס …", the offer "(הצעה) לשמור בפלייבוק …" and your own improve/keep items are the only suggestions it carries.
 - The reply always ends with the line `לביטול: 'בטל'` when something was recorded. A reply that only asks a question records nothing and has no Retraction line.
