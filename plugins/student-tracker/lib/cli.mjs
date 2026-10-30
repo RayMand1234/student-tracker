@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
-import { parseCycle, parseEntry } from './payload.mjs';
+import { parseCycle, parseEntry, parseCycleChange } from './payload.mjs';
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation> [args]
   connect
@@ -8,7 +8,9 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
   read-cycle
   read-team
   read-trainee <tid> [--since YYYY-MM-DD]
-  record-entry            < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>" + excerpt
+  record-entry            < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>",
+                            "+key: value" field lines, excerpt; "--- followup" + text after its Evidence
+  update-cycle            < lines "add-test: <name>", "subject: <id>", "number: <n>", "alias: <alias>" (repeat)
   resume-pending
   rebuild-card <tid>`;
 
@@ -33,6 +35,7 @@ export async function main(argv) {
       'read-team': () => store.readTeam(),
       'read-trainee': () => store.readTrainee(rest[0], { since }),
       'record-entry': () => store.recordEntry(parseEntry(stdin())),
+      'update-cycle': () => store.updateCycle(parseCycleChange(stdin())),
       'resume-pending': () => store.resumePending(),
       'rebuild-card': () => store.rebuildCard(rest[0]),
     };

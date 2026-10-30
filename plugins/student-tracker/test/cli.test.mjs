@@ -45,7 +45,8 @@ test('record-entry takes the message and its Evidence as text blocks, keeping bo
   const text = 'דיברתי היום עם נועה על הרמ"ת שלה.\nגם דני הצטרף בסוף, {"נראה טוב"}: --- רגיל';
   const input = `--- entry
 ${text}
---- evidence ${noa.id} talk 2026-10-30 topics=רמ"ת,דיבאג
+--- evidence ${noa.id} talk 2026-10-30
++topics: רמ"ת, דיבאג
 דיברתי היום עם נועה על הרמ"ת שלה.
 --- evidence ${dani.id} note 2026-10-30
 גם דני הצטרף בסוף
@@ -87,4 +88,59 @@ test('resume-pending and rebuild-card are callable from the CLI', () => {
   const card = JSON.parse(run(['--data', data, 'rebuild-card', noa.id], { cwd }).out);
   assert.equal(card.name, 'נועה כ.');
   assert.equal(run(['--data', data, 'rebuild-card', 't-nope00'], { cwd }).code, 1);
+});
+
+test('record-entry takes kind fields as "+key: value" lines and Follow-ups as their own blocks', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  const text = 'נועה קיבלה 85 בפוב, לדעתה לא עברה. לשיחה הבאה: לשאול על הדיבאג';
+  const input = `--- entry
+${text}
+--- evidence ${noa.id} test 2026-10-29
++subject: tabi
++test: FOV
++score: 85
++self: לא עברה
+נועה קיבלה 85 בפוב, לדעתה לא עברה.
+--- followup
+לשאול על הדיבאג
+`;
+  const logged = run(['--data', data, 'record-entry'], { cwd, input });
+  assert.equal(logged.code, 0, logged.err);
+  const { entry, followups } = JSON.parse(logged.out);
+  const t = JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out);
+  const ev = t.evidence[0];
+  assert.deepEqual([ev.test, ev.score, ev.self, ev.unlisted], ['FOV', 85, 'לא עברה', false]);
+  assert.deepEqual(followups, [`${entry}-2`]);
+  assert.deepEqual(t.card.followups.map((f) => f.text), ['לשאול על הדיבאג']);
+
+  const close = `--- entry
+דיברתי עם נועה על הדיבאג
+--- evidence ${noa.id} talk 2026-10-30
++closes: ${entry}-2
+דיברתי עם נועה על הדיבאג
+`;
+  assert.equal(run(['--data', data, 'record-entry'], { cwd, input: close }).code, 0);
+  assert.deepEqual(JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out).card.followups, []);
+});
+
+test('update-cycle adds a confirmed Test to the preset copy', () => {
+  const { data, cwd } = fresh();
+  run(['--data', data, 'create-cycle'], { cwd, input: SETUP });
+  const r = run(['--data', data, 'update-cycle'], { cwd, input: 'add-test: Crocodile\nsubject: oop\nnumber: 4\nalias: קרוקודיל\nalias: קרוק\n' });
+  assert.equal(r.code, 0, r.err);
+  const croc = JSON.parse(run(['--data', data, 'read-cycle'], { cwd }).out).preset.tests.find((t) => t.name === 'Crocodile');
+  assert.deepEqual([croc.subject, croc.number, croc.aliases], ['oop', '4', ['קרוקודיל', 'קרוק']]);
+});
+
+test('a blank or non-numeric score line is refused, never stored as a score', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  for (const score of ['', 'עבר']) {
+    const input = `--- entry\nנועה עברה את פוב\n--- evidence ${noa.id} test 2026-10-30\n+test: FOV\n+score: ${score}\nנועה עברה את פוב\n`;
+    const r = run(['--data', data, 'record-entry'], { cwd, input });
+    assert.equal(r.code, 1);
+    assert.match(r.err, /score must be a number/);
+  }
+  assert.deepEqual(JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out).evidence, []);
 });

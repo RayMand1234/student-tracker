@@ -14,10 +14,22 @@ const LOCAL = 'local:';
 const NOT_SET_UP = 'עוד לא הוקם מעקב — הרץ `/student-tracker:setup`';
 const DEFAULT_TALK = { target: 10, yellow: 10, red: 14 };
 const MAX_RETRIES = 10;
-export const KINDS = [
-  'talk', 'test', 'code-review', 'project-observation', 'self-assessment', 'improve-keep',
-  'goal', 'background', 'evaluation-event', 'note', 'clarification',
-];
+// Evidence kinds and the kind-specific fields each may carry, with the value stored when absent.
+const TEST_FIELDS = { subject: null, test: null, unlisted: false };
+const KIND_FIELDS = {
+  talk: { topics: [] },
+  test: { ...TEST_FIELDS, score: null, self: null },
+  'code-review': TEST_FIELDS,
+  'project-observation': { project: null },
+  'self-assessment': {},
+  'improve-keep': {},
+  goal: {},
+  background: {},
+  'evaluation-event': {},
+  note: {},
+  clarification: { clarifies: null },
+};
+export const KINDS = Object.keys(KIND_FIELDS);
 
 // dataDir holds the pointer cycles.json = {current, archived}; `current` names the store.
 // `interrupt(point, info)` is called at each step boundary of a multi-step write; tests use it
@@ -36,11 +48,15 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
   const open = () => openDocs(storeRoot());
   const today = () => localDate(now());
 
-  // Read every source record of one Trainee and derive the card from them.
+  // Read every source record of one Trainee and derive the card from them, plus `extra`
+  // records ({path, data}) about to be written.
   function derive(docs, tid, extra = []) {
-    const sub = (name) => docs.list(`trainees/${tid}/${name}`).map((d) => d.data);
+    const sub = (name) => [
+      ...docs.list(`trainees/${tid}/${name}`).map((d) => ({ id: d.id, ...d.data })),
+      ...extra.filter((r) => r.path.split('/')[2] === name).map((r) => ({ id: r.path.split('/')[3], ...r.data })),
+    ];
     const prev = docs.get(`trainees/${tid}`)?.data;
-    return deriveCard({ changes: sub('changes'), evidence: [...sub('evidence'), ...extra] }, prev);
+    return deriveCard({ changes: sub('changes'), evidence: sub('evidence'), followups: sub('followups') }, prev);
   }
 
   function rebuildCard(docs, tid) {
@@ -66,7 +82,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       return;
     }
     const card = docs.get(`trainees/${trainee}`);
-    const next = derive(docs, trainee, missing.map((r) => r.data));
+    const next = derive(docs, trainee, missing);
     const creates = missing.map((r) => ({ op: 'create', path: r.path, data: r.data }));
     interrupt('chunk', { trainee }); // between reading the card and writing it: the race window
     try {
@@ -140,6 +156,9 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         at,
       });
       upsert(docs, 'meta/skills', readJson(path.join(PLUGIN_ROOT, 'data/skills.json')));
+      if (!docs.get('meta/preset')) {
+        docs.batch([{ op: 'create', path: 'meta/preset', data: readJson(path.join(PLUGIN_ROOT, 'data/preset.json')) }]);
+      }
       upsert(docs, 'commander/settings', {
         name: commander.name,
         role: commander.role ?? null,
@@ -208,13 +227,30 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       const docs = open();
       if (!text) throw new StoreError('Entry text is required');
       if (!evidence.length) throw new StoreError('an Entry needs at least one Evidence');
-      for (const ev of evidence) {
+      const preset = docs.get('meta/preset')?.data;
+      const fieldsOf = [];
+      const closing = new Set();
+      for (const { followups = [], ...ev } of evidence) {
         if (!docs.get(`trainees/${ev.trainee}`)) throw new StoreError(`unknown Trainee ${ev.trainee}`);
         if (!KINDS.includes(ev.kind)) throw new StoreError(`unknown kind "${ev.kind}" (one of ${KINDS.join(', ')})`);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(ev.date ?? '')) throw new StoreError(`date must be YYYY-MM-DD, got "${ev.date}"`);
         if (!ev.excerpt || !text.includes(ev.excerpt)) {
           throw new StoreError(`excerpt must be copied word-for-word from the Entry: "${ev.excerpt}"`);
         }
+        const fields = kindFields(ev, preset);
+        if (ev.kind === 'clarification' && !docs.get(`trainees/${ev.trainee}/evidence/${fields.clarifies}`)) {
+          throw new StoreError(`a clarification needs clarifies = the id of the ${ev.trainee} Evidence it corrects`);
+        }
+        for (const f of followups) {
+          if (!f || !text.includes(f)) throw new StoreError(`a Follow-up must be copied word-for-word from the Entry: "${f}"`);
+        }
+        // Checked against the card, as the artifact backend does; the card is kept in step with the sources.
+        const openIds = docs.get(`trainees/${ev.trainee}`).data.followups.map((f) => f.id);
+        for (const fid of fields.closes) {
+          if (!openIds.includes(fid) || closing.has(fid)) throw new StoreError(`${fid} is not an open Follow-up of ${ev.trainee}`);
+          closing.add(fid);
+        }
+        fieldsOf.push(fields);
       }
 
       const d = now();
@@ -223,16 +259,28 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       let id;
       do id = `${stamp}-${rand(2)}`; while (docs.get(`entries/${id}`));
 
+      // Evidence is numbered first, in message order, then the Follow-ups it opens.
       const children = evidence.map((ev, i) => {
-        const { trainee, kind, date, excerpt, ...fields } = ev;
+        const { trainee, kind, date, excerpt } = ev;
         const childId = `${id}-${i + 1}`;
         return {
           id: childId,
           path: `trainees/${trainee}/evidence/${childId}`,
           trainee,
-          data: { entry: id, trainee, kind, date, excerpt, ...fields, at, retracted: false },
+          data: { entry: id, trainee, kind, date, excerpt, ...fieldsOf[i], at, retracted: false },
         };
       });
+      for (const [i, ev] of evidence.entries()) {
+        for (const followup of ev.followups ?? []) {
+          const childId = `${id}-${children.length + 1}`;
+          children.push({
+            id: childId,
+            path: `trainees/${ev.trainee}/followups/${childId}`,
+            trainee: ev.trainee,
+            data: { entry: id, trainee: ev.trainee, text: followup, from: children[i].id, date: ev.date, at, retracted: false },
+          });
+        }
+      }
       const trainees = [...new Set(children.map((c) => c.trainee))];
       const pending = trainees.map((trainee) => ({
         trainee,
@@ -251,7 +299,35 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         data: { text, at, status: 'writing', trainees, children: children.map((c) => c.id), retracted: false, pending },
       }]);
       finishEntry(docs, id);
-      return { entry: id, evidence: children.map((c) => c.id) };
+      return {
+        entry: id,
+        evidence: children.slice(0, evidence.length).map((c) => c.id),
+        followups: children.slice(evidence.length).map((c) => c.id),
+      };
+    },
+
+    // Only after the Commander confirms. This version handles one change: adding a Test.
+    updateCycle({ addTest, ...rest } = {}) {
+      if (!addTest || Object.keys(rest).length) throw new StoreError('updateCycle supports only addTest in this version');
+      const docs = open();
+      const current = docs.get('meta/preset');
+      if (!current) throw new StoreError('this Cycle has no preset copy');
+      const preset = current.data;
+      const { name, subject, number = null, aliases = [] } = addTest;
+      if (!name) throw new StoreError('addTest needs a name');
+      if (!preset.subjects.some((s) => s.id === subject)) {
+        throw new StoreError(`unknown Subject "${subject}" (one of ${preset.subjects.map((s) => s.id).join(', ')})`);
+      }
+      for (const n of [name, ...aliases]) {
+        const taken = findTest(preset, n);
+        if (taken) throw new StoreError(`"${n}" is already the Test "${taken.name}"`);
+      }
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `t-${rand(4)}`;
+      let id = `${subject}.${slug}`;
+      while (preset.tests.some((t) => t.id === id)) id = `${subject}.${slug}-${rand(2)}`;
+      const tests = [...preset.tests, { id, subject, number, name, aliases }];
+      docs.batch([{ op: 'update', path: 'meta/preset', data: { tests }, ifVersion: current.version }]);
+      return { ...preset, tests };
     },
 
     // Finish every Entry an earlier session left at `writing`. Returns their ids.
@@ -270,9 +346,58 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
   };
 }
 
+// Checks an Evidence's kind-specific fields against its kind and the Cycle's preset; returns
+// them with every field of the kind present (absent ones at their default).
+function kindFields(ev, preset) {
+  const { trainee, kind, date, excerpt, ...fields } = ev;
+  const allowed = { ...KIND_FIELDS[kind], closes: [] };
+  for (const key of Object.keys(fields)) {
+    if (!(key in allowed)) throw new StoreError(`field "${key}" does not belong to a ${kind} Evidence`);
+  }
+  const out = { ...allowed, ...fields };
+  if ('score' in fields && (typeof out.score !== 'number' || Number.isNaN(out.score))) {
+    throw new StoreError(`score must be a number, as the Commander gave it; leave it out when not given`);
+  }
+  if ('test' in allowed && out.test) out.subject = testSubject(out, preset);
+  if ('project' in allowed && out.project && !preset?.projects.some((p) => p.id === out.project)) {
+    throw new StoreError(`unknown project "${out.project}" (one of ${preset?.projects.map((p) => p.id).join(', ')})`);
+  }
+  return out;
+}
+
+// The preset Test known by this name or alias (ignoring case and spacing), if any.
+function findTest(preset, name) {
+  const norm = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+  return (preset?.tests ?? []).find((t) => [t.name, ...t.aliases].some((a) => norm(a) === norm(name)));
+}
+
+// Checks an Evidence's `test` against the preset; returns the Subject to store (a listed Test's own).
+function testSubject(ev, preset) {
+  const canonical = (preset?.tests ?? []).find((t) => t.name === ev.test);
+  if (ev.unlisted) {
+    if (canonical) throw new StoreError(`"${ev.test}" is in the preset; drop unlisted`);
+    return ev.subject;
+  }
+  if (!canonical) {
+    const byAlias = findTest(preset, ev.test);
+    if (byAlias) throw new StoreError(`"${ev.test}" is the Test "${byAlias.name}"; pass its canonical name`);
+    throw new StoreError(`"${ev.test}" is not in the Cycle's preset; record it as written with unlisted, and ask the Commander`);
+  }
+  if (ev.subject && ev.subject !== canonical.subject) {
+    throw new StoreError(`"${ev.test}" belongs to Subject ${canonical.subject}, not ${ev.subject}`);
+  }
+  return canonical.subject;
+}
+
+// A Follow-up is open until a non-retracted Evidence closes it.
+function stillOpen(followups, evidence) {
+  const closed = new Set(evidence.filter((e) => e.retracted === false).flatMap((e) => e.closes ?? []));
+  return followups.filter((f) => f.retracted === false && !closed.has(f.id));
+}
+
 // The card is derived from the Trainee's records alone. Agent-written caches (Snapshot,
 // next-Talk questions) are not derivable, so they carry over from the previous card.
-function deriveCard({ changes, evidence }, prev = {}) {
+function deriveCard({ changes, evidence, followups = [] }, prev = {}) {
   const live = (xs) => xs.filter((x) => x.retracted === false);
   const named = live(changes).filter((c) => c.name).sort(byAt).at(-1);
   const talks = live(evidence).filter((e) => e.kind === 'talk').map((e) => e.date).sort();
@@ -285,7 +410,9 @@ function deriveCard({ changes, evidence }, prev = {}) {
     lastTalk: talks.at(-1) ?? null,
     snapshot: prev?.snapshot ?? null,
     items: [],
-    followups: [],
+    followups: stillOpen(followups, evidence)
+      .sort((a, b) => (a.date + a.id < b.date + b.id ? -1 : 1))
+      .map(({ id, text, date }) => ({ id, text, date })),
     nextTalk: prev?.nextTalk ?? null,
     skills: {},
   };

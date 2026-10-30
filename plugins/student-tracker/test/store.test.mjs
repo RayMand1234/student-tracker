@@ -175,3 +175,141 @@ test('an Entry with no Evidence is refused', () => {
   setUp(store);
   assert.throws(() => store.recordEntry({ text: TALK, evidence: [] }), /at least one Evidence/);
 });
+
+test('setup gives the Cycle its own copy of the shipped Course preset', () => {
+  const { store } = freshStore();
+  setUp(store);
+  const { preset } = store.readCycle();
+  assert.equal(preset.tests.find((t) => t.aliases.includes('פוב')).name, 'FOV');
+  assert.equal(preset.schedule.length, 21);
+});
+
+const FOV = 'נועה עברה את פוב, היא אמרה שהיא חשבה שלא תעבור';
+
+test('a test Evidence keeps the canonical Test, its Subject and self verdict, and no score unless given', () => {
+  const { store } = freshStore();
+  setUp(store);
+  const noa = idOf(store, 'נועה');
+  store.recordEntry({
+    text: FOV,
+    evidence: [{ trainee: noa, kind: 'test', date: '2026-10-30', excerpt: FOV, subject: 'tabi', test: 'FOV', self: 'לא עובר' }],
+  });
+  const [ev] = store.readTrainee(noa).evidence;
+  assert.deepEqual([ev.subject, ev.test, ev.score, ev.self, ev.unlisted], ['tabi', 'FOV', null, 'לא עובר', false]);
+
+  const scored = 'דני קיבל 85 בפוב';
+  store.recordEntry({
+    text: scored,
+    evidence: [{ trainee: idOf(store, 'דני'), kind: 'test', date: '2026-10-30', excerpt: scored, subject: 'tabi', test: 'FOV', score: 85 }],
+  });
+  assert.equal(store.readTrainee(idOf(store, 'דני')).evidence[0].score, 85);
+});
+
+test('a Test written by alias, or under the wrong Subject, is refused with the canonical name', () => {
+  const { store } = freshStore();
+  setUp(store);
+  const ev = { trainee: idOf(store, 'נועה'), kind: 'test', date: '2026-10-30', excerpt: FOV, subject: 'tabi' };
+  assert.throws(() => store.recordEntry({ text: FOV, evidence: [{ ...ev, test: 'פוב' }] }), /"FOV"/);
+  assert.throws(() => store.recordEntry({ text: FOV, evidence: [{ ...ev, test: 'FOV', subject: 'oop' }] }), /tabi/);
+  assert.equal(store.readTrainee(ev.trainee).evidence.length, 0);
+});
+
+test('a Test the preset does not list is kept as written only when flagged unlisted', () => {
+  const { store } = freshStore();
+  setUp(store);
+  const text = 'נועה עשתה את תרץ קרוקודיל';
+  const ev = { trainee: idOf(store, 'נועה'), kind: 'test', date: '2026-10-30', excerpt: text, test: 'קרוקודיל' };
+  assert.throws(() => store.recordEntry({ text, evidence: [ev] }), /unlisted/);
+  store.recordEntry({ text, evidence: [{ ...ev, unlisted: true }] });
+  const [saved] = store.readTrainee(ev.trainee).evidence;
+  assert.deepEqual([saved.test, saved.unlisted], ['קרוקודיל', true]);
+});
+
+test('a field that does not belong to the Evidence kind is refused', () => {
+  const { store } = freshStore();
+  setUp(store);
+  const ev = { trainee: idOf(store, 'נועה'), kind: 'talk', date: '2026-10-30', excerpt: TALK };
+  assert.throws(() => store.recordEntry({ text: TALK, evidence: [{ ...ev, score: 90 }] }), /field "score"/);
+  assert.throws(() => store.recordEntry({ text: FOV, evidence: [{ ...ev, kind: 'test', excerpt: FOV, score: 'טוב' }] }), /score/);
+});
+
+const AGREED = 'דיברתי היום עם נועה על הדיבאג. סיכמנו שתשב עם דני על זה';
+
+test('an Evidence opens Follow-ups word-for-word, and they show on the card until a later Evidence closes them', () => {
+  const { store } = freshStore();
+  setUp(store);
+  const noa = idOf(store, 'נועה');
+  const { entry } = store.recordEntry({
+    text: AGREED,
+    evidence: [{ trainee: noa, kind: 'talk', date: '2026-10-30', excerpt: AGREED, followups: ['סיכמנו שתשב עם דני על זה'] }],
+  });
+  const opened = store.readTrainee(noa);
+  assert.deepEqual(opened.followups.map((f) => [f.id, f.text, f.from, f.date]), [
+    [`${entry}-2`, 'סיכמנו שתשב עם דני על זה', `${entry}-1`, '2026-10-30'],
+  ]);
+  assert.deepEqual(opened.card.followups, [{ id: `${entry}-2`, text: 'סיכמנו שתשב עם דני על זה', date: '2026-10-30' }]);
+
+  const done = 'נועה ישבה עם דני על הדיבאג';
+  const closing = store.recordEntry({
+    text: done,
+    evidence: [{ trainee: noa, kind: 'note', date: '2026-10-30', excerpt: done, closes: [`${entry}-2`] }],
+  });
+  const after = store.readTrainee(noa);
+  assert.deepEqual(after.card.followups, []);
+  assert.deepEqual(after.evidence.find((e) => e.id === `${closing.entry}-1`).closes, [`${entry}-2`]);
+});
+
+test('a Follow-up must be word-for-word, and only an open Follow-up of the same Trainee can be closed', () => {
+  const { store } = freshStore();
+  setUp(store);
+  const [noa, dani] = [idOf(store, 'נועה'), idOf(store, 'דני')];
+  const ev = { trainee: noa, kind: 'talk', date: '2026-10-30', excerpt: AGREED };
+  assert.throws(() => store.recordEntry({ text: AGREED, evidence: [{ ...ev, followups: ['לשבת עם דני'] }] }), /word-for-word/);
+  const { entry } = store.recordEntry({ text: AGREED, evidence: [{ ...ev, followups: ['סיכמנו שתשב עם דני על זה'] }] });
+
+  const note = 'דני עזר לה';
+  const closeBy = (trainee) => ({ text: note, evidence: [{ trainee, kind: 'note', date: '2026-10-30', excerpt: note, closes: [`${entry}-2`] }] });
+  assert.throws(() => store.recordEntry(closeBy(dani)), /open Follow-up/);
+  store.recordEntry(closeBy(noa));
+  assert.throws(() => store.recordEntry(closeBy(noa)), /open Follow-up/);
+});
+
+test('a correction is a clarification linked to the original Evidence, which stays as written', () => {
+  const { store } = freshStore();
+  setUp(store);
+  const noa = idOf(store, 'נועה');
+  const { evidence: [original] } = store.recordEntry({
+    text: FOV,
+    evidence: [{ trainee: noa, kind: 'test', date: '2026-10-30', excerpt: FOV, test: 'FOV' }],
+  });
+  const fix = 'טעות, נועה עברה את פליים ולא את פוב';
+  const clar = { trainee: noa, kind: 'clarification', date: '2026-10-30', excerpt: fix };
+  assert.throws(() => store.recordEntry({ text: fix, evidence: [clar] }), /clarifies/);
+  assert.throws(() => store.recordEntry({ text: fix, evidence: [{ ...clar, clarifies: 'e-nope-1' }] }), /clarifies/);
+  store.recordEntry({ text: fix, evidence: [{ ...clar, clarifies: original }] });
+
+  const { evidence } = store.readTrainee(noa);
+  assert.equal(evidence.find((e) => e.id === original).test, 'FOV');
+  assert.equal(evidence.find((e) => e.kind === 'clarification').clarifies, original);
+});
+
+test('a Test the Commander confirms is added to this Cycle\'s preset copy, then recorded by its name', () => {
+  const { store } = freshStore();
+  setUp(store);
+  const added = store.updateCycle({ addTest: { name: 'Crocodile', subject: 'oop', number: '4', aliases: ['קרוקודיל'] } });
+  assert.equal(added.tests.at(-1).id, 'oop.crocodile');
+  assert.equal(store.readCycle().preset.tests.find((t) => t.name === 'Crocodile').subject, 'oop');
+
+  const text = 'נועה עשתה את קרוקודיל';
+  store.recordEntry({ text, evidence: [{ trainee: idOf(store, 'נועה'), kind: 'test', date: '2026-10-30', excerpt: text, test: 'Crocodile' }] });
+  assert.equal(store.readTrainee(idOf(store, 'נועה')).evidence[0].subject, 'oop');
+});
+
+test('adding a Test whose name or alias is already taken, or under an unknown Subject, is refused', () => {
+  const { store } = freshStore();
+  setUp(store);
+  assert.throws(() => store.updateCycle({ addTest: { name: 'פוב', subject: 'tabi' } }), /FOV/);
+  assert.throws(() => store.updateCycle({ addTest: { name: 'Crocodile', subject: 'zoo' } }), /Subject/);
+  assert.throws(() => store.updateCycle({ renameCycle: 'x' }), /addTest/);
+  assert.equal(store.readCycle().preset.tests.length, 21);
+});

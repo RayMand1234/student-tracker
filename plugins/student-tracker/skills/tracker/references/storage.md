@@ -33,7 +33,7 @@ sensitive/<id>       sensitive Evidence and what quotes it
 
 Ids: Trainees `t-<rand6>` (never a name); Entries `e-YYYYMMDD-HHMM-<rand2>`; records cut from an Entry `<entryId>-<n>`; standalone re-rate Assessments `a-YYYYMMDD-HHMM-<rand2>`. Evidence has `date` (the day it happened, `YYYY-MM-DD`); every record has `at` (ISO timestamp with offset).
 
-Trainee card: `name`, `active`, `left`, `status`, `evalStage`, `lastTalk`, `snapshot {text, at}`, display-safe `items` and `followups`, `nextTalk {questions, at}`, and `skills` (per Skill id, the counting Assessments `[[date, score, author], …]` plus Evidence count `n`). Rating, Trend and stale are computed when read, never stored.
+Trainee card: `name`, `active`, `left`, `status`, `evalStage`, `lastTalk`, `snapshot {text, at}`, display-safe `items`, the open `followups` (`[{id, text, date}]`, oldest first), `nextTalk {questions, at}`, and `skills` (per Skill id, the counting Assessments `[[date, score, author], …]` plus Evidence count `n`). Rating, Trend and stale are computed when read, never stored.
 
 ## Operations
 
@@ -56,13 +56,25 @@ Child ids are `<entryId>-<n>`, fixed in step 1, so redoing a chunk never duplica
 
 ### Recording
 
-- **`recordEntry({text, evidence: [...]})`** → `{entry, evidence: [ids]}`. Keeps `text` word-for-word as an Entry and writes each Evidence (`trainee`, `kind`, `date`, `excerpt`, kind-specific fields such as Talk `topics`) under its Trainee, then updates the touched cards (a Talk moves `lastTalk` forward, never back). Refuses when there is no Evidence, an excerpt is not copied word-for-word from `text`, a Trainee id is unknown, a kind is unknown, or a date is not `YYYY-MM-DD`.
-  Kinds: `talk`, `test`, `code-review`, `project-observation`, `self-assessment`, `improve-keep`, `goal`, `background`, `evaluation-event`, `note`, `clarification`.
-  Runs the Entry write protocol above. Refuses an Entry that gives one Trainee more records than fit in one chunk (49 plus the card). Later: Assessments, Follow-ups and improve/keep items in the same call.
+- **`recordEntry({text, evidence: [...]})`** → `{entry, evidence: [ids], followups: [ids]}`. Keeps `text` word-for-word as an Entry and writes each Evidence under its Trainee, plus the Follow-ups it opens, then updates the touched cards (a Talk moves `lastTalk` forward, never back; opened Follow-ups join the card's `followups`, closed ones leave it).
+  Each Evidence: `trainee`, `kind`, `date`, `excerpt`, its kind's fields, optional `closes: [Follow-up ids]` and optional `followups: [text…]` to open. Kinds and their fields (a field left out is stored at the default shown):
+
+  | Kind | Fields |
+  |---|---|
+  | `talk` | `topics: []` |
+  | `test` | `subject: null`, `test: null`, `unlisted: false`, `score: null`, `self: null` |
+  | `code-review` | `subject: null`, `test: null`, `unlisted: false` |
+  | `project-observation` | `project: null` (a preset Project id) |
+  | `clarification` | `clarifies` (required: the id of the same Trainee's Evidence it corrects) |
+  | `self-assessment`, `improve-keep`, `goal`, `background`, `evaluation-event`, `note` | none |
+
+  A listed Test's `subject` is stored as the preset gives it. Every Evidence also stores `closes` (default `[]`). A Follow-up is `{entry, trainee, text, from: <Evidence id>, date: <its Evidence's date>, at, retracted: false}` in the Trainee's `followups`; it is open until a non-retracted Evidence of that Trainee lists it in `closes`. Ids: the Evidence first, `<entryId>-1…`, in the order given, then the Follow-ups in the order given.
+  Refuses, writing nothing, when: there is no Evidence; an excerpt or Follow-up text is not copied word-for-word from `text`; a Trainee id or kind is unknown; a date is not `YYYY-MM-DD`; a field does not belong to the kind; `score` is not a number; `test` is not a canonical Test name in the Cycle's preset (unless `unlisted: true`, which a canonical name may not carry); `test` and `subject` disagree with the preset; `project` is not a preset Project; `clarifies` names no Evidence of that Trainee; `closes` names a Follow-up that is not open on that Trainee's card.
+  Runs the Entry write protocol above. Refuses an Entry that gives one Trainee more records than fit in one chunk (49 plus the card). Later: Assessments and improve/keep items in the same call.
 - **`retractEntry(eid?)`** → `{entry, trainees}`. Retracts the named Entry, or the last one: sets `retracted: {at}` on the Entry and `retracted: true` on every record cut from it, then rebuilds the touched cards. Nothing is deleted or edited. Not built yet.
 - **`updateTrainee(tid?, change)`** → the new card. Adds a Trainee, or records a Status change, an evaluation-process stage change, or a Trainee leaving (date, reason), each as a `changes` record plus the card update. Only after the Commander confirms. Not built yet.
 - **`updateSettings(change)`** → the new `commander/settings`. Commander name, role, Talk target and yellow/red thresholds. Only after the Commander confirms. Not built yet.
-- **`updateCycle(change)`** → the changed document. Edits this Cycle's preset copy, adds or archives a Skill, records a Project team. Only after the Commander confirms. Not built yet.
+- **`updateCycle(change)`** → the changed document. Edits this Cycle's preset copy, adds or archives a Skill, records a Project team. Only after the Commander confirms. Built so far: `{addTest: {name, subject, number?, aliases?}}` appends a Test to `meta/preset.tests` with id `<subject>.<name slug>`; refuses an unknown Subject id and a name or alias already used by a Test (ignoring case and spacing).
 
 ### Dashboard
 
@@ -70,7 +82,7 @@ Child ids are `<entryId>-<n>`, fixed in step 1, so redoing a chunk never duplica
 
 ### Setup
 
-- **`createCycle({commander, cycle, trainees})`** → `{url, trainees: [{id, name}]}`. Used only by setup. Writes the pointer first, then seeds `meta/cycle` (`setup: in-progress`), `meta/skills`, `commander/settings` (default Talk target 10, yellow 10, red 14), `commander/hides` and, per Trainee, an `added` change record plus its card (so the card can be rebuilt from records), then sets `setup: done`. Called again after an interrupted seed, it finishes the same store and keeps the Trainees already there. Refuses when the current Cycle's setup is done, and when two Trainees share a display name.
+- **`createCycle({commander, cycle, trainees})`** → `{url, trainees: [{id, name}]}`. Used only by setup. Writes the pointer first, then seeds `meta/cycle` (`setup: in-progress`), `meta/skills`, `meta/preset` (a copy of the shipped Course preset), `commander/settings` (default Talk target 10, yellow 10, red 14), `commander/hides` and, per Trainee, an `added` change record plus its card (so the card can be rebuilt from records), then sets `setup: done`. Called again after an interrupted seed, it finishes the same store and keeps the Trainees already there. Refuses when the current Cycle's setup is done, and when two Trainees share a display name.
 
 ### Playbook and sensitive
 

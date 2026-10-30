@@ -66,7 +66,7 @@ Always show a short summary (Commander, Cycle, Trainees, Talk target every 10 da
 **Artifact backend**, in this order:
 1. Publish the dashboard page with the Artifact tool: `file_path` = `${CLAUDE_PLUGIN_ROOT}/dashboard/index.html` (read it first, as the tool requires), `title` = "מעקב חניכים · <Cycle>", `description` = "דף המעקב של המחזור <Cycle>: מתי הייתה השיחה האחרונה עם כל חניך.", `icon` = "people", `capabilities` = `{"db": {}, "user": {}}`, `pin: true`. If the tool refuses that path, copy the file into your scratchpad dir and publish the copy. Skip this when resuming an interrupted setup.
 2. Write the pointer right away, before seeding: set `current` to the page's address in `${CLAUDE_PLUGIN_DATA}/cycles.json` with the Write tool, keeping any `archived` list already there (`{"current": "<address>", "archived": []}` when there was no pointer).
-3. `createCycle` as the artifact mapping describes. The Skill framework file is `${CLAUDE_PLUGIN_ROOT}/data/skills.json`.
+3. `createCycle` as the artifact mapping describes. The Skill framework file is `${CLAUDE_PLUGIN_ROOT}/data/skills.json`; the Course preset file is `${CLAUDE_PLUGIN_ROOT}/data/preset.json`.
 4. Check once: `readTeam` shows one card per Trainee.
 
 **Local test backend**: `createCycle` as the local mapping describes (it writes the pointer itself).
