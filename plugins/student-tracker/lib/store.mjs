@@ -1630,8 +1630,8 @@ function stillOpen(followups, evidence) {
 // improve/keep item shows as MARK.
 function deriveCard({ changes, evidence, followups = [], items = [], assessments = [], sensitive = [] }, prev = {}) {
   const live = (xs) => xs.filter((x) => x.retracted === false);
-  const named = live(changes).filter((c) => c.name).sort(byWritten).at(-1);
-  const leaving = live(changes).filter((c) => c.type === 'left' || c.type === 'rejoined').sort(byWritten).at(-1);
+  const named = live(changes).filter((c) => c.name).sort(byAt).at(-1);
+  const leaving = live(changes).filter((c) => c.type === 'left' || c.type === 'rejoined').sort(byAt).at(-1);
   const left = leaving?.type === 'left' ? { date: leaving.date, how: leaving.how, reason: leaving.reason } : null;
   const latest = (type) => live(changes).filter((c) => c.type === type).sort(byWritten).at(-1);
   const status = latest('status');
