@@ -140,7 +140,15 @@ test('a correction becomes a clarification linked to the original, which is not 
 
 test('every kind of Evidence is classified, and a code review links its Test', () => {
   const { store, id, cwd } = team();
-  const msg = 'נועה סיפרה שלפני הקורס למדה פייתון לבד, והיא רוצה להגיע לפיקוד. בסקד על פליים ראיתי שהיא כותבת קוד מסודר. ברמ"ת היא כתבה שהיא חזקה באלגוריתמיקה. לשפר: לקרוא את כל הדרישה לפני שמתחילים לכתוב. דני עלה היום לרף מקס. מאיה הגיעה באיחור לשיעור הבוקר.';
+  // Dani is already at רף מקס, so an event at that stage is plain Evidence: no stage change to
+  // confirm (ticket 19), and the whole message is recorded at once.
+  const ENTERED = 'דני עלה לרף מקס.';
+  store.recordEntry({
+    text: ENTERED,
+    evidence: [{ trainee: id['דני'], kind: 'evaluation-event', date: day(-3), excerpt: ENTERED }],
+    changes: [{ trainee: id['דני'], type: 'stage', to: 'רף מקס', evidence: ['#1'] }],
+  });
+  const msg = 'נועה סיפרה שלפני הקורס למדה פייתון לבד, והיא רוצה להגיע לפיקוד. בסקד על פליים ראיתי שהיא כותבת קוד מסודר. ברמ"ת היא כתבה שהיא חזקה באלגוריתמיקה. לשפר: לקרוא את כל הדרישה לפני שמתחילים לכתוב. לדני הייתה היום השיחה של רף מקס עם מפקד הקורס. מאיה הגיעה באיחור לשיעור הבוקר.';
 
   const reply = claude(cwd, msg);
   console.log(`reply:\n${reply}`);

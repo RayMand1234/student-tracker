@@ -9,6 +9,7 @@ useEvalPointer();
 function setUp() {
   const store = freshTestStore();
   store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' }, trainees: ['נועה', 'דני'] });
+  store.finishSetup();
   const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
   const state = () => store.readTeam().map((t) => store.readTrainee(t.id));
   return { store, id, state, cwd: workspace() };
