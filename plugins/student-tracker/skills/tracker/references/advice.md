@@ -13,15 +13,20 @@
 4. **Rewrite each to this Trainee**: what to do, grounded in what the Evidence says about them, and cite it (`— <Evidence kind> <DD/MM>`, as in [assess.md](assess.md)). No item text pasted bare, nothing the Evidence doesn't support, and nothing of a sensitive record beyond "מצב אישי" (the Commander may be reading in front of others).
 5. **Record nothing.**
 
+The reply is the brief's "מיקוד (הצעה)" block ([brief.md](brief.md)) on its own, each point with the Evidence it rests on:
+
 ```
-נועה — יכולות דיבאג 2 (↓):
-(הצעה) לשבת לידה על הבאג הבא ולשאול רק "מה ציפית ומה קרה בפועל?" — היא נתקעה שעה בלי לבודד את הבעיה — שיחה 28/10
-(הצעה) תרגיל קצר: באג שתול שמוצאים רק עם הדפסות, עם רישום של כל השערה — בתרץ האחרון לא הדפיסה כלום — סקד 22/10
-(הצעה) לפתוח את השיחה הבאה במה שהצליח: מצאה לבד את הבאג בלולאה — שיחה 21/10
+נועה — יכולות דיבאג 2 (↓)
+
+מיקוד (הצעה)
+1. דיבאג — לשבת לידה על הבאג הבא ולשאול רק "מה ציפית ומה קרה בפועל?" — נתקעה שעה בלי לבודד את הבעיה — שיחה 28/10
+2. דיבאג — תרגיל קצר: באג שתול שמוצאים רק עם הדפסות, עם רישום של כל השערה — בתרץ האחרון לא הדפיסה כלום — סקד 22/10
+3. לפתוח במה שהצליח — מצאה לבד את הבאג בלולאה — שיחה 21/10
+
 לשמור אחת מהן כנקודה לשיפור או לשיחה הבאה?
 ```
 
-The heading line names each target Skill with its Rating, and its arrow only when it has one ("(לא מדורג)" when unrated); every suggestion line starts with "(הצעה)".
+The heading line names each target Skill with its Rating, and its arrow only when it has one ("(לא מדורג)" when unrated). Then `מיקוד (הצעה)` and the 2–3 suggestions, numbered `1.`–`3.`, each `<Skill or theme> — <what to do> — <what in the Evidence it rests on> — <Evidence kind> <DD/MM>`.
 
 ## When the Commander accepts one
 
@@ -39,10 +44,11 @@ The card keeps two or three questions the Commander could ask the Trainee in the
 
 - **With every Entry**, for each Trainee it has Evidence about: a `nextTalk` change in the `recordEntry` call, next to the Snapshot ([state.md](state.md)).
 - **With a re-rate** or an accepted proposal: `nextTalk` in the `recordAssessments` call.
+- **With a brief** ([brief.md](brief.md)): refreshed and shown as its "שאלות פתיחה", stored on their own with `recordNextTalk`.
 
 Writing them:
 
 - Two or three short Hebrew questions, addressed to the Trainee ("איך מצאת את הבאג הפעם?"), from their card, the 6 weeks of `readTrainee` you already read, and this Entry: their lowest or declining Skills, what just happened, a goal they set. A `talk-question` item from `readPlaybook` can be one, rewritten to them, when you have read it in this conversation.
 - Not an open Follow-up again (the dashboard shows those right above), not a question the Trainee already answered in this Entry.
 - Display-safe: no word of a sensitive part, ever ("איך את מרגישה השבוע?" at most). Storage refuses a question that repeats one.
-- Not in the reply: the confirmation line carries no Advice.
+- Not in the reply (the confirmation line carries no Advice), except in a brief, which shows the ones it stored.

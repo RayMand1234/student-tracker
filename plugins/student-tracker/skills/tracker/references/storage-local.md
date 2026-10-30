@@ -19,6 +19,9 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `readTeam` | `read-team` |
 | `readTrainee(tid, since, retracted)` | `read-trainee <tid> --since YYYY-MM-DD` (omit `--since` for everything; add `--retracted` to include retracted records and Entries) |
 | `readPlaybook(tid, skills?)` | `read-playbook <tid> [<skill id> …]` (no Skill ids: the Trainee's own targets) |
+| `readStatus` | `read-status` |
+| `takeAlert(pattern?)` | `take-alert` (with a pattern: `take-alert <tid> <theme words…>`) |
+| `recordNextTalk(tid, questions)` | `record-next-talk`, payload on stdin: one `--- next-talk <tid>` block (below) and nothing else |
 | `recordEntry(...)` | `record-entry`, payload on stdin (below); add `--insist` when the Commander insisted on a Trainee who left |
 | `recordAssessments(tid, ..., nextTalk?)` | `record-assessments`, payload on stdin: `--- assessment` blocks (below) of that one Trainee, citing stored Evidence ids, then optionally one `--- next-talk <tid>` block; `--insist` as above |
 | `retractEntry(eid?)` | `retract-entry <entry id>` (omit the id for the last Entry) |
@@ -155,6 +158,16 @@ student-tracker-store --data "<plugin data dir>" record-assessments <<'RATE'
 מה ניסית לפני שביקשת עזרה בבאג האחרון?
 איך תדעי שהגיע הזמן לבקש עזרה?
 RATE
+```
+
+The brief's opening questions:
+
+```
+student-tracker-store --data "<plugin data dir>" record-next-talk <<'TALK'
+--- next-talk t-ab12cd
+מה עזר לך למצוא את הבאג לבד?
+איך הולך בצוות של פאדנס?
+TALK
 ```
 
 For `updateTrainee`, after the Commander confirmed, one change per call: `add: <name>` (no tid), `rename: <name>`, `rejoin`, `leave: YYYY-MM-DD` followed by `how: dismissal | transfer | other` and `reason: <short, display-safe>`, or `status: good | watch | concern` followed by `reason: <display-safe>` and optionally `evidence: <stored ids>`:

@@ -67,6 +67,14 @@ The card is derived from the Trainee's records and always has this shape:
 
 A read: write nothing. Read `${CLAUDE_PLUGIN_ROOT}/data/playbook.json` (the base items, `items`) with the Read tool; `get` `trainees/<tid>` (refuse an unknown Trainee), `meta/skills` (refuse a Skill id it doesn't hold) and `commander/hides`; `list` `playbook`. Then pick as storage.md says, Ratings by the Rating rule (as of today) from the card's `skills`.
 
+### `readStatus`
+
+A read: write nothing. `get` `meta/cycle`, `meta/skills`, `commander/settings`; `list` `trainees` (`limit: 1000`). Today = Now's date. Then build the lists as storage.md says, from the active cards (no `left`): days = whole calendar days from `lastTalk` to today; Rating and Trend by the Rating rule from the card's `skills` (Trend vs today − 28 days; `from` is the Rating as of that day); Skill names from `meta/skills`, archived Skills left out of `drops` and `shared`.
+
+### `takeAlert(pattern?)`
+
+`get` `meta/alerts` (note its version, or that it is missing) and do the `readStatus` reads. Build the due alerts in storage.md's order and drop the shown ones (`shown[key]` is today for a `talk` or `pattern` key; any `shown[key]` for a `weakness` key). Never store the pattern's theme: its key is `pattern:<tid>`. None due → return `{alert: null, more: 0}`, writing nothing. Otherwise the new `shown` = the old one minus every non-`weakness` key whose day is not today, plus the first alert's key at today; create `meta/alerts` `{shown}` (`set`, no `if_version`) or `set` it with `if_version`. On a conflict start over, at most 10 times. Return `{alert: <the first>, more: <how many others>}`.
+
 ### `readTrainee(tid, since)`
 
 `get` `trainees/<tid>`, then with `out_dir`, each query also `where retracted == false` (left out only when `retracted` asks for retracted records too):
@@ -100,6 +108,10 @@ Return the Entry ids you finished.
 ### `recordAssessments(tid, assessments, nextTalk?)`
 
 Check every Assessment refusal in storage.md (every ref a stored Evidence id of `tid`), and refuse a Trainee whose card has `left` unless `insist` is set; `nextTalk`, when given, as `recordEntry` checks next-Talk questions (against the stored sensitive records only). Ids `a-YYYYMMDD-HHMM-<rand2>` from Now, each one not already in `trainees/<tid>/assessments` and not repeated; data `{entry: null, trainee: tid, skill, score, author, reason, evidence, date: <today>, at, retracted: false}`. With `nextTalk`, also `trainees/<tid>/changes/c-YYYYMMDD-HHMM-<rand2>` with `{type: "nextTalk", entry: null, trainee: tid, questions, by: "agent", at, retracted: false}`. `get` the card (version `v`), rebuild the `skills` entry of each Skill they are on as `recordEntry` step 3 does, and one `batch`: a create per record plus `update` `trainees/<tid>` `{skills}` (and `nextTalk: {questions, at}`) with `if_version: v`. On a conflict nothing was written: start over with the same ids, at most 10 times. Return `{assessments: [ids]}`, plus `changes: [id]` with `nextTalk`.
+
+### `recordNextTalk(tid, questions)`
+
+`get` the card (version `v`); refuse an unknown Trainee or one whose card has `left`. Check the questions as `recordEntry` checks next-Talk questions (against the stored sensitive records only). One `batch`: create `trainees/<tid>/changes/c-YYYYMMDD-HHMM-<rand2>` (from Now, not already taken) `{type: "nextTalk", entry: null, trainee: tid, questions, by: "agent", at, retracted: false}` and `update` `trainees/<tid>` `{nextTalk: {questions, at}}` with `if_version: v`. On a conflict nothing was written: start over with the same id, at most 10 times. Return `{change: <its id>, card}`.
 
 ### `createCycle` (setup only)
 

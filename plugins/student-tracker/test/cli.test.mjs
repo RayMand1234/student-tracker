@@ -444,6 +444,34 @@ ${text}
   assert.equal(JSON.parse(run(['--data', data, 'read-playbook', noa.id], { cwd }).out).targets[0].skill, 'impl.debugging');
 });
 
+test('the brief stores its questions with record-next-talk; read-status and take-alert serve team status and alerts', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: `${SETUP}start: 2026-01-01\n` }).out).trainees;
+  const stored = run(['--data', data, 'record-next-talk'], { cwd, input: `--- next-talk ${noa.id}
+מה עזר לך למצוא את הבאג לבד?
+איך הולך בצוות?
+` });
+  assert.equal(stored.code, 0, stored.err);
+  assert.deepEqual(JSON.parse(stored.out).card.nextTalk.questions, ['מה עזר לך למצוא את הבאג לבד?', 'איך הולך בצוות?']);
+  const refused = run(['--data', data, 'record-next-talk'], { cwd, input: `--- assessment ${noa.id} impl.debugging 3 agent\n+evidence: x\nסיבה\n` });
+  assert.equal(refused.code, 1);
+  assert.match(refused.err, /next-talk/);
+
+  const status = JSON.parse(run(['--data', data, 'read-status'], { cwd }).out);
+  assert.deepEqual(status.needTalk.map((t) => [t.name, t.days]), [['דני', null], ['נועה כ.', null]]);
+
+  // No Talk since the start, months ago: both are red; the pattern comes after them.
+  const alerts = [];
+  for (;;) {
+    const r = run(['--data', data, 'take-alert', noa.id, 'מגיעה', 'באיחור'], { cwd });
+    assert.equal(r.code, 0, r.err);
+    const { alert } = JSON.parse(r.out);
+    if (!alert) break;
+    alerts.push(alert.kind === 'pattern' ? alert.theme : alert.name);
+  }
+  assert.deepEqual(alerts, ['דני', 'נועה כ.', 'מגיעה באיחור']);
+});
+
 test('save-playbook-item takes "+key: value" lines and the text; retire, hide and unhide take an id', () => {
   const { data, cwd } = fresh();
   run(['--data', data, 'create-cycle'], { cwd, input: SETUP });
