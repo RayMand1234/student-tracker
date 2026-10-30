@@ -11,7 +11,9 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
   record-entry [--insist] < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>",
                             "+key: value" field lines, excerpt; "--- followup" + text after its Evidence;
                             "--- sensitive <category>" + "+kind:"/"+closes:" lines + sentence after its Evidence;
-                            "--- assessment <tid> <skill id> <score> <author>" + "+evidence: #<n>, <id>" + reason
+                            "--- assessment <tid> <skill id> <score> <author>" + "+evidence: #<n>, <id>" + reason;
+                            "--- item <tid> improve|keep <by>" + "+from:" + text; "--- status <tid> <to>",
+                            "--- stage <tid>" + "+to:", "--- snapshot <tid>", "--- retire <tid> <item> <by>"
   record-assessments [--insist]
                           < "--- assessment" blocks of one Trainee, citing stored Evidence ids
                           (--insist: the Commander asked to record about a Trainee who left)
@@ -19,7 +21,8 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
   retract-entry [<entry id>]   (the last Entry when none is named)
   hard-delete <entry id>       (only on the Commander's explicit, confirmed request)
   update-trainee [<tid>]  < one of "add: <name>" (no tid), "rename: <name>", "rejoin",
-                            "leave: YYYY-MM-DD" + "how: dismissal|transfer|other" + "reason: <text>"
+                            "leave: YYYY-MM-DD" + "how: dismissal|transfer|other" + "reason: <text>",
+                            "status: good|watch|concern" + "reason: <text>" + optional "evidence: <ids>"
   update-settings         < any of "name:", "role:", "target:", "yellow:", "red:" lines
   update-cycle            < one change: "add-test: <name>" | "edit-test: <test>" | "remove-test: <test>" |
                             "add-project: <name>" | "week: <n>" | "add-skill: <name>" | "archive-skill: <id>" |

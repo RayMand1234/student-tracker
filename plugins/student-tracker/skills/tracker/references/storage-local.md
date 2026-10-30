@@ -35,7 +35,13 @@ Payloads are plain text in a quoted heredoc, never JSON (the shell safety check 
 - per Evidence, a `--- evidence <tid> <kind> <YYYY-MM-DD>` line, then its fields as `+<field>: <value>` lines right under it (lists comma-separated: `+topics: דיבאג, פרויקט`, `+closes: <id>, <id>`; `+unlisted: true`; `+score: 85`), then its excerpt exactly as written;
 - per Follow-up it opens, right after that Evidence, a `--- followup` line, then the Follow-up text exactly as written;
 - per sensitive part cut out of it, after that Evidence (and its Follow-ups), a `--- sensitive <category>` line, then optional `+kind: <kind>` and `+closes: <ids>` lines, then the sensitive sentence exactly as written; the Follow-ups that part opens follow it as `--- followup` blocks;
-- per Assessment, after all the Evidence, a `--- assessment <tid> <skill id> <score> <author>` line, then `+evidence: <refs>` (comma-separated: `#<n>` for this Entry's record `<entryId>-<n>`, or a stored Evidence id), then the reason.
+- per Assessment, after all the Evidence, a `--- assessment <tid> <skill id> <score> <author>` line, then `+evidence: <refs>` (comma-separated: `#<n>` for this Entry's record `<entryId>-<n>`, or a stored Evidence id), then the reason;
+- per improve/keep item, after all the Evidence, `--- item <tid> <improve|keep> <agent|commander>`, then `+from: <ref>` (its origin Evidence), then its text;
+- per Trainee-state change, after all the Evidence:
+  - `--- status <tid> <good|watch|concern>`, `+evidence: <refs>`, then the reason;
+  - `--- stage <tid>`, `+to: <stage>` (`+to: none` leaves the process), `+evidence: <refs>` (the Commander's `evaluation-event` Evidence of this Entry), then the reason if any;
+  - `--- snapshot <tid>`, then the Snapshot text;
+  - `--- retire <tid> <item id> <agent|commander>`, `+evidence: <refs>`, then the reason.
 
 A Talk with a sensitive sentence (the public excerpt shows the marker where the sentence was):
 
@@ -91,6 +97,40 @@ student-tracker-store --data "<plugin data dir>" record-entry <<'ENTRY'
 ENTRY
 ```
 
+A Talk with an improve/keep item, the agent's Status and a fresh Snapshot:
+
+```
+student-tracker-store --data "<plugin data dir>" record-entry <<'ENTRY'
+--- entry
+דיברתי עם דני, הוא לא הגיש שבוע שני. שיפור: להגיש בזמן.
+--- evidence t-ef34gh talk 2026-10-30
++topics: הגשות
+דיברתי עם דני, הוא לא הגיש שבוע שני. שיפור: להגיש בזמן.
+--- item t-ef34gh improve commander
++from: #1
+להגיש בזמן
+--- status t-ef34gh watch
++evidence: #1
+לא הגיש שבוע שני ברצף
+--- snapshot t-ef34gh
+מבין את החומר אבל לא מגיש; ההגשות הן המוקד עכשיו.
+ENTRY
+```
+
+After the Commander confirmed a stage they gave:
+
+```
+student-tracker-store --data "<plugin data dir>" record-entry <<'ENTRY'
+--- entry
+דני עולה לרף מקס, יש לו שיחה עם מפקד הקורס ביום ראשון.
+--- evidence t-ef34gh evaluation-event 2026-10-30
+דני עולה לרף מקס, יש לו שיחה עם מפקד הקורס ביום ראשון.
+--- stage t-ef34gh
++to: רף מקס
++evidence: #1
+ENTRY
+```
+
 A re-rate or an accepted proposal:
 
 ```
@@ -101,13 +141,21 @@ student-tracker-store --data "<plugin data dir>" record-assessments <<'RATE'
 RATE
 ```
 
-For `updateTrainee`, after the Commander confirmed, one change per call: `add: <name>` (no tid), `rename: <name>`, `rejoin`, or `leave: YYYY-MM-DD` followed by `how: dismissal | transfer | other` and `reason: <short, display-safe>`:
+For `updateTrainee`, after the Commander confirmed, one change per call: `add: <name>` (no tid), `rename: <name>`, `rejoin`, `leave: YYYY-MM-DD` followed by `how: dismissal | transfer | other` and `reason: <short, display-safe>`, or `status: good | watch | concern` followed by `reason: <display-safe>` and optionally `evidence: <stored ids>`:
 
 ```
 student-tracker-store --data "<plugin data dir>" update-trainee t-ef34gh <<'CHANGE'
 leave: 2026-10-29
 how: transfer
 reason: עבר לקורס אחר
+CHANGE
+```
+
+```
+student-tracker-store --data "<plugin data dir>" update-trainee t-ef34gh <<'CHANGE'
+status: concern
+reason: אישור הצעה: לא מגיש שלושה שבועות
+evidence: e-20261030-0915-x7-1
 CHANGE
 ```
 

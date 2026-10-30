@@ -39,6 +39,13 @@ export function parseCycle(input) {
 // --- assessment <tid> <skill id> <score> <author>   (zero or more)
 // +evidence: <#n or Evidence id>, …
 // <reason>
+// --- item <tid> <improve|keep> <agent|commander>    (zero or more improve/keep items)
+// +from: <#n or Evidence id>
+// <text>
+// --- status <tid> <good|watch|concern>  + "+evidence:" + reason   (Trainee-state changes, zero or more)
+// --- stage <tid>  + "+to: <stage | none>" + "+evidence:" + optional reason
+// --- snapshot <tid>  + text
+// --- retire <tid> <item id> <agent|commander>  + "+evidence:" + reason
 export function parseEntry(input) {
   const lines = input.split('\n');
   if (lines.at(-1) === '') lines.pop();
@@ -47,6 +54,7 @@ export function parseEntry(input) {
   const text = [];
   const evidence = [];
   const assessments = [];
+  const state = []; // items and Trainee-state changes, in the order given
   let body = text;
   let target = null; // what "+key: value" and "--- followup" lines attach to: an Evidence or a sensitive part
   let fieldsOpen = false; // "+key: value" lines are read only right after an Evidence or sensitive header
@@ -59,7 +67,9 @@ export function parseEntry(input) {
       target = { fields: { trainee, kind, date }, body, followups: [], sensitive: [] };
       evidence.push(target);
     } else if (line.startsWith('--- sensitive')) {
-      if (assessments.includes(target)) throw new StoreError('a "--- sensitive" block goes right after its Evidence, before the assessments');
+      if (assessments.includes(target) || state.includes(target)) {
+        throw new StoreError('a "--- sensitive" block goes right after its Evidence, before the assessments, items and changes');
+      }
       const owner = evidence.at(-1);
       if (!owner) throw new StoreError('a "--- sensitive" block must follow the Evidence it is cut out of');
       const [category, ...extra] = line.slice('--- sensitive'.length).trim().split(/\s+/);
@@ -73,6 +83,11 @@ export function parseEntry(input) {
       fieldsOpen = true;
       target = assessmentBlock(line, body);
       assessments.push(target);
+    } else if (STATE_HEADER.test(line)) {
+      body = [];
+      fieldsOpen = true;
+      target = stateBlock(line, body);
+      state.push(target);
     } else if (line.trim() === '--- followup') {
       if (!target?.followups) throw new StoreError('a "--- followup" block must follow the Evidence that opens it');
       body = [];
@@ -99,7 +114,38 @@ export function parseEntry(input) {
       ...(ev.sensitive.length ? { sensitive: ev.sensitive.map(withFollowups) } : {}),
     })),
     assessments: assessments.map(assessmentOf),
+    items: state.filter((b) => b.list === 'items').map(stateOf),
+    changes: state.filter((b) => b.list === 'changes').map(stateOf),
   };
+}
+
+const STATE_HEADER = /^--- (item|status|stage|snapshot|retire)( |$)/;
+// What each state block header holds after its name, and where its body goes.
+const STATE_BLOCKS = {
+  item: { list: 'items', head: ['trainee', 'kind', 'by'], body: 'text' },
+  status: { list: 'changes', type: 'status', head: ['trainee', 'to'], body: 'reason' },
+  stage: { list: 'changes', type: 'stage', head: ['trainee'], body: 'reason' },
+  snapshot: { list: 'changes', type: 'snapshot', head: ['trainee'], body: 'text' },
+  retire: { list: 'changes', type: 'retired', head: ['trainee', 'item', 'by'], body: 'reason' },
+};
+
+function stateBlock(line, body) {
+  const [, name] = line.match(STATE_HEADER);
+  const spec = STATE_BLOCKS[name];
+  const words = line.slice(`--- ${name}`.length).trim().split(/\s+/).filter(Boolean);
+  if (words.length !== spec.head.length) throw new StoreError(`a ${name} header is "--- ${name} <${spec.head.join('> <')}>": "${line}"`);
+  const fields = Object.fromEntries(spec.head.map((k, i) => [k, words[i]]));
+  return { list: spec.list, spec, fields: spec.type ? { ...fields, type: spec.type } : fields, body };
+}
+
+// A stage `+to: none` leaves the evaluation process; its reason is optional (none when blank).
+function stateOf({ spec, fields, body }) {
+  const out = { ...fields, [spec.body]: body.join('\n').trim() };
+  if (spec.type === 'stage') {
+    if (out.to === 'none') out.to = null;
+    out.reason ||= null;
+  }
+  return out;
 }
 
 // The same "--- assessment" blocks, on their own, for one Trainee: `record-assessments`.
@@ -176,6 +222,7 @@ function parseOne(input, changes) {
 const list = (v) => v.split(',').map((x) => x.trim()).filter(Boolean);
 
 // add: <name> | rename: <name> | leave: YYYY-MM-DD + how: + reason: | rejoin
+// | status: <good|watch|concern> + reason: + evidence: <ids> (optional)
 export function parseTraineeChange(input) {
   return parseOne(input, {
     add: { build: (name) => ({ add: { name } }), fields: {} },
@@ -185,6 +232,10 @@ export function parseTraineeChange(input) {
       fields: { how: (c, v) => (c.leave.how = v), reason: (c, v) => (c.leave.reason = v) },
     },
     rejoin: { build: () => ({ rejoin: {} }), fields: {} },
+    status: {
+      build: (to) => ({ status: { to, evidence: [] } }),
+      fields: { reason: (c, v) => (c.status.reason = v), evidence: (c, v) => c.status.evidence.push(...list(v)) },
+    },
   });
 }
 

@@ -17,6 +17,7 @@ Ask one short Hebrew question and record **nothing** (not even the parts you und
 - **The Trainee left** (their card has `active: false`): say when they left and ask "לרשום בכל זאת?". After a yes, record with `insist`.
 - **The text might be a question rather than an update** ("נועה עברה את פוב?", "דני דיבר איתי?"). Ask whether to record it.
 - **A Test reference stays ambiguous** after the Schedule (below).
+- **The Commander gives an evaluation-process stage** other than the Trainee's current one ("נועה עלתה לרף מקס"): confirm the stage change first, by [state.md](state.md).
 
 After the Commander answers, record the original message as the Entry (word-for-word, as first written) and add their answer only if it is itself an update.
 
@@ -32,9 +33,10 @@ After the Commander answers, record the original message as the Entry (word-for-
 5. **Sensitive details.** Cut them out (below).
 6. **Follow-ups.** Open and close them (below).
 7. **Assess.** Write Assessments on the Skills the Evidence speaks to, by [assess.md](assess.md): the Commander's own Assessments ("הדיבאג של נועה זה 4"), self-assessment forms and corrections included.
-8. **Record.** One `recordEntry` call with the full text, all its Evidence and its Assessments. On a refusal, fix what it names and call again; ask the Commander only when the fix needs their word.
-9. **Reply** (format below). Don't repeat the Commander's message back.
-10. **A recurring theme with no Skill.** If this Evidence is about a way of working that no Skill in `readCycle` → `skills` names (time management, asking for help, presenting…), and the same theme shows up in 3 or more Evidence (this one included) in that Trainee's records (`readTrainee`, 6 weeks back) or across Trainees you read in this conversation, add the proposal line from [roster.md](roster.md) to the reply. A Skill only covers a theme when it names that ability itself: one you would stretch to fit ("ניהול זמן" under "סדר וארגון") does not, though you may still assess it. Never add the Skill before a yes.
+8. **Trainee state.** By [state.md](state.md): the improve/keep items the message gives (and any of yours), items it retires, a Status change if one is due, a stage change the Commander confirmed, and a fresh Snapshot for each Trainee it is about.
+9. **Record.** One `recordEntry` call with the full text, all its Evidence, its Assessments, items and changes. On a refusal, fix what it names and call again; ask the Commander only when the fix needs their word.
+10. **Reply** (format below). Don't repeat the Commander's message back.
+11. **A recurring theme with no Skill.** If this Evidence is about a way of working that no Skill in `readCycle` → `skills` names (time management, asking for help, presenting…), and the same theme shows up in 3 or more Evidence (this one included) in that Trainee's records (`readTrainee`, 6 weeks back) or across Trainees you read in this conversation, add the proposal line from [roster.md](roster.md) to the reply. A Skill only covers a theme when it names that ability itself: one you would stretch to fit ("ניהול זמן" under "סדר וארגון") does not, though you may still assess it. Never add the Skill before a yes.
 
 ## Kinds
 
@@ -45,7 +47,7 @@ After the Commander answers, record the original message as the Entry (word-for-
 | `code-review` | A code review (סקד) or going over a Test's review (סורסים) | `test` when it names one (same rules), `subject` |
 | `project-observation` | How the Trainee worked in a Project (Interpreter, Padens, MZ) | `project`: the preset Project id (the Trainee's Project team is linked by storage) |
 | `self-assessment` | What the Trainee wrote in their self-assessment form (רמ"ת) | — (a per-Test self verdict goes on that Test's `test` Evidence as `self`) |
-| `improve-keep` | Feedback points to improve or keep (שיפור / שימור) | — |
+| `improve-keep` | Feedback points to improve or keep (שיפור / שימור) | — (each point also becomes an improve/keep item: [state.md](state.md)) |
 | `goal` | An aspiration ("מעוניינת בפיקוד") | — |
 | `background` | Prior experience, where they came from | — |
 | `evaluation-event` | The evaluation process (רף מקס, רף רמד, רף מפקד היחידה, הדחה): entering, moving a stage, a talk within it, leaving | — |
@@ -97,7 +99,7 @@ The evaluation process (רף מקס …) is not sensitive by default. Course mat
 
 ## Confirmation reply
 
-One line per Trainee saying what was recorded (kind and date, Test and score when given), each followed by its Assessment lines ([assess.md](assess.md)), then any professional-help line, then any question (unknown Test, a proposal's "לעדכן?", a new-Skill proposal), then the Retraction line, last:
+One line per Trainee saying what was recorded (kind and date, Test and score when given), each followed by its Assessment lines ([assess.md](assess.md)) and its Status, stage and improve/keep lines ([state.md](state.md)), then any professional-help line, then any question (unknown Test, a proposal's "לעדכן?" or "לשנות?", a new-Skill proposal), then the Retraction line, last:
 
 ```
 נועה — שיחה (30/10). [פרט אישי — בתיק] סומן כרגיש (משפחה) — 'זה לא רגיש' לביטול הסימון. נקודה פתוחה: "סיכמנו שתשב עם דני על זה".
@@ -111,5 +113,5 @@ One line per Trainee saying what was recorded (kind and date, Test and score whe
 
 - Dates as `DD/MM`. Mention a closed Follow-up as "נסגרה: …".
 - For each sensitive part: "[פרט אישי — בתיק] סומן כרגיש (<category in Hebrew: בריאות / משפחה / מצוקה / כספים / זוגיות / משמעת>)", then once per reply "'זה לא רגיש' לביטול הסימון". Never repeat a word of the sensitive part, nor of a Follow-up it opened (write that one as "נקודה פתוחה: [פרט אישי — בתיק]").
-- No Advice on the confirmation reply; a proposal "(הצעה) מציע לעדכן …" is the only suggestion it carries.
+- No Advice on the confirmation reply; the proposals "(הצעה) מציע לעדכן …" and "(הצעה) מציע לשנות סטטוס …" and your own improve/keep items are the only suggestions it carries.
 - The reply always ends with the line `לביטול: 'בטל'` when something was recorded. A reply that only asks a question records nothing and has no Retraction line.

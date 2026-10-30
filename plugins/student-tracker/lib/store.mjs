@@ -70,7 +70,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     const sensitive = [...kept('sensitive/', sensitiveOf(docs, tid)), ...fromExtra('sensitive/')];
     const prev = docs.get(`trainees/${tid}`)?.data;
     return deriveCard({
-      changes: sub('changes'), evidence: sub('evidence'), followups: sub('followups'), assessments: sub('assessments'), sensitive,
+      changes: sub('changes'), evidence: sub('evidence'), followups: sub('followups'), items: sub('items'), assessments: sub('assessments'), sensitive,
     }, prev);
   }
 
@@ -321,7 +321,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     // Entry written as `writing` with its whole plan → one chunk per Trainee → `done`.
     // Child ids are deterministic, so finishing it again never duplicates a record.
     // `insist`: the Commander asked to record about a Trainee who left.
-    recordEntry({ text, evidence = [], assessments = [], insist = false }) {
+    recordEntry({ text, evidence = [], assessments = [], items = [], changes = [], insist = false }) {
       const docs = open();
       if (!text) throw new StoreError('Entry text is required');
       if (!evidence.length) throw new StoreError('an Entry needs at least one Evidence');
@@ -435,13 +435,17 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         openFollowups(ev.followups ?? [], children[i]);
         for (const part of partsOf[i]) openFollowups(part.followups, part);
       }
-      // Assessments come last; `#<n>` cites this Entry's record `<entryId>-<n>`.
+      // Assessments come next; `#<n>` cites this Entry's record `<entryId>-<n>`.
       const ours = [...children, ...parts];
-      const judged = checkAssessments(docs, assessments, (ref, tid) => {
+      const cite = (ref, tid) => {
         const local = /^#\d+$/.test(ref) && ours.find((c) => c.id === `${id}-${ref.slice(1)}`);
-        if (local) return local.trainee === tid ? { id: local.id, date: local.data.date, kind: local.data.kind } : null;
+        if (local) {
+          if (local.trainee !== tid) return null;
+          return { id: local.id, date: local.data.date, kind: local.data.kind, local: true, sensitive: local.path.startsWith('sensitive/') };
+        }
         return /^#/.test(ref) ? null : evidenceOf(docs, tid, ref);
-      }).map((a) => {
+      };
+      const judged = checkAssessments(docs, assessments, cite).map((a) => {
         const childId = nextId();
         return {
           id: childId,
@@ -450,7 +454,46 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
           data: { entry: id, ...a, at, retracted: false },
         };
       });
-      const all = [...children, ...parts, ...opened, ...judged];
+      // Then the improve/keep items, kept where their origin Evidence is (a sensitive part's are
+      // sensitive too), then the Trainee-state changes, each in the order given.
+      const touched = new Set(children.map((c) => c.trainee));
+      const listed = items.map(({ trainee, kind, text: words, by, from, ...rest }) => {
+        if (Object.keys(rest).length) throw new StoreError('an improve/keep item takes only trainee, kind, text, by and from');
+        checkTouched(touched, trainee, 'an improve/keep item');
+        if (!ITEM_KINDS.includes(kind)) throw new StoreError(`an improve/keep item is improve or keep, got "${kind}"`);
+        if (!ITEM_AUTHORS.includes(by)) throw new StoreError(`an improve/keep item is by the agent or commander, got "${by}"`);
+        if (typeof words !== 'string' || !words.trim()) throw new StoreError('an improve/keep item needs its text');
+        const origin = from && cite(from, trainee);
+        if (!origin) throw new StoreError(`an improve/keep item names its origin Evidence (from): #<n> or a stored id of ${trainee}`);
+        if (by === 'commander') {
+          if (!text.includes(words)) throw new StoreError(`the Commander's improve/keep item is copied word-for-word from the Entry: "${words}"`);
+          if (!origin.sensitive && !spansOf(text, words).some((span) => !sensitiveSpans.some((x) => overlaps(span, x)))) {
+            throw new StoreError(`"${words}" holds a sensitive part; take the item from the sensitive part (from)`);
+          }
+        }
+        const childId = nextId();
+        const data = { entry: id, trainee, kind, text: words, by, from: origin.id, date: origin.date, at, retracted: false };
+        return origin.sensitive
+          ? { id: childId, path: `sensitive/${childId}`, trainee, data: { record: 'item', ...data } }
+          : { id: childId, path: `trainees/${trainee}/items/${childId}`, trainee, data };
+      });
+      const stated = checkChanges(docs, changes, cite, touched).map((c) => {
+        const childId = nextId();
+        return {
+          id: childId,
+          path: `trainees/${c.trainee}/changes/${childId}`,
+          trainee: c.trainee,
+          data: { entry: id, ...c, at, retracted: false },
+        };
+      });
+      // What you write yourself for the card (reasons, Snapshots, your own items) is display-safe.
+      const repeated = repeatsSensitive(text, evidence.flatMap((ev) => (ev.sensitive ?? []).map((p) => p.excerpt)), sensitiveSpans);
+      for (const r of [...judged, ...listed, ...stated]) {
+        for (const t of [r.data.reason, r.data.by === 'agent' ? r.data.text : null]) {
+          if (t && repeated(t)) throw new StoreError(`"${t}" repeats a sensitive part; write it display-safe ("מצב אישי" at most) and cite the sensitive part by id`);
+        }
+      }
+      const all = [...children, ...parts, ...opened, ...judged, ...listed, ...stated];
       const trainees = [...new Set(all.map((c) => c.trainee))];
       const pending = trainees.map((trainee) => ({
         trainee,
@@ -475,6 +518,8 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         sensitive: parts.map((c) => c.id),
         followups: opened.map((c) => c.id),
         assessments: judged.map((c) => c.id),
+        items: listed.map((c) => c.id),
+        changes: stated.map((c) => c.id),
       };
     },
 
@@ -540,6 +585,17 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         return writeChange(docs, tid, { type: 'renamed', name, by: 'commander', at, retracted: false });
       }
       const { left } = docs.get(`trainees/${tid}`).data;
+      if (kind === 'status') {
+        checkActive(docs, tid, false);
+        const { to, reason, evidence = [], ...rest } = value;
+        if (Object.keys(rest).length) throw new StoreError('a Status change takes only to, reason and evidence');
+        const ids = evidence.map((ref) => {
+          if (!evidenceOf(docs, tid, ref)) throw new StoreError(`"${ref}" is no Evidence of ${tid}; cite stored Evidence ids`);
+          return ref;
+        });
+        const from = statusMove(docs.get(`trainees/${tid}`).data, to, reason);
+        return writeChange(docs, tid, { type: 'status', from, to, by: 'commander', reason: reason.trim(), evidence: ids, at, retracted: false });
+      }
       if (kind === 'rejoin') {
         if (!left) throw new StoreError(`${tid} has not left`);
         return writeChange(docs, tid, { type: 'rejoined', by: 'commander', at, retracted: false });
@@ -601,6 +657,9 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         if (sensitiveDoc?.data.record === 'followup' || tids.some((t) => docs.get(`trainees/${t}/followups/${evidenceId}`))) {
           throw new StoreError(`${evidenceId} is a Follow-up; flip the Evidence it was opened from`);
         }
+        if (sensitiveDoc?.data.record === 'item' || tids.some((t) => docs.get(`trainees/${t}/items/${evidenceId}`))) {
+          throw new StoreError(`${evidenceId} is an improve/keep item; flip the Evidence it was taken from`);
+        }
         const tid = sensitiveDoc?.data.trainee ?? tids.find((t) => docs.get(`trainees/${t}/evidence/${evidenceId}`));
         if (!tid) throw new StoreError(`no Evidence ${evidenceId}`);
         // An Entry still being written would recreate the record at its old place: finish it first.
@@ -615,17 +674,19 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         if (!toPublic && !FLIP_CATEGORIES.includes(category)) {
           throw new StoreError(`marking sensitive needs a category (one of ${FLIP_CATEGORIES.join(', ')})`);
         }
-        const followups = toPublic
-          ? docs.list('sensitive').filter((d) => d.data.record === 'followup' && d.data.from === evidenceId)
-          : docs.list(`trainees/${tid}/followups`).filter((d) => d.data.from === evidenceId);
+        // The Follow-ups opened from it and the improve/keep items taken from it move with it.
+        const followers = Object.entries(RECORD_OF).flatMap(([kind, record]) => (toPublic
+          ? docs.list('sensitive').filter((d) => d.data.record === record && d.data.from === evidenceId)
+          : docs.list(`trainees/${tid}/${kind}`).filter((d) => d.data.from === evidenceId)
+        ).map((d) => ({ id: d.id, kind, doc: d })));
         const from = (rid, kind) => (toPublic ? `sensitive/${rid}` : `trainees/${tid}/${kind}/${rid}`);
         const to = (rid, kind) => (toPublic ? `trainees/${tid}/${kind}/${rid}` : `sensitive/${rid}`);
         const moves = [
           { id: evidenceId, kind: 'evidence', doc: evidence },
-          ...followups.map((d) => ({ id: d.id, kind: 'followups', doc: d })),
+          ...followers,
         ].map(({ id: rid, kind, doc }) => {
           const { record, category: c, ...data } = doc.data;
-          const moved = toPublic ? data : { record: kind === 'evidence' ? 'evidence' : 'followup', ...data, ...(kind === 'evidence' ? { category } : {}) };
+          const moved = toPublic ? data : { record: RECORD_OF[kind] ?? 'evidence', ...data, ...(kind === 'evidence' ? { category } : {}) };
           return { from: from(rid, kind), to: to(rid, kind), version: doc.version, data: moved };
         });
         const card = docs.get(`trainees/${tid}`);
@@ -772,7 +833,7 @@ function evidenceOf(docs, tid, id) {
   const pub = docs.get(`trainees/${tid}/evidence/${id}`)?.data;
   const s = docs.get(`sensitive/${id}`)?.data;
   const found = pub ?? (s?.record === 'evidence' && s.trainee === tid ? s : null);
-  return found?.retracted === false ? { id, date: found.date, kind: found.kind } : null;
+  return found?.retracted === false ? { id, date: found.date, kind: found.kind, sensitive: !pub } : null;
 }
 
 // How a Retraction and a hard delete withdraw an Entry's records: which still need it, the write
@@ -790,8 +851,11 @@ const DELETE = {
   close: () => ({ op: 'delete' }),
 };
 
+// The records that follow their Evidence into and out of `sensitive/`: subcollection → `record`.
+const RECORD_OF = { followups: 'followup', items: 'item' };
+
 // Subcollections that hold records cut from an Entry.
-const CHILD_KINDS = ['evidence', 'followups', 'assessments', 'items'];
+const CHILD_KINDS = ['evidence', 'followups', 'assessments', 'items', 'changes'];
 
 // Where each of `ids` that belongs to this Trainee is now, as {path, version, data}: in their
 // subcollections, or in `sensitive/` wherever a flip has moved it.
@@ -960,7 +1024,7 @@ function setArchived(docs, id, at) {
 }
 
 const AUTHORS = ['agent', 'commander', 'trainee'];
-const TRAINEE_CHANGES = ['add', 'rename', 'leave', 'rejoin'];
+const TRAINEE_CHANGES = ['add', 'rename', 'leave', 'rejoin', 'status'];
 const LEAVE_HOW = ['dismissal', 'transfer', 'other'];
 
 // A Trainee who left takes no new records unless the Commander insists.
@@ -1021,6 +1085,109 @@ function checkAssessments(docs, assessments, cite) {
   });
 }
 
+const STATUSES = ['good', 'watch', 'concern'];
+const EVAL_STAGES = ['רף מקס', 'רף רמד', 'רף מפקד היחידה', 'הדחה'];
+const STATE_TYPES = ['status', 'stage', 'snapshot', 'retired'];
+const ITEM_KINDS = ['improve', 'keep'];
+const ITEM_AUTHORS = ['agent', 'commander'];
+
+// Trainee state goes with the Evidence about that Trainee in the same Entry.
+function checkTouched(touched, trainee, what) {
+  if (!touched.has(trainee)) throw new StoreError(`${trainee} has no Evidence in this Entry; ${what} goes with the Evidence about them`);
+}
+
+// Checks the Trainee-state changes an Entry carries against the cards; `cite` resolves a ref as
+// for Assessments. Each is about a Trainee the Entry has Evidence about (`touched`), one per
+// type per Trainee. Returns each as the record to store (without entry, at, retracted).
+function checkChanges(docs, changes, cite, touched) {
+  const seen = new Set();
+  const cited = (tid, refs = []) => {
+    if (!refs.length) throw new StoreError('a Trainee-state change rests on at least one Evidence');
+    return refs.map((ref) => {
+      const found = cite(ref, tid);
+      if (!found) throw new StoreError(`"${ref}" is no Evidence of ${tid} (cite this Entry's Evidence as #<n>, or a stored Evidence id)`);
+      return found;
+    });
+  };
+  return changes.map(({ trainee, type, ...c }) => {
+    checkTouched(touched, trainee, 'a Trainee-state change');
+    const key = type === 'retired' ? `${trainee} retired ${c.item}` : `${trainee} ${type}`;
+    if (seen.has(key)) throw new StoreError(`one ${type} change per Trainee per Entry`);
+    seen.add(key);
+    const card = docs.get(`trainees/${trainee}`).data;
+    if (type === 'status') {
+      const { to, reason, evidence, ...rest } = c;
+      if (Object.keys(rest).length) throw new StoreError('a status change takes only trainee, to, reason and evidence');
+      if (card.status?.by === 'commander') {
+        throw new StoreError(`${card.name}'s Status was set by the Commander; propose the change instead ("(הצעה) …"), and only on a yes have the Commander change it (updateTrainee status)`);
+      }
+      const from = statusMove(card, to, reason);
+      return { trainee, type, from, to, by: 'agent', reason: reason.trim(), evidence: cited(trainee, evidence).map((e) => e.id) };
+    }
+    if (type === 'retired') {
+      const { item, by, reason, evidence, ...rest } = c;
+      if (Object.keys(rest).length) throw new StoreError('retiring an item takes only trainee, item, by, reason and evidence');
+      if (!ITEM_AUTHORS.includes(by)) throw new StoreError(`an item is retired by the agent or commander, got "${by}"`);
+      const active = card.items.find((i) => i.id === item);
+      if (!active) throw new StoreError(`${item} is not an active improve/keep item of ${card.name}`);
+      if (by === 'agent' && active.by === 'commander') throw new StoreError(`${item} is the Commander's: it is retired only on the Commander's word`);
+      if (typeof reason !== 'string' || !reason.trim()) throw new StoreError('retiring an item needs a reason');
+      return { trainee, type, item, by, reason: reason.trim(), evidence: cited(trainee, evidence).map((e) => e.id) };
+    }
+    if (type === 'snapshot') {
+      const { text, ...rest } = c;
+      if (Object.keys(rest).length) throw new StoreError('a Snapshot takes only trainee and text');
+      if (typeof text !== 'string' || !text.trim()) throw new StoreError('a Snapshot needs its text');
+      return { trainee, type, text: text.trim(), by: 'agent' };
+    }
+    // Only on the Commander's word, which is this Entry's evaluation-event Evidence.
+    if (type === 'stage') {
+      const { to, reason = null, evidence, ...rest } = c;
+      if (Object.keys(rest).length) throw new StoreError('a stage change takes only trainee, to, reason and evidence');
+      if (to !== null && !EVAL_STAGES.includes(to)) throw new StoreError(`an evaluation-process stage is one of ${EVAL_STAGES.join(', ')}, or null to leave the process; got "${to}"`);
+      const from = card.evalStage ?? null;
+      if (to === from) throw new StoreError(to ? `${card.name} is already at ${to}` : `${card.name} is not in the evaluation process`);
+      const refs = cited(trainee, evidence);
+      if (!refs.some((e) => e.local && e.kind === 'evaluation-event')) {
+        throw new StoreError('a stage change cites the Commander\'s words: an evaluation-event Evidence of this Entry (#<n>)');
+      }
+      return { trainee, type, from, to, by: 'commander', reason: reason?.trim() || null, evidence: refs.map((e) => e.id) };
+    }
+    throw new StoreError(`a Trainee-state change is one of ${STATE_TYPES.join(', ')}, got "${type}"`);
+  });
+}
+
+// Checks a Status move on this card; returns the Status it moves from.
+function statusMove(card, to, reason) {
+  if (!STATUSES.includes(to)) throw new StoreError(`a Status is one of ${STATUSES.join(', ')}, got "${to}"`);
+  if (typeof reason !== 'string' || !reason.trim()) throw new StoreError('a Status change needs a reason');
+  const from = card.status?.value ?? null;
+  if (to === from) throw new StoreError(`${card.name} is already ${to}`);
+  return from;
+}
+
+// Whether a text repeats one of the Entry's sensitive excerpts: any run of three of its words (or
+// the whole excerpt, if shorter), punctuation aside, that the Entry has nowhere outside a
+// sensitive part.
+function repeatsSensitive(text, excerpts, spans) {
+  const words = (t) => t.replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+  const padded = (t) => ` ${words(t).join(' ')} `;
+  // The stretches of the Entry outside every sensitive part, each on its own.
+  const outside = [];
+  let from = 0;
+  for (const [start, end] of [...spans].sort((x, y) => x[0] - y[0])) {
+    outside.push(padded(text.slice(from, Math.max(from, start))));
+    from = Math.max(from, end);
+  }
+  outside.push(padded(text.slice(from)));
+  const runs = excerpts.flatMap((e) => {
+    const w = words(e);
+    if (w.length <= 3) return [` ${w.join(' ')} `];
+    return w.slice(0, -2).map((_, i) => ` ${w.slice(i, i + 3).join(' ')} `);
+  }).filter((r) => r.trim() && !outside.some((o) => o.includes(r)));
+  return (t) => runs.some((r) => padded(t).includes(r));
+}
+
 // Every [start, end) at which `part` stands in `text`.
 function spansOf(text, part) {
   const spans = [];
@@ -1037,14 +1204,19 @@ function stillOpen(followups, evidence) {
   return followups.filter((f) => f.retracted === false && !closed.has(f.id));
 }
 
-// The card is derived from the Trainee's records alone. Agent-written caches (Snapshot,
-// next-Talk questions) are not derivable, so they carry over from the previous card. It is
-// display-safe: a sensitive Follow-up shows as MARK.
-function deriveCard({ changes, evidence, followups = [], assessments = [], sensitive = [] }, prev = {}) {
+// The card is derived from the Trainee's records alone. The next-Talk questions, which no record
+// holds, carry over from the previous card. It is display-safe: a sensitive Follow-up or
+// improve/keep item shows as MARK.
+function deriveCard({ changes, evidence, followups = [], items = [], assessments = [], sensitive = [] }, prev = {}) {
   const live = (xs) => xs.filter((x) => x.retracted === false);
   const named = live(changes).filter((c) => c.name).sort(byAt).at(-1);
   const leaving = live(changes).filter((c) => c.type === 'left' || c.type === 'rejoined').sort(byAt).at(-1);
   const left = leaving?.type === 'left' ? { date: leaving.date, how: leaving.how, reason: leaving.reason } : null;
+  const latest = (type) => live(changes).filter((c) => c.type === type).sort(byWritten).at(-1);
+  const status = latest('status');
+  const retired = new Set(live(changes).filter((c) => c.type === 'retired').map((c) => c.item));
+  const maskedItems = sensitive.filter((s) => s.record === 'item').map((i) => ({ ...i, text: MARK }));
+  const snapshot = latest('snapshot');
   const masked = sensitive.filter((s) => s.record === 'followup').map((f) => ({ ...f, text: MARK }));
   const allEvidence = [...evidence, ...sensitive.filter((s) => s.record === 'evidence')];
   // The date of a Talk is not sensitive, even when the whole Talk is.
@@ -1053,11 +1225,13 @@ function deriveCard({ changes, evidence, followups = [], assessments = [], sensi
     name: named?.name ?? prev?.name ?? null,
     active: !left,
     left,
-    status: null,
-    evalStage: null,
+    status: status ? { value: status.to, by: status.by, reason: status.reason, at: status.at } : null,
+    evalStage: latest('stage')?.to ?? null,
     lastTalk: talks.at(-1) ?? null,
-    snapshot: prev?.snapshot ?? null,
-    items: [],
+    snapshot: snapshot ? { text: snapshot.text, at: snapshot.at } : null,
+    items: live([...items, ...maskedItems]).filter((i) => !retired.has(i.id))
+      .sort(byDayThenId)
+      .map(({ id, kind, text, by, date }) => ({ id, kind, text, by, date })),
     followups: stillOpen([...followups, ...masked], allEvidence)
       .sort((a, b) => (a.date + a.id < b.date + b.id ? -1 : 1))
       .map(({ id, text, date }) => ({ id, text, date })),
@@ -1085,8 +1259,12 @@ function skillsOf(assessments, evidence) {
 }
 
 const byAt = (a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
+// By when it was written, then id (`…-10` after `…-9`).
+const byWritten = (a, b) => byAt(a, b) || a.id.localeCompare(b.id, 'en', { numeric: true });
 // By the day it happened, then when it was written, then id (`…-10` after `…-9`).
-const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) || byAt(a, b)
+const byDay = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+const byDayThenId = (a, b) => byDay(a, b) || a.id.localeCompare(b.id, 'en', { numeric: true });
+const byDate = (a, b) => byDay(a, b) || byAt(a, b)
   || a.id.localeCompare(b.id, 'en', { numeric: true });
 
 const flat = (docs) => docs.map((d) => ({ id: d.id, ...d.data }));

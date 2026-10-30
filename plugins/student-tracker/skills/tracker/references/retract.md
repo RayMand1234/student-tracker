@@ -29,7 +29,7 @@ Note the touched Trainees' cards first (`readTeam`, from the start of the run), 
 
 - First line: the Entry's date and time (`DD/MM HH:MM`, from its `at`) and its opening words, up to about eight, then "…". Take them from a public excerpt, never from a sensitive part: the raw Entry may hold sensitive sentences.
 - One line per Trainee: the kinds and dates withdrawn (as the confirmation reply in [log.md](log.md) names them), the Follow-ups withdrawn word-for-word, and "נפתחה שוב: …" for a Follow-up the withdrawn Evidence had closed that is open again. A withdrawn sensitive part is "[פרט אישי — בתיק]"; never repeat a word of it, nor of a sensitive Follow-up.
-- Under it, one line per Skill whose Rating changed, by the Rating rule in [assess.md](assess.md), old card to new: `<Skill name> 3→2`, `—` for unrated.
+- Under it, one line per Skill whose Rating changed, by the Rating rule in [assess.md](assess.md), old card to new: `<Skill name> 3→2`, `—` for unrated; then a line for a Status or evaluation-process stage that went back (`סטטוס: דורש טיפול → במעקב`, `תהליך הערכה: רף מקס → —`) and for improve/keep items that left or came back to the card.
 - Last line as shown. No "לביטול" line: nothing new was recorded.
 
 ## Hard delete

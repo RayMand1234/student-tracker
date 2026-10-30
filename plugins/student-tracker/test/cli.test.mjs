@@ -310,3 +310,71 @@ test('update-cycle edits the preset, Skills and Project teams, one change per ca
   assert.equal(two.code, 1);
   assert.match(two.err, /one change per call/);
 });
+
+test('record-entry takes improve/keep items, Status, stage, Snapshot and retirements as blocks; update-trainee takes a Commander Status', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  const text = 'נועה עלתה לרף מקס. שיפור: להגיע בזמן.';
+  const input = `--- entry
+${text}
+--- evidence ${noa.id} evaluation-event 2026-10-30
+נועה עלתה לרף מקס.
+--- evidence ${noa.id} improve-keep 2026-10-30
+שיפור: להגיע בזמן.
+--- item ${noa.id} improve commander
++from: #2
+להגיע בזמן
+--- item ${noa.id} keep agent
++from: #2
+מקבלת משוב בפתיחות
+--- stage ${noa.id}
++to: רף מקס
++evidence: #1
+--- status ${noa.id} concern
++evidence: #1, #2
+נכנסה לתהליך הערכה
+--- snapshot ${noa.id}
+בתהליך הערכה; מתקשה בזמנים.
+`;
+  const logged = run(['--data', data, 'record-entry'], { cwd, input });
+  assert.equal(logged.code, 0, logged.err);
+  const r = JSON.parse(logged.out);
+  let t = JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out);
+  assert.deepEqual([t.card.evalStage, t.card.status.value, t.card.status.by, t.card.snapshot.text], ['רף מקס', 'concern', 'agent', 'בתהליך הערכה; מתקשה בזמנים.']);
+  assert.deepEqual(t.card.items.map((i) => [i.kind, i.text, i.by]), [['improve', 'להגיע בזמן', 'commander'], ['keep', 'מקבלת משוב בפתיחות', 'agent']]);
+
+  const done = 'נועה מגיעה בזמן, אפשר להוריד.';
+  const retired = run(['--data', data, 'record-entry'], { cwd, input: `--- entry
+${done}
+--- evidence ${noa.id} note 2026-10-30
+${done}
+--- retire ${noa.id} ${r.items[0]} commander
++evidence: #1
+מגיעה בזמן
+--- stage ${noa.id}
++to: none
++evidence: #1
+` });
+  assert.equal(retired.code, 1, 'a note is not the Commander\'s word on the evaluation process');
+  assert.match(retired.err, /evaluation-event/);
+
+  const ok = run(['--data', data, 'record-entry'], { cwd, input: `--- entry
+${done}
+--- evidence ${noa.id} note 2026-10-30
+${done}
+--- retire ${noa.id} ${r.items[0]} commander
++evidence: #1
+מגיעה בזמן
+` });
+  assert.equal(ok.code, 0, ok.err);
+
+  const status = run(['--data', data, 'update-trainee', noa.id], { cwd, input: `status: watch
+reason: אישור הצעה: משתפרת
+evidence: ${r.evidence[1]}
+` });
+  assert.equal(status.code, 0, status.err);
+  t = JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out);
+  const change = t.changes.find((c) => c.type === 'status' && c.by === 'commander');
+  assert.deepEqual([change.from, change.to, change.reason, change.evidence], ['concern', 'watch', 'אישור הצעה: משתפרת', [r.evidence[1]]]);
+  assert.equal(t.card.items.length, 1, 'the retired item left the card');
+});

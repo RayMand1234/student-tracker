@@ -33,7 +33,7 @@ When the message also carries an update about a Trainee ("דני עזב היום
 
 The course's Subjects, Tests, Projects and Schedule are this Cycle's own copy (`readCycle` → `preset`); a change never touches the shipped default or another Cycle. Name Skills, Stages, Subjects and Projects by their Hebrew names in replies, never by id.
 
-Status and the evaluation process aren't changed here yet: say "עוד לא נתמך בגרסה הזו" and change nothing.
+A Trainee's Status and evaluation-process stage are changed by [state.md](state.md), confirmed the same way.
 
 ## A Trainee who left
 
