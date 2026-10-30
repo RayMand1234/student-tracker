@@ -98,3 +98,65 @@ function shiftDate(day, days) {
   const d = new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10) + days));
   return d.toISOString().slice(0, 10);
 }
+
+// What stands in a public text where a sensitive sentence was cut out; also shown for any id
+// the page can't resolve (it never reads the sensitive records).
+export const MARK = '[פרט אישי — בתיק]';
+
+export const STATUS_LABELS = { good: 'במסלול', watch: 'במעקב', concern: 'דורש טיפול' };
+
+// The Talk settings a Cycle starts with, until the Commander changes them.
+export const DEFAULT_TALK = { target: 10, yellow: 10, red: 14 };
+
+// The Trainee window (ticket 08): everything it shows, from the card plus `skills` (meta/skills),
+// `preset` (meta/preset, for Project names), `teams` and the Trainee's public `evidence`
+// (null while it loads). `groups` are the four Stages, then the Interpersonal group.
+export function traineeWindow(card, { skills, preset, teams = [], evidence, today, talk }) {
+  const days = daysSince(card.lastTalk, today);
+  const groups = [...(skills?.groups ?? [])].sort((a, b) => a.order - b.order);
+  const rated = (ids) => ids
+    .map((id) => ({ id, rating: rating(card.skills?.[id], today) }))
+    .filter((k) => k.rating);
+  const shown = groups.map((g) => {
+    const names = Object.fromEntries(g.skills.map((k) => [k.id, k.name]));
+    const these = rated(g.skills.map((k) => k.id)).map((k) => ({ ...k, name: names[k.id] }));
+    const ids = new Set(these.map((k) => k.id));
+    return { id: g.id, name: g.name, rated: these, unrated: g.skills.filter((k) => !k.archived && !ids.has(k.id)).length };
+  });
+  // A rated Skill the framework doesn't name can't be resolved: shown, as the marker.
+  const known = new Set(groups.flatMap((g) => g.skills.map((k) => k.id)));
+  const unknown = rated(Object.keys(card.skills ?? {}).filter((id) => !known.has(id))).map((k) => ({ ...k, name: MARK }));
+  if (unknown.length) shown.push({ id: null, name: MARK, rated: unknown, unrated: 0 });
+  const project = (id) => preset?.projects?.find((p) => p.id === id)?.name ?? MARK;
+  const live = evidence ? evidence.filter((e) => e.retracted === false) : null;
+  const latest = (kind) => (live ? live.filter((e) => e.kind === kind).sort(byDayDesc)[0]?.excerpt ?? null : null);
+  const s = card.status;
+  return {
+    id: card.id,
+    name: card.name,
+    color: talkColor(days, talk),
+    days,
+    evalStage: card.evalStage ?? null,
+    snapshot: card.snapshot ?? null,
+    status: s ? { value: s.value, label: STATUS_LABELS[s.value] ?? s.value, by: s.by, reason: s.reason } : null,
+    groups: shown,
+    details: {
+      lastTalk: card.lastTalk ? { date: card.lastTalk, days } : null,
+      teams: teams.filter((t) => (t.members ?? []).includes(card.id))
+        .map((t) => `${project(t.project)} · ${t.name}`)
+        .sort((a, b) => a.localeCompare(b, 'he')),
+      goal: latest('goal'),
+      background: latest('background'),
+      evidence: live ? { count: live.length, last: [...live].sort(byDayDesc)[0]?.date ?? null } : null,
+    },
+    next: [
+      ...(card.followups ?? []).map((f) => ({ kind: 'followup', text: f.text, date: f.date })),
+      ...(card.nextTalk?.questions ?? []).map((q) => ({ kind: 'question', text: q })),
+    ],
+  };
+}
+
+// Newest day first; on the same day, the higher id (written later) first.
+function byDayDesc(a, b) {
+  return (a.date < b.date ? 1 : a.date > b.date ? -1 : 0) || b.id.localeCompare(a.id, 'en', { numeric: true });
+}
