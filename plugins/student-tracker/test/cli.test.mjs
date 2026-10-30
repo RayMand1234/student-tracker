@@ -144,3 +144,49 @@ test('a blank or non-numeric score line is refused, never stored as a score', ()
   }
   assert.deepEqual(JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out).evidence, []);
 });
+
+test('record-entry takes a sensitive part as its own block after its Evidence, and flip-sensitive moves it', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  const text = 'דיברתי עם נועה על הפרויקט. ההורים שלה מתגרשים. לבדוק איך היא מסתדרת. לשיחה הבאה: הדיבאג';
+  const input = `--- entry
+${text}
+--- evidence ${noa.id} talk 2026-10-30
++topics: פרויקט
+דיברתי עם נועה על הפרויקט. [פרט אישי — בתיק] לשיחה הבאה: הדיבאג
+--- followup
+לשיחה הבאה: הדיבאג
+--- sensitive family
++kind: background
+ההורים שלה מתגרשים. לבדוק איך היא מסתדרת.
+--- followup
+לבדוק איך היא מסתדרת.
+`;
+  const logged = run(['--data', data, 'record-entry'], { cwd, input });
+  assert.equal(logged.code, 0, logged.err);
+  const { entry, evidence, sensitive, followups } = JSON.parse(logged.out);
+  assert.deepEqual([evidence, sensitive, followups], [[`${entry}-1`], [`${entry}-2`], [`${entry}-3`, `${entry}-4`]]);
+
+  const t = JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out);
+  assert.deepEqual(t.sensitive.map((s) => [s.id, s.record, s.kind, s.category ?? null]), [
+    [`${entry}-2`, 'evidence', 'background', 'family'],
+    [`${entry}-4`, 'followup', undefined, null],
+  ]);
+  assert.deepEqual(t.followups.map((f) => f.text), ['לשיחה הבאה: הדיבאג']);
+
+  const flipped = run(['--data', data, 'flip-sensitive', `${entry}-2`], { cwd });
+  assert.equal(flipped.code, 0, flipped.err);
+  assert.equal(JSON.parse(flipped.out).now, 'public');
+  const back = run(['--data', data, 'flip-sensitive', `${entry}-2`, '--category', 'family'], { cwd });
+  assert.equal(JSON.parse(back.out).now, 'sensitive');
+  assert.equal(run(['--data', data, 'flip-sensitive', `${entry}-1`], { cwd }).code, 1, 'marking needs --category');
+});
+
+test('a sensitive block takes only kind and closes lines', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  const input = `--- entry\nנועה חולה\n--- evidence ${noa.id} note 2026-10-30\n[פרט אישי — בתיק]\n--- sensitive health\n+score: 3\nנועה חולה\n`;
+  const r = run(['--data', data, 'record-entry'], { cwd, input });
+  assert.equal(r.code, 1);
+  assert.match(r.err, /sensitive part takes only/);
+});

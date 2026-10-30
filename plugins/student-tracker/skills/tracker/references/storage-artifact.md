@@ -28,8 +28,9 @@ The card is derived from the Trainee's records and always has this shape:
 ```
 
 - `name`: from the latest non-retracted `changes` record that has a `name` (setup writes `changes/added`).
-- `lastTalk`: the latest `date` of the Trainee's non-retracted Evidence of kind `talk`, or `null`.
-- `followups`: the Trainee's non-retracted Follow-ups that no non-retracted Evidence of theirs lists in `closes`, as `{id, text, date}`, oldest `date` first (then by id).
+- `lastTalk`: the latest `date` of the Trainee's non-retracted Evidence of kind `talk`, or `null`. A Talk flipped into `sensitive/` still counts: its date is not sensitive.
+- Never copy a word of a `sensitive/` record onto the card.
+- `followups`: the Trainee's non-retracted Follow-ups, public and sensitive, that no non-retracted Evidence of theirs (sensitive parts included) lists in `closes`, as `{id, text, date}`, oldest `date` first (then by id). A sensitive Follow-up's `text` is "[פרט אישי — בתיק]", never its words.
 - `snapshot`, `nextTalk`: carried over from the previous card (`null` if none); no record holds them yet.
 
 ## Operations
@@ -63,11 +64,11 @@ The card is derived from the Trainee's records and always has this shape:
 
 ### `recordEntry({text, evidence})`
 
-Check first, writing nothing if any fails: every refusal listed under `recordEntry` in storage.md (the preset is `meta/preset` from `readCycle`; for `clarifies` `get` that Evidence; for `closes` the card's `followups`), and at most 49 records per Trainee.
+Check first, writing nothing if any fails: every refusal listed under `recordEntry` in storage.md (the preset is `meta/preset` from `readCycle`; for `clarifies` `get` that Evidence, in the Trainee's `evidence/` or in `sensitive/`; for `closes` the card's `followups`; for a marked excerpt, each piece around "[פרט אישי — בתיק]" is found in `text` after the one before it; no public excerpt piece or Follow-up text reaches into the stretch of `text` a sensitive part's excerpt covers: each must also stand somewhere in `text` outside every sensitive stretch), and at most 49 records per Trainee.
 
-1. **Plan.** Pick the Entry id. Evidence number `n` (from 1, in message order) becomes `trainees/<tid>/evidence/<eid>-<n>` with data `{entry: eid, trainee, kind, date, excerpt, …every field of its kind (defaults from storage.md), closes, at, retracted: false}`; a listed Test's `subject` is the preset's. The Follow-ups continue the numbering: `trainees/<tid>/followups/<eid>-<n>` with `{entry: eid, trainee, text, from: <its Evidence id>, date: <its Evidence's date>, at, retracted: false}`. Group the records by Trainee.
+1. **Plan.** Pick the Entry id. Evidence number `n` (from 1, in message order) becomes `trainees/<tid>/evidence/<eid>-<n>` with data `{entry: eid, trainee, kind, date, excerpt, …every field of its kind (defaults from storage.md), closes, at, retracted: false}`; a listed Test's `subject` is the preset's. Sensitive parts continue the numbering: `sensitive/<eid>-<n>` with `{record: "evidence", entry: eid, trainee, kind (default "note"), category, date: <its Evidence's date>, excerpt, in: <its Evidence's id>, closes, at, retracted: false}`. The Follow-ups come last, each Evidence's own then its sensitive parts': `trainees/<tid>/followups/<eid>-<n>` with `{entry: eid, trainee, text, from: <its Evidence or sensitive part id>, date: <its Evidence's date>, at, retracted: false}`, or `sensitive/<eid>-<n>` with the same plus `record: "followup"` when opened by a sensitive part. Group the records by Trainee (a sensitive record goes in its `trainee`'s chunk).
 2. **Entry.** Create `entries/<eid>`: `{text, at, status: "writing", trainees: [tid…], children: [<eid>-<n>…], retracted: false, pending: [{trainee, records: [{collection, doc_id, data}…]}…]}`. If the id is taken, pick another `rand2`. Keep the returned version.
-3. **One chunk per Trainee.** `get` the card (version `v`). New `lastTalk` = the latest of the card's `lastTalk` and this chunk's Talk dates. New `followups` = the card's, minus the ids this chunk's Evidence `closes`, plus this chunk's Follow-ups as `{id, text, date}`, sorted by `date`, then id. One `batch`: a create (`set`, no `if_version`) per record, plus `update` `trainees/<tid>` `{lastTalk, followups}` with `if_version: v`. The pin makes the chunk all-or-nothing.
+3. **One chunk per Trainee.** `get` the card (version `v`). New `lastTalk` = the latest of the card's `lastTalk` and this chunk's Talk dates. New `followups` = the card's, minus the ids this chunk's Evidence and sensitive parts `closes`, plus this chunk's Follow-ups as `{id, text, date}` (text "[פרט אישי — בתיק]" for a sensitive one), sorted by `date`, then id. One `batch`: a create (`set`, no `if_version`) per record, plus `update` `trainees/<tid>` `{lastTalk, followups}` with `if_version: v`. The pin makes the chunk all-or-nothing.
    - Refused because the card moved, or because a record already exists (another session got there first): create each record that is still missing on its own ("already exists" is fine), then `rebuildCard(tid)`.
 4. **Done.** `update` `entries/<eid>` `{status: "done", pending: {"__delete__": true}}` with the Entry's version. On a version conflict, `get` it again: if it is already `done`, stop; otherwise redo with the new version.
 
@@ -77,7 +78,7 @@ Check first, writing nothing if any fails: every refusal listed under `recordEnt
 
 ### `rebuildCard(tid)`
 
-`get` `trainees/<tid>` (note its version, or that it's missing); `list` `trainees/<tid>/changes`; `query` `trainees/<tid>/evidence` where `retracted == false`; `query` `trainees/<tid>/followups` where `retracted == false`. Build the card by the rules above. Same as the stored card → done. Otherwise `set` it with `if_version` (create it if missing); on a conflict start over, at most 10 times.
+`get` `trainees/<tid>` (note its version, or that it's missing); `list` `trainees/<tid>/changes`; `query` `trainees/<tid>/evidence` where `retracted == false`; `query` `trainees/<tid>/followups` where `retracted == false`; `query` `sensitive` where `trainee == tid` and `retracted == false`. Build the card by the rules above. Same as the stored card → done. Otherwise `set` it with `if_version` (create it if missing); on a conflict start over, at most 10 times.
 
 ### `createCycle` (setup only)
 
@@ -99,10 +100,21 @@ Runs after setup has published the page and written the pointer.
 
 Only after the Commander confirmed. `get` `meta/preset` (version `v`). Check as storage.md says (Subject id exists; no Test already has the name or an alias as its name or alias, ignoring case and spacing). Id = `<subject>.<name in lowercase, runs of anything but a–z/0–9 as "-">`, or `<subject>.t-<rand4>` when that leaves nothing; add `-<rand2>` if the id is taken. `update` `meta/preset` `{tests: [...the current tests, {id, subject, number, name, aliases}]}` with `if_version: v`; on a conflict start over.
 
+### `flipSensitive(id, category?)`
+
+Only on the Commander's word. Find the record: `get` `sensitive/<id>`; if missing, `get` `trainees/<tid>/evidence/<id>` for the Trainee the Entry names (`get` `entries/<eid>` — the id up to its last `-<n>` — for its `trainees`). Refuse a Follow-up (`record: "followup"`, or found under `followups/`) and an id found nowhere; refuse moving into `sensitive/` without a category. If `entries/<its entry>` is still `status: "writing"`, finish that Entry first (`resumePending`'s steps for it), then start here again: a chunk written later would recreate the record at its old place.
+
+1. The Follow-ups it opened: `query` `sensitive` where `from == id` (moving out), or `query` `trainees/<tid>/followups` where `from == id` (moving in). Note every version.
+2. New data: moving out, drop `record` and `category`; moving in, add `record: "evidence"` and `category` to the Evidence and `record: "followup"` to each Follow-up.
+3. `get` the card (version `v`) and build it as `rebuildCard` would, with the records in their new places.
+4. One `batch`: `delete` each old document with its `if_version`, create each new one (`set`, no `if_version`), `set` `trainees/<tid>` with `if_version: v`. On a conflict nothing was written: start over, at most 10 times.
+
+Return `{id, now: "public" | "sensitive", moved: [ids]}`.
+
 ### `openDashboard`
 
 Artifact tool `action: "open"` with the page's address.
 
 ### Not built yet
 
-`retractEntry`, `updateTrainee`, `updateSettings`, `updateCycle` (anything but `addTest`), `savePlaybookItem`, `retirePlaybookItem`, `hidePlaybookItem`, `flipSensitive`, `copyCommanderScope`, `hardDelete`.
+`retractEntry`, `updateTrainee`, `updateSettings`, `updateCycle` (anything but `addTest`), `savePlaybookItem`, `retirePlaybookItem`, `hidePlaybookItem`, `copyCommanderScope`, `hardDelete`.

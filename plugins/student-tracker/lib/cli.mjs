@@ -9,7 +9,9 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
   read-team
   read-trainee <tid> [--since YYYY-MM-DD]
   record-entry            < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>",
-                            "+key: value" field lines, excerpt; "--- followup" + text after its Evidence
+                            "+key: value" field lines, excerpt; "--- followup" + text after its Evidence;
+                            "--- sensitive <category>" + "+kind:"/"+closes:" lines + sentence after its Evidence
+  flip-sensitive <evidence id> [--category <category>]
   update-cycle            < lines "add-test: <name>", "subject: <id>", "number: <n>", "alias: <alias>" (repeat)
   resume-pending
   rebuild-card <tid>`;
@@ -23,6 +25,7 @@ export async function main(argv) {
   };
   const dataDir = opt('--data');
   const since = opt('--since');
+  const category = opt('--category');
   const [op, ...rest] = args;
   const stdin = () => fs.readFileSync(0, 'utf8');
 
@@ -36,6 +39,7 @@ export async function main(argv) {
       'read-trainee': () => store.readTrainee(rest[0], { since }),
       'record-entry': () => store.recordEntry(parseEntry(stdin())),
       'update-cycle': () => store.updateCycle(parseCycleChange(stdin())),
+      'flip-sensitive': () => store.flipSensitive(rest[0], { category }),
       'resume-pending': () => store.resumePending(),
       'rebuild-card': () => store.rebuildCard(rest[0]),
     };

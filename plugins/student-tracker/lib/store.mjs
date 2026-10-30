@@ -30,6 +30,13 @@ const KIND_FIELDS = {
   clarification: { clarifies: null },
 };
 export const KINDS = Object.keys(KIND_FIELDS);
+// What stands in a public text where a sensitive sentence was cut out.
+export const MARK = '[פרט אישי — בתיק]';
+export const SENSITIVE_CATEGORIES = ['health', 'family', 'distress', 'finances', 'romance', 'discipline'];
+// The Commander may mark anything sensitive; what fits no category is `other`.
+const FLIP_CATEGORIES = [...SENSITIVE_CATEGORIES, 'other'];
+// A sensitive piece is one of the kinds with no fields of their own.
+const SENSITIVE_KINDS = KINDS.filter((k) => !Object.keys(KIND_FIELDS[k]).length);
 
 // dataDir holds the pointer cycles.json = {current, archived}; `current` names the store.
 // `interrupt(point, info)` is called at each step boundary of a multi-step write; tests use it
@@ -48,15 +55,20 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
   const open = () => openDocs(storeRoot());
   const today = () => localDate(now());
 
-  // Read every source record of one Trainee and derive the card from them, plus `extra`
-  // records ({path, data}) about to be written.
-  function derive(docs, tid, extra = []) {
+  // Read every source record of one Trainee (its sensitive records included) and derive the
+  // card from them, plus `extra` records ({path, data}) about to be written.
+  function derive(docs, tid, extra = [], removed = new Set()) {
+    const fromExtra = (prefix) => extra
+      .filter((r) => r.path.startsWith(prefix) && r.data.trainee === tid)
+      .map((r) => ({ id: r.path.slice(prefix.length), ...r.data }));
+    const kept = (prefix, records) => records.filter((r) => !removed.has(`${prefix}${r.id}`));
     const sub = (name) => [
-      ...docs.list(`trainees/${tid}/${name}`).map((d) => ({ id: d.id, ...d.data })),
-      ...extra.filter((r) => r.path.split('/')[2] === name).map((r) => ({ id: r.path.split('/')[3], ...r.data })),
+      ...kept(`trainees/${tid}/${name}/`, flat(docs.list(`trainees/${tid}/${name}`))),
+      ...fromExtra(`trainees/${tid}/${name}/`),
     ];
+    const sensitive = [...kept('sensitive/', sensitiveOf(docs, tid)), ...fromExtra('sensitive/')];
     const prev = docs.get(`trainees/${tid}`)?.data;
-    return deriveCard({ changes: sub('changes'), evidence: sub('evidence'), followups: sub('followups') }, prev);
+    return deriveCard({ changes: sub('changes'), evidence: sub('evidence'), followups: sub('followups'), sensitive }, prev);
   }
 
   function rebuildCard(docs, tid) {
@@ -216,7 +228,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         followups: sub('followups'),
         items: sub('items'),
         changes: sub('changes'),
-        sensitive: flat(docs.list('sensitive')).filter((s) => s.trainee === tid && from(s.date)),
+        sensitive: sensitiveOf(docs, tid).filter((s) => from(s.date)),
         entries: flat(docs.list('entries')).filter((e) => e.trainees.includes(tid) && from(e.at.slice(0, 10))),
       };
     },
@@ -230,25 +242,56 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       const preset = docs.get('meta/preset')?.data;
       const fieldsOf = [];
       const closing = new Set();
-      for (const { followups = [], ...ev } of evidence) {
-        if (!docs.get(`trainees/${ev.trainee}`)) throw new StoreError(`unknown Trainee ${ev.trainee}`);
-        if (!KINDS.includes(ev.kind)) throw new StoreError(`unknown kind "${ev.kind}" (one of ${KINDS.join(', ')})`);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(ev.date ?? '')) throw new StoreError(`date must be YYYY-MM-DD, got "${ev.date}"`);
-        if (!ev.excerpt || !text.includes(ev.excerpt)) {
-          throw new StoreError(`excerpt must be copied word-for-word from the Entry: "${ev.excerpt}"`);
+      // Checked against the card, as the artifact backend does; the card is kept in step with the sources.
+      const closeAll = (tid, ids) => {
+        const openIds = docs.get(`trainees/${tid}`).data.followups.map((f) => f.id);
+        for (const fid of ids) {
+          if (!openIds.includes(fid) || closing.has(fid)) throw new StoreError(`${fid} is not an open Follow-up of ${tid}`);
+          closing.add(fid);
         }
-        const fields = kindFields(ev, preset);
-        if (ev.kind === 'clarification' && !docs.get(`trainees/${ev.trainee}/evidence/${fields.clarifies}`)) {
-          throw new StoreError(`a clarification needs clarifies = the id of the ${ev.trainee} Evidence it corrects`);
-        }
+      };
+      const checkFollowups = (followups) => {
         for (const f of followups) {
           if (!f || !text.includes(f)) throw new StoreError(`a Follow-up must be copied word-for-word from the Entry: "${f}"`);
         }
-        // Checked against the card, as the artifact backend does; the card is kept in step with the sources.
-        const openIds = docs.get(`trainees/${ev.trainee}`).data.followups.map((f) => f.id);
-        for (const fid of fields.closes) {
-          if (!openIds.includes(fid) || closing.has(fid)) throw new StoreError(`${fid} is not an open Follow-up of ${ev.trainee}`);
-          closing.add(fid);
+      };
+      // Where in the Entry each sensitive part stands; no public text may reach into one.
+      const sensitiveSpans = evidence.flatMap((ev) => (ev.sensitive ?? []).flatMap((s) => spansOf(text, s.excerpt)));
+      for (const { followups = [], sensitive = [], ...ev } of evidence) {
+        if (!docs.get(`trainees/${ev.trainee}`)) throw new StoreError(`unknown Trainee ${ev.trainee}`);
+        if (!KINDS.includes(ev.kind)) throw new StoreError(`unknown kind "${ev.kind}" (one of ${KINDS.join(', ')})`);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ev.date ?? '')) throw new StoreError(`date must be YYYY-MM-DD, got "${ev.date}"`);
+        if (!wordForWord(text, ev.excerpt)) {
+          throw new StoreError(`excerpt must be copied word-for-word from the Entry: "${ev.excerpt}"`);
+        }
+        const fields = kindFields(ev, preset);
+        if (ev.kind === 'clarification' && !isEvidenceOf(docs, ev.trainee, fields.clarifies)) {
+          throw new StoreError(`a clarification needs clarifies = the id of the ${ev.trainee} Evidence it corrects`);
+        }
+        checkFollowups(followups);
+        // A public text that still holds a sensitive sentence, or a piece of one, would show it on the dashboard.
+        const publicTexts = [...(ev.excerpt ?? '').split(MARK).map((p) => p.trim()), ...followups].filter(Boolean);
+        for (const t of publicTexts) {
+          if (!spansOf(text, t).some((span) => !sensitiveSpans.some((x) => overlaps(span, x)))) {
+            throw new StoreError(`"${t}" holds a sensitive part; put ${MARK} in its place, or open the Follow-up from the sensitive part`);
+          }
+        }
+        const marked = ev.excerpt.includes(MARK);
+        if (sensitive.length && !marked) throw new StoreError(`an Evidence with a sensitive part shows ${MARK} in its place`);
+        if (marked && !sensitive.length) throw new StoreError(`${MARK} stands only where a sensitive part was cut out`);
+        closeAll(ev.trainee, fields.closes);
+        for (const piece of sensitive) {
+          const { category, excerpt, kind = 'note', closes = [], followups: pieceFollowups = [], ...rest } = piece;
+          if (Object.keys(rest).length) throw new StoreError(`a sensitive part takes only category, excerpt, kind, closes and followups`);
+          if (!SENSITIVE_CATEGORIES.includes(category)) {
+            throw new StoreError(`sensitive category must be one of ${SENSITIVE_CATEGORIES.join(', ')}, got "${category}"`);
+          }
+          if (!excerpt || !text.includes(excerpt)) {
+            throw new StoreError(`a sensitive excerpt must be copied word-for-word from the Entry: "${excerpt}"`);
+          }
+          if (!SENSITIVE_KINDS.includes(kind)) throw new StoreError(`a sensitive part is one of ${SENSITIVE_KINDS.join(', ')}, got "${kind}"`);
+          checkFollowups(pieceFollowups);
+          closeAll(ev.trainee, closes);
         }
         fieldsOf.push(fields);
       }
@@ -259,10 +302,13 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       let id;
       do id = `${stamp}-${rand(2)}`; while (docs.get(`entries/${id}`));
 
-      // Evidence is numbered first, in message order, then the Follow-ups it opens.
+      // Numbered in message order: the Evidence first, then the sensitive parts cut from it, then
+      // the Follow-ups each of them opens.
+      let n = 0;
+      const nextId = () => `${id}-${++n}`;
       const children = evidence.map((ev, i) => {
         const { trainee, kind, date, excerpt } = ev;
-        const childId = `${id}-${i + 1}`;
+        const childId = nextId();
         return {
           id: childId,
           path: `trainees/${trainee}/evidence/${childId}`,
@@ -270,21 +316,42 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
           data: { entry: id, trainee, kind, date, excerpt, ...fieldsOf[i], at, retracted: false },
         };
       });
-      for (const [i, ev] of evidence.entries()) {
-        for (const followup of ev.followups ?? []) {
-          const childId = `${id}-${children.length + 1}`;
-          children.push({
-            id: childId,
-            path: `trainees/${ev.trainee}/followups/${childId}`,
-            trainee: ev.trainee,
-            data: { entry: id, trainee: ev.trainee, text: followup, from: children[i].id, date: ev.date, at, retracted: false },
-          });
+      const partsOf = evidence.map((ev, i) => (ev.sensitive ?? []).map((piece) => {
+        const childId = nextId();
+        const { trainee, date } = ev;
+        return {
+          id: childId,
+          path: `sensitive/${childId}`,
+          trainee,
+          followups: piece.followups ?? [],
+          data: {
+            record: 'evidence', entry: id, trainee, kind: piece.kind ?? 'note', category: piece.category, date,
+            excerpt: piece.excerpt, in: children[i].id, closes: piece.closes ?? [], at, retracted: false,
+          },
+        };
+      }));
+      const parts = partsOf.flat();
+      const opened = [];
+      // A Follow-up is kept where the record that opens it is: a sensitive part's is sensitive too.
+      const openFollowups = (texts, from) => {
+        const sensitive = from.path.startsWith('sensitive/');
+        for (const t of texts) {
+          const childId = nextId();
+          const data = { entry: id, trainee: from.trainee, text: t, from: from.id, date: from.data.date, at, retracted: false };
+          opened.push(sensitive
+            ? { id: childId, path: `sensitive/${childId}`, trainee: from.trainee, data: { record: 'followup', ...data } }
+            : { id: childId, path: `trainees/${from.trainee}/followups/${childId}`, trainee: from.trainee, data });
         }
+      };
+      for (const [i, ev] of evidence.entries()) {
+        openFollowups(ev.followups ?? [], children[i]);
+        for (const part of partsOf[i]) openFollowups(part.followups, part);
       }
-      const trainees = [...new Set(children.map((c) => c.trainee))];
+      const all = [...children, ...parts, ...opened];
+      const trainees = [...new Set(all.map((c) => c.trainee))];
       const pending = trainees.map((trainee) => ({
         trainee,
-        records: children.filter((c) => c.trainee === trainee).map(({ path: p, data }) => ({ path: p, data })),
+        records: all.filter((c) => c.trainee === trainee).map(({ path: p, data }) => ({ path: p, data })),
       }));
       for (const chunk of pending) {
         const bytes = Buffer.byteLength(JSON.stringify(chunk.records));
@@ -296,13 +363,14 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       docs.batch([{
         op: 'create',
         path: `entries/${id}`,
-        data: { text, at, status: 'writing', trainees, children: children.map((c) => c.id), retracted: false, pending },
+        data: { text, at, status: 'writing', trainees, children: all.map((c) => c.id), retracted: false, pending },
       }]);
       finishEntry(docs, id);
       return {
         entry: id,
-        evidence: children.slice(0, evidence.length).map((c) => c.id),
-        followups: children.slice(evidence.length).map((c) => c.id),
+        evidence: children.map((c) => c.id),
+        sensitive: parts.map((c) => c.id),
+        followups: opened.map((c) => c.id),
       };
     },
 
@@ -328,6 +396,62 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       const tests = [...preset.tests, { id, subject, number, name, aliases }];
       docs.batch([{ op: 'update', path: 'meta/preset', data: { tests }, ifVersion: current.version }]);
       return { ...preset, tests };
+    },
+
+    // Moves one Evidence, with the Follow-ups it opened, between the sensitive collection and the
+    // Trainee's records: same ids, one version-pinned batch with the rebuilt card. Moving in needs
+    // a category.
+    flipSensitive(evidenceId, { category } = {}) {
+      const docs = open();
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        const sensitiveDoc = docs.get(`sensitive/${evidenceId}`);
+        const tids = docs.list('trainees').map((t) => t.id);
+        if (sensitiveDoc?.data.record === 'followup' || tids.some((t) => docs.get(`trainees/${t}/followups/${evidenceId}`))) {
+          throw new StoreError(`${evidenceId} is a Follow-up; flip the Evidence it was opened from`);
+        }
+        const tid = sensitiveDoc?.data.trainee ?? tids.find((t) => docs.get(`trainees/${t}/evidence/${evidenceId}`));
+        if (!tid) throw new StoreError(`no Evidence ${evidenceId}`);
+        // An Entry still being written would recreate the record at its old place: finish it first.
+        const { entry } = (sensitiveDoc ?? docs.get(`trainees/${tid}/evidence/${evidenceId}`)).data;
+        if (docs.get(`entries/${entry}`)?.data.status === 'writing') {
+          finishEntry(docs, entry);
+          continue;
+        }
+        const toPublic = Boolean(sensitiveDoc);
+        if (!toPublic && !FLIP_CATEGORIES.includes(category)) {
+          throw new StoreError(`marking sensitive needs a category (one of ${FLIP_CATEGORIES.join(', ')})`);
+        }
+        const evidence = toPublic ? sensitiveDoc : docs.get(`trainees/${tid}/evidence/${evidenceId}`);
+        const followups = toPublic
+          ? docs.list('sensitive').filter((d) => d.data.record === 'followup' && d.data.from === evidenceId)
+          : docs.list(`trainees/${tid}/followups`).filter((d) => d.data.from === evidenceId);
+        const from = (rid, kind) => (toPublic ? `sensitive/${rid}` : `trainees/${tid}/${kind}/${rid}`);
+        const to = (rid, kind) => (toPublic ? `trainees/${tid}/${kind}/${rid}` : `sensitive/${rid}`);
+        const moves = [
+          { id: evidenceId, kind: 'evidence', doc: evidence },
+          ...followups.map((d) => ({ id: d.id, kind: 'followups', doc: d })),
+        ].map(({ id: rid, kind, doc }) => {
+          const { record, category: c, ...data } = doc.data;
+          const moved = toPublic ? data : { record: kind === 'evidence' ? 'evidence' : 'followup', ...data, ...(kind === 'evidence' ? { category } : {}) };
+          return { from: from(rid, kind), to: to(rid, kind), version: doc.version, data: moved };
+        });
+        const card = docs.get(`trainees/${tid}`);
+        // The card as it will be once the records have moved.
+        const removed = new Set(moves.map((m) => m.from));
+        const after = moves.map((m) => ({ path: m.to, data: m.data }));
+        const next = derive(docs, tid, after, removed);
+        try {
+          docs.batch([
+            ...moves.map((m) => ({ op: 'delete', path: m.from, ifVersion: m.version })),
+            ...moves.map((m) => ({ op: 'create', path: m.to, data: m.data })),
+            { op: 'set', path: `trainees/${tid}`, data: next, ifVersion: card.version },
+          ]);
+          return { id: evidenceId, now: toPublic ? 'public' : 'sensitive', moved: moves.map((m) => m.to.split('/').at(-1)) };
+        } catch (e) {
+          if (!lostRace(e)) throw e;
+        }
+      }
+      throw new StoreError(`${evidenceId} kept changing; try again`);
     },
 
     // Finish every Entry an earlier session left at `writing`. Returns their ids.
@@ -389,6 +513,38 @@ function testSubject(ev, preset) {
   return canonical.subject;
 }
 
+// A public excerpt may stand for its Entry with sensitive parts cut out: each piece around a
+// MARK is copied from the Entry, in order. A MARK alone stands for a wholly sensitive Evidence.
+function wordForWord(text, excerpt) {
+  if (!excerpt) return false;
+  if (!excerpt.includes(MARK)) return text.includes(excerpt);
+  const pieces = excerpt.split(MARK).map((p) => p.trim()).filter(Boolean);
+  let from = 0;
+  for (const p of pieces) {
+    const at = text.indexOf(p, from);
+    if (at === -1) return false;
+    from = at + p.length;
+  }
+  return true;
+}
+
+// The Trainee's Evidence by that id, public or sensitive.
+function isEvidenceOf(docs, tid, id) {
+  if (docs.get(`trainees/${tid}/evidence/${id}`)) return true;
+  const s = docs.get(`sensitive/${id}`)?.data;
+  return s?.record === 'evidence' && s.trainee === tid;
+}
+
+// Every [start, end) at which `part` stands in `text`.
+function spansOf(text, part) {
+  const spans = [];
+  if (!part) return spans;
+  for (let at = text.indexOf(part); at !== -1; at = text.indexOf(part, at + 1)) spans.push([at, at + part.length]);
+  return spans;
+}
+
+const overlaps = ([a, b], [c, d]) => a < d && c < b;
+
 // A Follow-up is open until a non-retracted Evidence closes it.
 function stillOpen(followups, evidence) {
   const closed = new Set(evidence.filter((e) => e.retracted === false).flatMap((e) => e.closes ?? []));
@@ -396,11 +552,15 @@ function stillOpen(followups, evidence) {
 }
 
 // The card is derived from the Trainee's records alone. Agent-written caches (Snapshot,
-// next-Talk questions) are not derivable, so they carry over from the previous card.
-function deriveCard({ changes, evidence, followups = [] }, prev = {}) {
+// next-Talk questions) are not derivable, so they carry over from the previous card. It is
+// display-safe: a sensitive Follow-up shows as MARK.
+function deriveCard({ changes, evidence, followups = [], sensitive = [] }, prev = {}) {
   const live = (xs) => xs.filter((x) => x.retracted === false);
   const named = live(changes).filter((c) => c.name).sort(byAt).at(-1);
-  const talks = live(evidence).filter((e) => e.kind === 'talk').map((e) => e.date).sort();
+  const masked = sensitive.filter((s) => s.record === 'followup').map((f) => ({ ...f, text: MARK }));
+  const allEvidence = [...evidence, ...sensitive.filter((s) => s.record === 'evidence')];
+  // The date of a Talk is not sensitive, even when the whole Talk is.
+  const talks = live(allEvidence).filter((e) => e.kind === 'talk').map((e) => e.date).sort();
   return {
     name: named?.name ?? prev?.name ?? null,
     active: true,
@@ -410,7 +570,7 @@ function deriveCard({ changes, evidence, followups = [] }, prev = {}) {
     lastTalk: talks.at(-1) ?? null,
     snapshot: prev?.snapshot ?? null,
     items: [],
-    followups: stillOpen(followups, evidence)
+    followups: stillOpen([...followups, ...masked], allEvidence)
       .sort((a, b) => (a.date + a.id < b.date + b.id ? -1 : 1))
       .map(({ id, text, date }) => ({ id, text, date })),
     nextTalk: prev?.nextTalk ?? null,
@@ -421,6 +581,7 @@ function deriveCard({ changes, evidence, followups = [] }, prev = {}) {
 const byAt = (a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
 
 const flat = (docs) => docs.map((d) => ({ id: d.id, ...d.data }));
+const sensitiveOf = (docs, tid) => flat(docs.list('sensitive')).filter((s) => s.trainee === tid);
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // Another session got there first; re-read and try again (or accept its work).
 const lostRace = (e) => e instanceof VersionConflict || e instanceof AlreadyExists;

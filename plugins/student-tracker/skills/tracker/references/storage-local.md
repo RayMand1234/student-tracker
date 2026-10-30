@@ -19,6 +19,7 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `recordEntry(...)` | `record-entry`, payload on stdin (below) |
 | `resumePending()` | `resume-pending` |
 | `rebuildCard(tid)` | `rebuild-card <tid>` |
+| `flipSensitive(id, category?)` | `flip-sensitive <evidence id> --category <category>` (omit `--category` when moving out of sensitive) |
 | `updateCycle({addTest})` | `update-cycle`, payload on stdin: `add-test:`, `subject:`, `number:`, `alias:` lines |
 | `openDashboard` | none: the local backend has no page; tell the Commander the dashboard exists only on a real Cycle |
 | `createCycle(...)` | `create-cycle`, payload on stdin: `commander:`, `cycle:`, `trainee:` lines |
@@ -27,7 +28,24 @@ Payloads are plain text in a quoted heredoc, never JSON (the shell safety check 
 
 - a `--- entry` line, then the Commander's message exactly as written;
 - per Evidence, a `--- evidence <tid> <kind> <YYYY-MM-DD>` line, then its fields as `+<field>: <value>` lines right under it (lists comma-separated: `+topics: דיבאג, פרויקט`, `+closes: <id>, <id>`; `+unlisted: true`; `+score: 85`), then its excerpt exactly as written;
-- per Follow-up it opens, right after that Evidence, a `--- followup` line, then the Follow-up text exactly as written.
+- per Follow-up it opens, right after that Evidence, a `--- followup` line, then the Follow-up text exactly as written;
+- per sensitive part cut out of it, after that Evidence (and its Follow-ups), a `--- sensitive <category>` line, then optional `+kind: <kind>` and `+closes: <ids>` lines, then the sensitive sentence exactly as written; the Follow-ups that part opens follow it as `--- followup` blocks.
+
+A Talk with a sensitive sentence (the public excerpt shows the marker where the sentence was):
+
+```
+student-tracker-store --data "<plugin data dir>" record-entry <<'ENTRY'
+--- entry
+דיברתי עם נועה על הפרויקט. ההורים שלה מתגרשים והיא לא ישנה. לבדוק איך היא מסתדרת.
+--- evidence t-ab12cd talk 2026-10-30
++topics: פרויקט
+דיברתי עם נועה על הפרויקט. [פרט אישי — בתיק]
+--- sensitive family
+ההורים שלה מתגרשים והיא לא ישנה. לבדוק איך היא מסתדרת.
+--- followup
+לבדוק איך היא מסתדרת.
+ENTRY
+```
 
 ```
 student-tracker-store --data "<plugin data dir>" record-entry <<'ENTRY'

@@ -130,3 +130,40 @@ test('two sessions finishing the same interrupted Entry at once both succeed, wi
   assert.equal(dani.card.lastTalk, '2026-10-29');
   assert.equal(dani.entries[0].status, 'done');
 });
+
+test('an interrupted Entry with a sensitive part is finished by resumePending, the part still kept apart', () => {
+  const s = setUp();
+  const text = 'דיברתי היום עם נועה. אבא שלה חולה מאוד.';
+  const crashing = s.with({ interrupt: (point) => { if (point === 'chunk') throw new Error('crash'); } });
+  const entry = {
+    text,
+    evidence: [{
+      trainee: s.ids['נועה'], kind: 'talk', date: '2026-10-30', excerpt: 'דיברתי היום עם נועה. [פרט אישי — בתיק]',
+      sensitive: [{ category: 'health', excerpt: 'אבא שלה חולה מאוד.' }],
+    }],
+  };
+  assert.throws(() => crashing.recordEntry(entry), /crash/);
+  assert.deepEqual(s.store.readTrainee(s.ids['נועה']).sensitive, []);
+
+  s.store.resumePending();
+  const noa = s.store.readTrainee(s.ids['נועה']);
+  assert.deepEqual(noa.sensitive.map((r) => r.excerpt), ['אבא שלה חולה מאוד.']);
+  assert.deepEqual(noa.evidence.map((r) => r.excerpt), ['דיברתי היום עם נועה. [פרט אישי — בתיק]']);
+  assert.equal(noa.card.lastTalk, '2026-10-30');
+});
+
+test('flipping an Evidence whose Entry is still being written finishes the Entry first, so a resume cannot bring it back', () => {
+  const s = setUp();
+  let chunks = 0;
+  const crashing = s.with({ interrupt: (point) => { if (point === 'chunk-written' && ++chunks === 1) throw new Error('crash'); } });
+  assert.throws(() => crashing.recordEntry(talkTo(s.ids)), /crash/);
+  const [ev] = s.store.readTrainee(s.ids['נועה']).evidence;
+
+  s.store.flipSensitive(ev.id, { category: 'health' });
+  s.store.resumePending();
+  const noa = s.store.readTrainee(s.ids['נועה']);
+  assert.deepEqual(noa.evidence, []);
+  assert.deepEqual(noa.sensitive.map((r) => r.id), [ev.id]);
+  assert.equal(s.store.readTrainee(s.ids['דני']).evidence.length, 1, 'the rest of the Entry was finished');
+  assert.equal(noa.entries[0].status, 'done');
+});

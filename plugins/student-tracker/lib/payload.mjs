@@ -32,6 +32,10 @@ export function parseCycle(input) {
 // <excerpt, word-for-word>
 // --- followup                   (zero or more, opened by the Evidence above)
 // <Follow-up text, word-for-word>
+// --- sensitive <category>       (zero or more, cut out of the Evidence above)
+// +kind: <kind> / +closes: <ids> (optional)
+// <the sensitive sentence, word-for-word>
+// --- followup                   (zero or more, opened by the sensitive part above)
 export function parseEntry(input) {
   const lines = input.split('\n');
   if (lines.at(-1) === '') lines.pop();
@@ -40,35 +44,49 @@ export function parseEntry(input) {
   const text = [];
   const evidence = [];
   let body = text;
-  let fieldsOpen = false; // "+key: value" lines are read only right after an Evidence header
+  let target = null; // what "+key: value" and "--- followup" lines attach to: an Evidence or a sensitive part
+  let fieldsOpen = false; // "+key: value" lines are read only right after an Evidence or sensitive header
   for (const line of lines.slice(1)) {
     if (line.startsWith('--- evidence ')) {
       const [trainee, kind, date, ...extra] = line.slice('--- evidence '.length).trim().split(/\s+/);
       if (extra.length) throw new StoreError(`kind fields go on "+key: value" lines, not the header: "${line}"`);
       body = [];
       fieldsOpen = true;
-      evidence.push({ ev: { trainee, kind, date }, body, followups: [] });
+      target = { fields: { trainee, kind, date }, body, followups: [], sensitive: [] };
+      evidence.push(target);
+    } else if (line.startsWith('--- sensitive')) {
+      const owner = evidence.at(-1);
+      if (!owner) throw new StoreError('a "--- sensitive" block must follow the Evidence it is cut out of');
+      const [category, ...extra] = line.slice('--- sensitive'.length).trim().split(/\s+/);
+      if (extra.length) throw new StoreError(`a "--- sensitive <category>" header takes only the category: "${line}"`);
+      body = [];
+      fieldsOpen = true;
+      target = { fields: { category }, body, followups: [] };
+      owner.sensitive.push(target);
     } else if (line.trim() === '--- followup') {
-      const last = evidence.at(-1);
-      if (!last) throw new StoreError('a "--- followup" block must follow the Evidence that opens it');
+      if (!target) throw new StoreError('a "--- followup" block must follow the Evidence that opens it');
       body = [];
       fieldsOpen = false;
-      last.followups.push(body);
+      target.followups.push(body);
     } else if (fieldsOpen && /^\+\w+:/.test(line)) {
       const [, key, value] = line.match(/^\+(\w+):\s*(.*)$/);
-      evidence.at(-1).ev[key] = fieldValue(key, value.trim());
+      target.fields[key] = fieldValue(key, value.trim());
     } else {
       fieldsOpen = false;
       body.push(line);
     }
   }
 
+  const withFollowups = ({ fields, body: excerpt, followups }) => ({
+    ...fields,
+    excerpt: excerpt.join('\n'),
+    ...(followups.length ? { followups: followups.map((f) => f.join('\n')) } : {}),
+  });
   return {
     text: text.join('\n'),
-    evidence: evidence.map(({ ev, body: excerpt, followups }) => ({
-      ...ev,
-      excerpt: excerpt.join('\n'),
-      ...(followups.length ? { followups: followups.map((f) => f.join('\n')) } : {}),
+    evidence: evidence.map((ev) => ({
+      ...withFollowups(ev),
+      ...(ev.sensitive.length ? { sensitive: ev.sensitive.map(withFollowups) } : {}),
     })),
   };
 }
