@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "id": "learn",
+      "kind": "stage",
+      "order": 1,
+      "name": "למידה ותאוריה",
+      "skills": [
+        { "id": "learn.self-awareness", "name": "מודעות עצמית" },
+        { "id": "learn.depth", "name": "העמקה והבנה לעומק" },
+        { "id": "learn.attention-to-detail", "name": "תשומת לב לפרטים" },
+        { "id": "learn.independence", "name": "עצמאות" },
+        { "id": "learn.organization", "name": "סדר וארגון" },
+        { "id": "learn.diligence", "name": "שקדנות" },
+        { "id": "learn.motivation", "name": "מוטיבציה" },
+        { "id": "learn.lessons-learned", "name": "הפקת לקחים ויישום להבא" }
+      ]
+    },
+    {
+      "id": "problem",
+      "kind": "stage",
+      "order": 2,
+      "name": "הבנת הבעיה",
+      "skills": [
+        { "id": "problem.reading-comprehension", "name": "הבנת הנקרא" },
+        { "id": "problem.small-details", "name": "תשומת לב לפרטים הקטנים" },
+        { "id": "problem.requirement", "name": "הבנה טובה של הדרישה" },
+        { "id": "problem.deep-reading", "name": "קריאה מעמיקה" },
+        { "id": "problem.edge-case-identification", "name": "זיהוי של מקרי קצה אפשריים" },
+        { "id": "problem.edge-case-depth", "name": "הבנה לעומק של מקרי קצה אפשריים" }
+      ]
+    },
+    {
+      "id": "plan",
+      "kind": "stage",
+      "order": 3,
+      "name": "תכנון הקוד",
+      "skills": [
+        { "id": "plan.many-ideas", "name": "חשיבה על הרבה רעיונות" },
+        { "id": "plan.organization", "name": "סדר וארגון" },
+        { "id": "plan.debug-before-coding", "name": "לדבאג לפני כתיבת הקוד" },
+        { "id": "plan.creative-thinking", "name": "חשיבה יצירתית" },
+        { "id": "plan.requirement-focus", "name": "מיקוד בדרישה" }
+      ]
+    },
+    {
+      "id": "impl",
+      "kind": "stage",
+      "order": 4,
+      "name": "מימוש בקוד",
+      "skills": [
+        { "id": "impl.environment", "name": "שליטה בסביבת עבודה" },
+        { "id": "impl.debugging", "name": "יכולות דיבאג" },
+        { "id": "impl.functions", "name": "חלוקה טובה לפונקציות" },
+        { "id": "impl.readability", "name": "קריאות וסטנדרטים" },
+        { "id": "impl.web-search", "name": "חיפוש באינטרנט" },
+        { "id": "impl.code-criticism", "name": "ביקורתיות כלפי קוד" },
+        { "id": "impl.organization", "name": "סדר וארגון" }
+      ]
+    },
+    {
+      "id": "inter",
+      "kind": "group",
+      "order": 5,
+      "name": "בין-אישי",
+      "skills": [
+        { "id": "inter.teamwork", "name": "עבודת צוות" },
+        { "id": "inter.communication", "name": "תקשורת" },
+        { "id": "inter.accepting-criticism", "name": "קבלת ביקורת" },
+        { "id": "inter.responsibility", "name": "אחריות ואמינות" },
+        { "id": "inter.helping-others", "name": "עזרה לאחרים" }
+      ]
+    }
+  ]
+}

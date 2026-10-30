@@ -1,0 +1,9 @@
+{
+  "name": "student-tracker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'test/*.test.mjs'",
+    "eval": "node --test --test-reporter=spec 'evals/*.eval.mjs'"
+  }
+}
