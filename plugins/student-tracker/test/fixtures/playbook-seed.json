@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "seed": true,
+  "note": "SEED SET, not the base Playbook: a few Skills plus general, to exercise the item format and Advice. Ticket 27 replaces it with content the Commander reviews per Stage. Ids are never reused: an item dropped from this file moves its id to `retired`.",
+  "retired": [],
+  "items": [
+    {
+      "id": "b-001",
+      "origin": "base",
+      "kind": "sign",
+      "skills": [
+        "impl.debugging"
+      ],
+      "band": "low",
+      "text": "מבקש/ת עזרה ברגע שמשהו לא עובד, בלי לנסות קודם לבודד איפה הבעיה."
+    },
+    {
+      "id": "b-002",
+      "origin": "base",
+      "kind": "sign",
+      "skills": [
+        "impl.debugging"
+      ],
+      "band": "high",
+      "text": "מגיע/ה לבד לשורה הבעייתית, עם השערה ובדיקה שמאשרת או מפריכה אותה."
+    },
+    {
+      "id": "b-003",
+      "origin": "base",
+      "kind": "tip",
+      "skills": [
+        "impl.debugging"
+      ],
+      "band": "low",
+      "text": "לשבת לידו/ה על באג אחד ולשאול רק \"מה ציפית שיקרה ומה קרה בפועל?\", בלי לגעת במקלדת."
+    },
+    {
+      "id": "b-004",
+      "origin": "base",
+      "kind": "tip",
+      "skills": [
+        "impl.debugging"
+      ],
+      "band": "mid",
+      "text": "לבקש לפני כל שאלה על באג שלושה דברים שכבר ניסה/תה, כדי להפוך ניסוי וטעייה לשיטה."
+    },
+    {
+      "id": "b-005",
+      "origin": "base",
+      "kind": "exercise",
+      "skills": [
+        "impl.debugging"
+      ],
+      "band": "low",
+      "text": "קטע קוד קצר עם באג שתול: למצוא אותו רק עם הדפסות, ולרשום כל השערה לפני שבודקים אותה."
+    },
+    {
+      "id": "b-006",
+      "origin": "base",
+      "kind": "exercise",
+      "skills": [
+        "impl.debugging",
+        "inter.helping-others"
+      ],
+      "band": "high",
+      "text": "להסביר לחניך/ה אחר/ת, צעד אחר צעד, איך נמצא הבאג האחרון."
+    },
+    {
+      "id": "b-007",
+      "origin": "base",
+      "kind": "talk-question",
+      "skills": [
+        "impl.debugging"
+      ],
+      "text": "איך מצאת את הבאג האחרון שנתקעת עליו?"
+    },
+    {
+      "id": "b-008",
+      "origin": "base",
+      "kind": "talk-question",
+      "skills": [
+        "impl.debugging"
+      ],
+      "band": "low",
+      "text": "מה הדבר הראשון שאת/ה עושה כשהקוד לא עובד?"
+    },
+    {
+      "id": "b-009",
+      "origin": "base",
+      "kind": "sign",
+      "skills": [
+        "inter.communication"
+      ],
+      "band": "low",
+      "text": "נעלם/ת כשנתקע/ת ולא מעדכן/ת את הצוות או את המפקד."
+    },
+    {
+      "id": "b-010",
+      "origin": "base",
+      "kind": "tip",
+      "skills": [
+        "inter.communication"
+      ],
+      "text": "לסיים כל שיחה במשפט אחד שהחניך/ה אומר/ת בקול: מה סיכמנו ועד מתי."
+    },
+    {
+      "id": "b-011",
+      "origin": "base",
+      "kind": "talk-question",
+      "skills": [
+        "inter.communication"
+      ],
+      "text": "מתי בפעם האחרונה עדכנת מישהו שנתקעת?"
+    },
+    {
+      "id": "b-012",
+      "origin": "base",
+      "kind": "tip",
+      "skills": [
+        "learn.independence"
+      ],
+      "band": "mid",
+      "text": "לתת זמן קצוב, למשל 20 דקות, לנסות לבד לפני שפונים לעזרה, ולשאול מה נוסה בזמן הזה."
+    },
+    {
+      "id": "b-013",
+      "origin": "base",
+      "kind": "exercise",
+      "skills": [
+        "learn.independence"
+      ],
+      "band": "low",
+      "text": "לפני כל שאלה לרשום: מה אני מנסה לעשות, מה ניסיתי, איפה נתקעתי."
+    },
+    {
+      "id": "b-014",
+      "origin": "base",
+      "kind": "talk-question",
+      "skills": [
+        "learn.independence"
+      ],
+      "text": "על מה הצלחת להתגבר השבוע לבד?"
+    },
+    {
+      "id": "b-015",
+      "origin": "base",
+      "kind": "talk-question",
+      "skills": [
+        "general"
+      ],
+      "text": "מה הכי עזר לך השבוע?"
+    },
+    {
+      "id": "b-016",
+      "origin": "base",
+      "kind": "talk-question",
+      "skills": [
+        "general"
+      ],
+      "text": "על מה היית רוצה שנעבוד יחד עד השיחה הבאה?"
+    },
+    {
+      "id": "b-017",
+      "origin": "base",
+      "kind": "tip",
+      "skills": [
+        "general"
+      ],
+      "text": "לפתוח את השיחה בהצלחה אחת מהשבוע לפני שעוברים לקשיים."
+    }
+  ]
+}

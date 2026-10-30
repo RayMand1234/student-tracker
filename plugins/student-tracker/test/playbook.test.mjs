@@ -12,13 +12,21 @@ test('the shipped base Playbook passes its consistency check against the shipped
   assert.deepEqual(checkPlaybook(playbook, skills), []);
 });
 
-test('the shipped base Playbook is still the seed set: a few Skills plus general, all four kinds, origin base', () => {
-  assert.equal(playbook.seed, true, 'ticket 27 replaces the seed with reviewed content and drops the flag');
-  const tagged = new Set(playbook.items.flatMap((i) => i.skills));
-  assert.ok(tagged.has('general'));
-  assert.ok(tagged.size >= 4, [...tagged].join(', '));
-  assert.deepEqual([...new Set(playbook.items.map((i) => i.kind))].sort(), ['exercise', 'sign', 'talk-question', 'tip']);
+test('the shipped base Playbook is the reviewed content: every Skill has a weak and a strong sign, a tip and Talk questions; a general set', () => {
+  assert.equal(playbook.seed, undefined, 'the seed flag is gone');
   assert.ok(playbook.items.every((i) => i.origin === 'base'));
+  for (const skill of skills.groups.flatMap((g) => g.skills)) {
+    const mine = playbook.items.filter((i) => i.skills.includes(skill.id));
+    const of = (kind, band) => mine.filter((i) => i.kind === kind && (!band || i.band === band)).length;
+    assert.ok(of('sign', 'low') && of('sign', 'high'), `${skill.id}: a weak and a strong sign`);
+    assert.ok(of('tip') && of('talk-question') >= 2, `${skill.id}: tips and Talk questions`);
+  }
+  const general = playbook.items.filter((i) => i.skills.includes('general'));
+  assert.ok(general.length >= 10, `${general.length} general items`);
+});
+
+test('the seed set\'s ids stay retired, so no shipped id ever names another text', () => {
+  for (let n = 1; n <= 17; n++) assert.ok(playbook.retired.includes(`b-${String(n).padStart(3, '0')}`));
 });
 
 const item = (extra = {}) => ({ id: 'b-001', origin: 'base', kind: 'tip', skills: ['impl.debugging'], text: 'טיפ', ...extra });
