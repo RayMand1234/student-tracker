@@ -1,0 +1,202 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<!-- No title tag: setup publishes with title "מעקב חניכים · <Cycle>", which the title lookup relies on. -->
+<!-- Source of index.html. Edit this and derive.mjs, then run `npm run build`. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Secular+One&family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: one centred column; the circles are the page. Calm greens around loud Talk colours. */
+:root {
+  --bg: #f2f3ef; --surface: #ffffff; --fg: #1b201c; --muted: #5d665e; --line: #d3d8cd;
+  --concern: #b3261e;
+  --shadow: 0 1px 2px rgb(20 30 20 / .06), 0 4px 16px rgb(20 30 20 / .06);
+  --display: "Secular One", "IBM Plex Sans Hebrew", system-ui, sans-serif;
+  --body: "IBM Plex Sans Hebrew", "Segoe UI", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111412; --surface: #191d1a; --fg: #e5e9e2; --muted: #98a198; --line: #303730;
+    --concern: #f06a5f;
+    --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111412; --surface: #191d1a; --fg: #e5e9e2; --muted: #98a198; --line: #303730;
+  --concern: #f06a5f;
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-block: 32px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+h1 { font-family: var(--display); font-weight: 400; font-size: clamp(1.6rem, 5vw, 2.2rem); line-height: 1.15; margin: 0; text-wrap: balance; }
+.page { display: grid; gap: 28px; justify-items: center; text-align: center; max-width: 900px; margin-inline: auto; }
+.head { display: grid; gap: 6px; justify-items: center; }
+.sub { color: var(--muted); font-size: .9rem; }
+.scale { display: grid; gap: 4px; width: min(420px, 100%); }
+.scale .bar { height: 10px; border-radius: 5px; }
+.scale .ticks { position: relative; height: 1.2em; font-size: .75rem; color: var(--muted); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.scale .ticks span { position: absolute; transform: translateX(50%); white-space: nowrap; }
+.ring {
+  /* Circle size: three fit a row on a 400px phone, five or six on a laptop. */
+  --d: clamp(92px, 26vw, 136px);
+  list-style: none; margin: 0; padding: 8px 0; width: 100%;
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: clamp(12px, 3vw, 26px);
+}
+.c {
+  flex: none; width: var(--d); height: var(--d); border-radius: 50%;
+  display: grid; place-content: center; justify-items: center; gap: 2px; padding: 10px;
+  box-shadow: var(--shadow); position: relative;
+}
+.c b { font-family: var(--display); font-weight: 400; font-size: clamp(1rem, 3.6vw, 1.3rem); line-height: 1.1; overflow-wrap: anywhere; }
+.c span { font-size: .8rem; opacity: .92; }
+.c .n { font-family: var(--mono); font-weight: 600; font-variant-numeric: tabular-nums; }
+.c .ev { position: absolute; inset-block-start: 4px; left: 50%; transform: translateX(-50%); font-family: var(--body); font-style: normal; font-size: .66rem; font-weight: 700; background: var(--surface); color: var(--concern); padding: 0 6px; border-radius: 3px; white-space: nowrap; }
+.left { font-size: .82rem; color: var(--muted); margin: 0; }
+.note { color: var(--muted); max-width: 46ch; margin: 0; }
+</style>
+
+<main class="page" dir="rtl" lang="he" id="app">
+  <header class="head"><h1>מעקב חניכים</h1><p class="sub">טוען את המחזור…</p></header>
+</main>
+
+<script type="module">
+// Pure derivation module of the dashboard page: every view computes from these, nothing else.
+// No imports and only `export function` / `export const`, so the build can inline it in the page.
+
+// Talk circle colour, anchored on the Commander's Talk settings `talk` = {target, yellow} (ticket 08): green at 0 days, lime at
+// the target, amber at the yellow threshold, red at yellow + 7, deep red from yellow + 14.
+// [day, hue, saturation %, lightness %]
+function talkStops({ target, yellow }) {
+  const stops = [[0, 140, 55, 38]];
+  if (target > 0 && target < yellow) stops.push([target, 78, 62, 42]); // lime only if it comes first
+  stops.push([yellow, 38, 88, 48], [yellow + 7, 6, 72, 46], [yellow + 14, 355, 70, 30]);
+  return stops;
+}
+
+// `days` null = no Talk yet = the deepest red.
+function talkColor(days, talk) {
+  const stops = talkStops(talk);
+  const last = stops.at(-1)[0];
+  const x = days === null ? last : Math.min(Math.max(days, 0), last);
+  let i = 0;
+  while (i < stops.length - 2 && x > stops[i + 1][0]) i++;
+  const [a, b] = [stops[i], stops[i + 1]];
+  const f = (x - a[0]) / (b[0] - a[0]);
+  // Red (6) to deep red (355) goes down through 0, not back through green.
+  const hb = b[1] - a[1] > 180 ? b[1] - 360 : b[1];
+  const h = (Math.round(a[1] + (hb - a[1]) * f) + 360) % 360;
+  const s = Math.round(a[2] + (b[2] - a[2]) * f);
+  const l = Math.round(a[3] + (b[3] - a[3]) * f);
+  return { bg: `hsl(${h} ${s}% ${l}%)`, ink: inkOn(h, s, l) };
+}
+
+// White or black text, whichever contrasts more with the circle (WCAG 2 luminance).
+// Pure black: near-black misses 4.5:1 on the orange around yellow + 5.
+function inkOn(h, s, l) {
+  const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
+  const channel = (n) => {
+    const k = (n + h / 30) % 12;
+    return l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  const lin = (v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  const lum = (r, g, b) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  const bg = lum(channel(0), channel(8), channel(4));
+  return 1.05 / (bg + 0.05) >= (bg + 0.05) / 0.05 ? '#ffffff' : '#000000';
+}
+
+// Whole calendar days between two YYYY-MM-DD dates (never negative). null when no Talk yet.
+function daysSince(date, today) {
+  if (!date) return null;
+  const utc = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+  return Math.max(0, Math.round((utc(today) - utc(date)) / 86_400_000));
+}
+
+// Main page: one circle per active Trainee, reddest first (no Talk yet first of all, then most
+// days, then by name); Trainees who left only by name.
+function talkCircles(cards, talk, today) {
+  const isActive = (c) => c.active !== false && !c.left;
+  const circles = cards.filter(isActive).map((c) => {
+    const days = daysSince(c.lastTalk, today);
+    return { id: c.id, name: c.name, days, evalStage: c.evalStage ?? null, color: talkColor(days, talk) };
+  });
+  circles.sort((a, b) => (b.days ?? Infinity) - (a.days ?? Infinity) || a.name.localeCompare(b.name, 'he'));
+  const left = cards.filter((c) => !isActive(c)).map((c) => c.name);
+  return { circles, left };
+}
+
+// The colour bar under the title: 0 → deep red, a tick at each distinct anchor.
+function talkScale(talk) {
+  const stops = talkStops(talk);
+  const max = stops.at(-1)[0];
+  const gradient = Array.from({ length: 11 }, (_, i) => talkColor((i / 10) * max, talk).bg);
+  return { max, ticks: stops.map((s) => s[0]), gradient };
+}
+
+const app = document.getElementById('app');
+const state = { ready: false, failed: false, cycle: undefined, settings: null, cards: [] };
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+const localToday = () => new Date().toLocaleDateString('sv-SE');
+
+function note(title, text) {
+  app.innerHTML = `<header class="head"><h1>${esc(title)}</h1></header><p class="note">${esc(text)}</p>`;
+}
+
+function render() {
+  if (state.failed) return note('מעקב חניכים', 'החיבור לנתונים נקטע. רענן את העמוד.');
+  if (!state.ready) return;
+  const { cycle, settings, cards } = state;
+  if (!cycle) return note('מעקב חניכים', 'המעקב עוד לא הוקם. הרץ /student-tracker:setup ב-Claude Code.');
+  if (cycle.setup !== 'done') return note(cycle.name, 'ההקמה עדיין בתהליך. העמוד יתמלא כשהיא תסתיים.');
+  const talk = settings?.talk ?? { target: 10, yellow: 10, red: 14 };
+  const { circles, left } = talkCircles(cards, talk, localToday());
+  const { max, ticks, gradient } = talkScale(talk);
+
+  const ring = circles.length
+    ? `<ul class="ring">${circles.map((c) => `
+        <li class="c" style="background:${c.color.bg};color:${c.color.ink}"
+            aria-label="${esc(c.name)}, ${c.days === null ? 'טרם שיחה' : `${c.days} ימים מאז שיחה`}">
+          ${c.evalStage ? `<i class="ev">${esc(c.evalStage)}</i>` : ''}
+          <b>${esc(c.name)}</b><span>${c.days === null ? 'טרם שיחה' : `<bdi class="n">${c.days}</bdi> ימים`}</span>
+        </li>`).join('')}</ul>`
+    : `<p class="note">עוד אין חניכים במחזור. אפשר להוסיף בצ'אט: "תוסיף חניכה בשם נועה".</p>`;
+
+  app.innerHTML = `
+    <header class="head">
+      <h1>${esc(cycle.name)}</h1>
+      <span class="sub">ימים מאז השיחה האחרונה · יעד: כל ${esc(talk.target)} ימים</span>
+      <div class="scale" aria-hidden="true">
+        <div class="bar" style="background:linear-gradient(to left, ${gradient.join(', ')})"></div>
+        <div class="ticks">${ticks.map((v) => `<span style="right:${(v / max) * 100}%">${v === max ? `${v}+` : v}</span>`).join('')}</div>
+      </div>
+    </header>
+    ${ring}
+    ${left.length ? `<p class="left">עזבו: ${left.map(esc).join(', ')}</p>` : ''}`;
+}
+
+// Read-only and live. Subscribes once each; never touches raw Entries or sensitive records.
+const db = window.claude?.use ? await window.claude.use('db') : null;
+if (!db) {
+  note('מעקב חניכים', 'אין גישה לנתוני המעקב בתצוגה הזו. פתח את העמוד מחשבון ה-claude.ai שלך.');
+} else {
+  let pending = 3;
+  const loaded = () => { if (--pending === 0) state.ready = true; render(); };
+  const once = (fn) => { let first = true; return (v) => { fn(v); if (first) { first = false; loaded(); } else render(); }; };
+  const failed = () => { state.failed = true; render(); };
+  db.collection('meta').onSnapshot(once((snap) => {
+    state.cycle = snap.docs.find((d) => d.id === 'cycle')?.data() ?? null;
+  }), failed);
+  db.doc('commander/settings').onSnapshot(once((s) => { state.settings = s.exists ? s.data() : null; }), failed);
+  db.collection('trainees').onSnapshot(once((snap) => {
+    state.cards = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }), failed);
+  setInterval(render, 60 * 60 * 1000); // days roll over without any write
+}
+</script>

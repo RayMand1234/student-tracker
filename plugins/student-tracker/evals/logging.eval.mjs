@@ -1,7 +1,7 @@
 // Eval on the storage-interface seam: drive the real skills through `claude -p` against the
 // local test backend, then assert on stored state through the storage reads only.
 // Runs real model calls on your credential: `npm run eval`.
-import { test } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -13,10 +13,40 @@ import { openStore } from '../lib/store.mjs';
 import { openDocs } from '../lib/docs.mjs';
 
 const PLUGIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// A plugin loaded with --plugin-dir gets its own data dir, separate from an installed copy's.
+// The evals own its pointer while they run: a pointer marked `backend: local` selects the test store.
+const DATA = path.join(os.homedir(), '.claude/plugins/data/student-tracker-inline');
+const POINTER = path.join(DATA, 'cycles.json');
+const BACKUP = `${POINTER}.eval-backup`;
+
+before(() => {
+  // A backup left by an interrupted run holds the developer's real pointer: never overwrite it.
+  if (fs.existsSync(BACKUP)) throw new Error(`${BACKUP} exists from an interrupted eval; restore it to cycles.json first`);
+  fs.mkdirSync(DATA, { recursive: true });
+  if (fs.existsSync(POINTER)) fs.renameSync(POINTER, BACKUP);
+});
+after(() => {
+  dropTestStore();
+  fs.rmSync(POINTER, { force: true });
+  if (fs.existsSync(BACKUP)) fs.renameSync(BACKUP, POINTER);
+});
+
+// Remove the store the test pointer names (only test pointers reach here).
+function dropTestStore() {
+  if (!fs.existsSync(POINTER)) return;
+  const { current } = JSON.parse(fs.readFileSync(POINTER, 'utf8'));
+  if (current?.startsWith('local:')) fs.rmSync(current.slice('local:'.length), { recursive: true, force: true });
+}
+
+function freshTestStore() {
+  dropTestStore();
+  fs.writeFileSync(POINTER, JSON.stringify({ backend: 'local', current: null, archived: [] }));
+  return openStore({ dataDir: DATA });
+}
 const TALK = 'דיברתי היום עם נועה, היא סיפרה שהיא נהנית מהפרויקט אבל נתקעת הרבה בדיבאג. סיכמנו שתשב עם דני על זה.';
 
 // One turn of a Commander session. `session` = {id, resume}: the first turn creates it, later turns resume it.
-function claude(cwd, testData, prompt, session = { id: randomUUID(), resume: false }) {
+function claude(cwd, prompt, session = { id: randomUUID(), resume: false }) {
   const r = spawnSync(
     'claude',
     [
@@ -25,12 +55,11 @@ function claude(cwd, testData, prompt, session = { id: randomUUID(), resume: fal
       '--plugin-dir', PLUGIN,
       // Only the plugin under test: skip the user's own plugins, hooks and settings.
       '--setting-sources', 'project,local',
-      '--allowedTools', 'Bash(student-tracker-store *)', 'Skill', 'Read',
+      '--allowedTools', 'Bash(student-tracker-store *)', 'Bash(date *)', 'Skill', 'Read',
       '--output-format', 'json',
       ...(process.env.EVAL_MODEL ? ['--model', process.env.EVAL_MODEL] : []),
     ],
-    // STUDENT_TRACKER_DATA points the store at a throwaway dir, never the Commander's real pointer.
-    { cwd, encoding: 'utf8', timeout: 600_000, env: { ...process.env, STUDENT_TRACKER_DATA: testData } },
+    { cwd, encoding: 'utf8', timeout: 600_000 },
   );
   assert.equal(r.status, 0, `claude exited ${r.status}: ${r.stderr}`);
   return JSON.parse(r.stdout).result;
@@ -40,17 +69,16 @@ const today = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD, local
 
 test('setup + one Talk message: Entry kept whole, one Talk Evidence for Noa, last Talk date set', () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'st-eval-'));
-  const testData = fs.mkdtempSync(path.join(os.tmpdir(), 'st-eval-data-'));
-  const store = openStore({ dataDir: testData });
-  console.log(`workspace: ${cwd}\nstore: ${testData}`);
+  const store = freshTestStore();
+  console.log(`workspace: ${cwd}`);
 
   const setup = { id: randomUUID(), resume: false };
-  const summary = claude(cwd, testData, '/student-tracker:setup אני רז, מחזור הצהובים, החניכים: נועה, דני, מאיה', setup);
+  const summary = claude(cwd, '/student-tracker:setup אני רז, מחזור הצהובים, החניכים: נועה, דני, מאיה', setup);
   console.log(`setup summary:\n${summary}`);
   assert.match(summary, /לאשר\?/);
   assert.throws(() => store.connect(), /עוד לא הוקם מעקב/, 'nothing is created before the Commander confirms');
 
-  const handOff = claude(cwd, testData, 'כן', { ...setup, resume: true });
+  const handOff = claude(cwd, 'כן', { ...setup, resume: true });
   console.log(`setup hand-off:\n${handOff}`);
 
   const { cycle, commander } = store.readCycle();
@@ -62,7 +90,7 @@ test('setup + one Talk message: Entry kept whole, one Talk Evidence for Noa, las
   assert.deepEqual(team.map((t) => t.name).sort(), ['דני', 'מאיה', 'נועה']);
   for (const t of team) assert.match(t.id, /^t-[a-z0-9]{6}$/);
 
-  const talkReply = claude(cwd, testData, TALK);
+  const talkReply = claude(cwd, TALK);
   console.log(`talk reply:\n${talkReply}`);
   assert.match(talkReply.trim(), /לביטול: 'בטל'$/);
 
@@ -86,15 +114,14 @@ test('setup + one Talk message: Entry kept whole, one Talk Evidence for Noa, las
 
 test('an Entry left half-written is finished by the next message, and cards rebuild to the same state', () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'st-eval-'));
-  const testData = fs.mkdtempSync(path.join(os.tmpdir(), 'st-eval-data-'));
-  const store = openStore({ dataDir: testData });
+  const store = freshTestStore();
   store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' }, trainees: ['נועה', 'דני', 'מאיה'] });
   const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
 
   // A session that died after Noa's chunk, before Dani's.
   const stuckText = 'דיברתי היום עם נועה. אחר כך ישבתי עם דני.';
   let chunks = 0;
-  const dying = openStore({ dataDir: testData, interrupt: (p) => { if (p === 'chunk-written' && ++chunks === 1) throw new Error('session died'); } });
+  const dying = openStore({ dataDir: DATA, interrupt: (p) => { if (p === 'chunk-written' && ++chunks === 1) throw new Error('session died'); } });
   assert.throws(() => dying.recordEntry({
     text: stuckText,
     evidence: [
@@ -104,7 +131,7 @@ test('an Entry left half-written is finished by the next message, and cards rebu
   }), /session died/);
   assert.equal(store.readTrainee(id['דני']).evidence.length, 0);
 
-  const reply = claude(cwd, testData, 'דיברתי היום עם מאיה על הפרויקט');
+  const reply = claude(cwd, 'דיברתי היום עם מאיה על הפרויקט');
   console.log(`reply:\n${reply}`);
   assert.doesNotMatch(reply, /דני|נועה/, 'finishing the old Entry is silent');
 
@@ -121,4 +148,18 @@ test('an Entry left half-written is finished by the next message, and cards rebu
   const card = docs.get(`trainees/${id['מאיה']}`);
   docs.batch([{ op: 'set', path: `trainees/${id['מאיה']}`, data: { ...card.data, lastTalk: null, name: 'x' }, ifVersion: card.version }]);
   assert.deepEqual(store.rebuildCard(id['מאיה']), before);
+});
+
+test('setup without artifact tools stops before any question, with one Hebrew message of causes and fixes', () => {
+  // `claude -p` has no artifact tools, and with no test pointer setup takes the artifact path.
+  dropTestStore();
+  fs.rmSync(POINTER, { force: true });
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'st-eval-'));
+
+  const reply = claude(cwd, '/student-tracker:setup אני רז, מחזור הצהובים, החניכים: נועה');
+  console.log(`preflight reply:\n${reply}`);
+
+  assert.ok(reply.split('\n').filter((line) => line.trim().startsWith('•')).length >= 5, 'one message listing the causes');
+  assert.doesNotMatch(reply, /לאשר\?/, 'no questions or summary after a failed preflight');
+  assert.equal(fs.existsSync(POINTER), false, 'nothing was created');
 });

@@ -4,12 +4,12 @@ All Trainee data for a Cycle lives in one store. Skills touch it **only** throug
 
 ## Choosing the backend
 
-The pointer file `cycles.json` = `{current, archived: [...]}` lives in the plugin data dir and holds only store addresses. The form of `current` picks the backend:
+The pointer file `cycles.json` lives in the plugin data dir and holds only store addresses: `{current, archived: [...]}`, plus `backend: "local"` on a test pointer. Read it with the Read tool; a missing file means there is no pointer. Pick the backend from it:
 
-| `current` looks like | Backend | Mapping file | Status |
-|---|---|---|---|
-| `local:<dir>` | local JSON files, for tests | [storage-local.md](storage-local.md) | in use |
-| `https://claude.ai/…` | the Cycle's artifact database | `storage-artifact.md` | not built yet |
+| Pointer | Backend | Mapping file |
+|---|---|---|
+| `current` is `local:<dir>`, or `backend` is `"local"` | local JSON files, for tests | [storage-local.md](storage-local.md) |
+| `current` is a claude.ai artifact address, or there is no pointer | the Cycle's private artifact database | [storage-artifact.md](storage-artifact.md) |
 
 Read the mapping file for the backend before calling any operation.
 
@@ -49,7 +49,7 @@ Child ids are `<entryId>-<n>`, fixed in step 1, so redoing a chunk never duplica
 
 ### Reading
 
-- **`connect`** → `{backend, url, cycle, setup}`. Finds the current Cycle through the pointer. Fails with "עוד לא הוקם מעקב — הרץ `/student-tracker:setup`" when there is none.
+- **`connect`** → `{backend, url, cycle, setup}`. Finds the current Cycle through the pointer. With no pointer on the artifact backend, it looks the Cycle up by its page title "מעקב חניכים · <Cycle>": one match is used and saved as the pointer, several are put to the Commander as a choice. Fails with "עוד לא הוקם מעקב — הרץ `/student-tracker:setup`" when there is none.
 - **`readCycle`** → `{cycle, skills, preset, commander: {settings, hides}, playbook}`.
 - **`readTeam`** → every Trainee card, each with its `id`.
 - **`readTrainee(tid, since?)`** → `{card, evidence, assessments, followups, items, changes, sensitive, entries}` for one Trainee. `since` (`YYYY-MM-DD`) limits Evidence, Assessments and sensitive records by the day they happened, and Entries by the day they were written. Default for a brief or Trainee question: 6 weeks back.
@@ -63,6 +63,10 @@ Child ids are `<entryId>-<n>`, fixed in step 1, so redoing a chunk never duplica
 - **`updateTrainee(tid?, change)`** → the new card. Adds a Trainee, or records a Status change, an evaluation-process stage change, or a Trainee leaving (date, reason), each as a `changes` record plus the card update. Only after the Commander confirms. Not built yet.
 - **`updateSettings(change)`** → the new `commander/settings`. Commander name, role, Talk target and yellow/red thresholds. Only after the Commander confirms. Not built yet.
 - **`updateCycle(change)`** → the changed document. Edits this Cycle's preset copy, adds or archives a Skill, records a Project team. Only after the Commander confirms. Not built yet.
+
+### Dashboard
+
+- **`openDashboard`** → shows the Commander their Cycle's dashboard page.
 
 ### Setup
 

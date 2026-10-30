@@ -19,9 +19,7 @@ export async function main(argv) {
     if (i === -1) return undefined;
     return args.splice(i, 2)[1];
   };
-  // Tests point the whole run at a throwaway store; the Commander's own pointer is never touched.
-  const dataArg = opt('--data');
-  const dataDir = process.env.STUDENT_TRACKER_DATA || dataArg;
+  const dataDir = opt('--data');
   const since = opt('--since');
   const [op, ...rest] = args;
   const stdin = () => fs.readFileSync(0, 'utf8');

@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const BIN = fileURLToPath(new URL('../bin/student-tracker-store', import.meta.url));
 
-function run(args, { cwd, input, env } = {}) {
-  const r = spawnSync(BIN, args, { cwd, input, encoding: 'utf8', env: { ...process.env, ...env } });
+function run(args, { cwd, input } = {}) {
+  const r = spawnSync(BIN, args, { cwd, input, encoding: 'utf8' });
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
@@ -70,16 +70,13 @@ test('a malformed record-entry payload is refused', () => {
   assert.match(r.err, /--- entry/);
 });
 
-test('STUDENT_TRACKER_DATA selects a test store and leaves the plugin data dir alone', () => {
+test('create-cycle keeps the pointer\'s backend mark, so a test pointer stays a test pointer', () => {
   const { data, cwd } = fresh();
-  const testData = fs.mkdtempSync(path.join(os.tmpdir(), 'st-cli-test-'));
-  const env = { STUDENT_TRACKER_DATA: testData };
-
-  assert.equal(run(['--data', data, 'create-cycle'], { cwd, input: SETUP, env }).code, 0);
-
-  assert.deepEqual(fs.readdirSync(data), []);
-  assert.equal(JSON.parse(run(['--data', data, 'connect'], { cwd, env }).out).cycle, 'הצהובים');
-  assert.equal(run(['--data', data, 'connect'], { cwd }).code, 1);
+  fs.writeFileSync(path.join(data, 'cycles.json'), '{"backend": "local", "current": null, "archived": []}');
+  assert.equal(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).code, 0);
+  const pointer = JSON.parse(fs.readFileSync(path.join(data, 'cycles.json'), 'utf8'));
+  assert.equal(pointer.backend, 'local');
+  assert.match(pointer.current, /^local:/);
 });
 
 test('resume-pending and rebuild-card are callable from the CLI', () => {
