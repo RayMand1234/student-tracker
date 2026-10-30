@@ -57,25 +57,29 @@ The card is derived from the Trainee's records and always has this shape:
 
 ### `readTrainee(tid, since)`
 
-`get` `trainees/<tid>`, then with `out_dir`:
+`get` `trainees/<tid>`, then with `out_dir`, each query also `where retracted == false` (left out only when `retracted` asks for retracted records too):
 - `query` `trainees/<tid>/evidence` where `date >= since`
-- `list` `trainees/<tid>/assessments`, `…/followups`, `…/items`, `…/changes`
+- `query` `trainees/<tid>/assessments`, `…/followups`, `…/items`, `…/changes`
 - `query` `sensitive` where `trainee == tid` and `date >= since`
 - `query` `entries` where `trainees array-contains tid` and `at >= since`
 
 ### `recordEntry({text, evidence, assessments})`
 
-Check first, writing nothing if any fails: every refusal listed under `recordEntry` in storage.md (the preset is `meta/preset` from `readCycle`; for `clarifies` `get` that Evidence, in the Trainee's `evidence/` or in `sensitive/`; for `closes` the card's `followups`; for a marked excerpt, each piece around "[פרט אישי — בתיק]" is found in `text` after the one before it; no public excerpt piece or Follow-up text reaches into the stretch of `text` a sensitive part's excerpt covers: each must also stand somewhere in `text` outside every sensitive stretch), every Assessment refusal in storage.md (Skill ids from `meta/skills`; a `#<n>` ref must be an Evidence or sensitive part of this Entry for the same Trainee; a stored id is `get` in that Trainee's `evidence/` or in `sensitive/` with `record: "evidence"` and that `trainee`), and at most 49 records per Trainee.
+Check first, writing nothing if any fails: every refusal listed under `recordEntry` in storage.md (the preset is `meta/preset` from `readCycle`; for `clarifies` `get` that Evidence, in the Trainee's `evidence/` or in `sensitive/`, and refuse it if `retracted` is not `false`; for `closes` the card's `followups`; for a marked excerpt, each piece around "[פרט אישי — בתיק]" is found in `text` after the one before it; no public excerpt piece or Follow-up text reaches into the stretch of `text` a sensitive part's excerpt covers: each must also stand somewhere in `text` outside every sensitive stretch), every Assessment refusal in storage.md (Skill ids from `meta/skills`; a `#<n>` ref must be an Evidence or sensitive part of this Entry for the same Trainee; a stored id is `get` in that Trainee's `evidence/` or in `sensitive/` with `record: "evidence"` and that `trainee`, and `retracted: false`), and at most 49 records per Trainee.
 
 1. **Plan.** Pick the Entry id. Evidence number `n` (from 1, in message order) becomes `trainees/<tid>/evidence/<eid>-<n>` with data `{entry: eid, trainee, kind, date, excerpt, …every field of its kind (defaults from storage.md), closes, at, retracted: false}`; a listed Test's `subject` is the preset's. Sensitive parts continue the numbering: `sensitive/<eid>-<n>` with `{record: "evidence", entry: eid, trainee, kind (default "note"), category, date: <its Evidence's date>, excerpt, in: <its Evidence's id>, closes, at, retracted: false}`. The Follow-ups come last, each Evidence's own then its sensitive parts': `trainees/<tid>/followups/<eid>-<n>` with `{entry: eid, trainee, text, from: <its Evidence or sensitive part id>, date: <its Evidence's date>, at, retracted: false}`, or `sensitive/<eid>-<n>` with the same plus `record: "followup"` when opened by a sensitive part. The Assessments come last, in the order given: `trainees/<tid>/assessments/<eid>-<n>` with `{entry: eid, trainee, skill, score, author, reason, evidence: [ids, each #<n> as <eid>-<n>], date: <the latest date of the Evidence it cites>, at, retracted: false}`. Group the records by Trainee (a sensitive record goes in its `trainee`'s chunk).
 2. **Entry.** Create `entries/<eid>`: `{text, at, status: "writing", trainees: [tid…], children: [<eid>-<n>…], retracted: false, pending: [{trainee, records: [{collection, doc_id, data}…]}…]}`. If the id is taken, pick another `rand2`. Keep the returned version.
 3. **One chunk per Trainee.** `get` the card (version `v`). New `lastTalk` = the latest of the card's `lastTalk` and this chunk's Talk dates. New `followups` = the card's, minus the ids this chunk's Evidence and sensitive parts `closes`, plus this chunk's Follow-ups as `{id, text, date}` (text "[פרט אישי — בתיק]" for a sensitive one), sorted by `date`, then id. If the chunk has Assessments: for each Skill they are on, `query` `trainees/<tid>/assessments` where `skill == <id>` and `retracted == false`, add this chunk's, and rebuild that Skill's `skills` entry by the card rule (other Skills stay as they are). One `batch`: a create (`set`, no `if_version`) per record, plus `update` `trainees/<tid>` `{lastTalk, followups, skills}` with `if_version: v`. The pin makes the chunk all-or-nothing.
-   - Refused because the card moved, or because a record already exists (another session got there first): create each record that is still missing on its own ("already exists" is fine), then `rebuildCard(tid)`.
+   - Refused because the card moved, or because a record already exists (another session got there first): `get` `entries/<eid>`; if it is gone or has `deletion` set, another session hard-deleted it, so create nothing. Otherwise create each record that is still missing on its own ("already exists" is fine). Then `rebuildCard(tid)`.
 4. **Done.** `update` `entries/<eid>` `{status: "done", pending: {"__delete__": true}}` with the Entry's version. On a version conflict, `get` it again: if it is already `done`, stop; otherwise redo with the new version.
 
 ### `resumePending`
 
-`query` `entries` where `status == "writing"`. For each: `get` it, then for each chunk in `pending`, `get` its first record. Missing → run step 3 for that chunk. Present → `rebuildCard(trainee)` (the chunk was written; make sure the card caught up). Then step 4. Return the Entry ids you finished.
+1. `query` `entries` where `status == "writing"`. For each: `get` it, then for each chunk in `pending`, `get` its first record. Missing → run step 3 for that chunk. Present → `rebuildCard(trainee)` (the chunk was written; make sure the card caught up). Then step 4.
+2. `query` `entries` where `retraction == "writing"`: finish each with `retractEntry` steps 2–3.
+3. `query` `entries` where `deletion == "writing"`: finish each with `hardDelete` steps 2–3.
+
+Return the Entry ids you finished.
 
 ### `rebuildCard(tid)`
 
@@ -107,7 +111,7 @@ Only after the Commander confirmed. `get` `meta/preset` (version `v`). Check as 
 
 ### `flipSensitive(id, category?)`
 
-Only on the Commander's word. Find the record: `get` `sensitive/<id>`; if missing, `get` `trainees/<tid>/evidence/<id>` for the Trainee the Entry names (`get` `entries/<eid>` — the id up to its last `-<n>` — for its `trainees`). Refuse a Follow-up (`record: "followup"`, or found under `followups/`) and an id found nowhere; refuse moving into `sensitive/` without a category. If `entries/<its entry>` is still `status: "writing"`, finish that Entry first (`resumePending`'s steps for it), then start here again: a chunk written later would recreate the record at its old place.
+Only on the Commander's word. Find the record: `get` `sensitive/<id>`; if missing, `get` `trainees/<tid>/evidence/<id>` for the Trainee the Entry names (`get` `entries/<eid>` — the id up to its last `-<n>` — for its `trainees`). Refuse a Follow-up (`record: "followup"`, or found under `followups/`), a retracted Evidence (`retracted` not `false`) and an id found nowhere; refuse moving into `sensitive/` without a category. If `entries/<its entry>` is still `status: "writing"`, finish that Entry first (`resumePending`'s steps for it), then start here again: a chunk written later would recreate the record at its old place.
 
 1. The Follow-ups it opened: `query` `sensitive` where `from == id` (moving out), or `query` `trainees/<tid>/followups` where `from == id` (moving in). Note every version.
 2. New data: moving out, drop `record` and `category`; moving in, add `record: "evidence"` and `category` to the Evidence and `record: "followup"` to each Follow-up.
@@ -116,10 +120,30 @@ Only on the Commander's word. Find the record: `get` `sensitive/<id>`; if missin
 
 Return `{id, now: "public" | "sensitive", moved: [ids]}`.
 
+### `retractEntry(eid?)`
+
+Pick the Entry: the named one (`get` `entries/<eid>`; missing, or `deletion` set → refuse "no Entry <eid>"), or the last one: `query` `entries` with `order_by: at desc`, `limit: 5`, and take the first without `deletion` (all five have it → query again with a larger `limit`; no Entry at all → refuse "nothing has been recorded yet"; same `at` → the higher id). A retracted one is still the last: step 1 refuses it. If it is `status: "writing"`, finish it first (`resumePending` step 1 for it): a chunk written later would bring its records back unflagged.
+
+1. **Mark.** `retraction: "done"` → refuse "Entry <eid> is already retracted". `"writing"` → an earlier session started it; go on to step 2. Otherwise `update` `entries/<eid>` `{retracted: {at: Now}, retraction: "writing"}` with its version; on a conflict `get` it and decide again.
+2. **One chunk per Trainee** in the Entry's `trainees`. Find that Trainee's records among the Entry's `children`: for each id, `get` `trainees/<tid>/evidence|followups|assessments|items/<id>` and `sensitive/<id>` (the one whose `trainee` is this Trainee; a flip may have moved it). Keep those with `retracted: false`, noting each version. None left → `rebuildCard(tid)` and go to the next Trainee. Otherwise `get` the card (version `v`), build it as `rebuildCard` would with those records flipped, and one `batch`: `update` each record `{retracted: true}` with its `if_version`, plus `set` `trainees/<tid>` with `if_version: v`. On a conflict nothing was written: start this chunk over, at most 10 times.
+3. **Done.** `update` `entries/<eid>` `{retraction: "done"}` with its version (on a conflict `get` it again; stop if already `done`).
+
+Return `{entry, trainees, retracted: <the Entry's children>}`.
+
+### `hardDelete(eid)`
+
+Only after the Commander explicitly asked and confirmed. Refuse without an id. `get` `entries/<eid>`: missing, or `deletion` already set → refuse "no Entry <eid>" (`resumePending` finishes a delete already started). Finish it first if it is `status: "writing"`.
+
+1. **Mark.** `update` `entries/<eid>` `{deletion: "writing"}` with its version.
+2. **One chunk per Trainee** as in `retractEntry` step 2, but every one of that Trainee's records among `children` (retracted or not), each `delete` with its `if_version`, plus the card built without them.
+3. **Done.** `delete` `entries/<eid>` with its version.
+
+Return `{entry, trainees, deleted: <the Entry's children>}`.
+
 ### `openDashboard`
 
 Artifact tool `action: "open"` with the page's address.
 
 ### Not built yet
 
-`retractEntry`, `updateTrainee`, `updateSettings`, `updateCycle` (anything but `addTest`), `savePlaybookItem`, `retirePlaybookItem`, `hidePlaybookItem`, `copyCommanderScope`, `hardDelete`.
+`updateTrainee`, `updateSettings`, `updateCycle` (anything but `addTest`), `savePlaybookItem`, `retirePlaybookItem`, `hidePlaybookItem`, `copyCommanderScope`.

@@ -15,9 +15,11 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `connect` | `connect` |
 | `readCycle` | `read-cycle` |
 | `readTeam` | `read-team` |
-| `readTrainee(tid, since)` | `read-trainee <tid> --since YYYY-MM-DD` (omit `--since` for everything) |
+| `readTrainee(tid, since, retracted)` | `read-trainee <tid> --since YYYY-MM-DD` (omit `--since` for everything; add `--retracted` to include retracted records and Entries) |
 | `recordEntry(...)` | `record-entry`, payload on stdin (below) |
 | `recordAssessments(tid, ...)` | `record-assessments`, payload on stdin: `--- assessment` blocks (below) of that one Trainee, citing stored Evidence ids |
+| `retractEntry(eid?)` | `retract-entry <entry id>` (omit the id for the last Entry) |
+| `hardDelete(eid)` | `hard-delete <entry id>` |
 | `resumePending()` | `resume-pending` |
 | `rebuildCard(tid)` | `rebuild-card <tid>` |
 | `flipSensitive(id, category?)` | `flip-sensitive <evidence id> --category <category>` (omit `--category` when moving out of sensitive) |
@@ -119,6 +121,6 @@ trainee: דני
 CYCLE
 ```
 
-The command runs the whole write protocol itself, including version conflicts (it rebuilds the card); a refusal still means nothing of that step was written.
+The command runs the whole write or Retraction protocol itself, including version conflicts (it rebuilds the card); a refusal still means nothing of that step was written.
 
 Files: `<store root>/<collection path>/<doc id>.json` holding `{version, data}`, e.g. `trainees/t-ab12cd/evidence/e-20261030-0915-x7-1.json`.

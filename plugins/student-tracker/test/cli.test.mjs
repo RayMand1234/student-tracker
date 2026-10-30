@@ -225,3 +225,24 @@ test('record-entry takes Assessments as blocks citing #<n> or stored ids; record
   assert.equal(bad.code, 1);
   assert.match(bad.err, /whole number/);
 });
+
+test('retract-entry withdraws the last Entry or a named one; read-trainee --retracted still shows it; hard-delete removes it', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  const log = (text) => JSON.parse(run(['--data', data, 'record-entry'], { cwd, input: `--- entry\n${text}\n--- evidence ${noa.id} talk 2026-10-30\n${text}\n` }).out).entry;
+  const first = log('דיברתי עם נועה בבוקר.');
+  const last = run(['--data', data, 'retract-entry'], { cwd });
+  assert.equal(last.code, 0, last.err);
+  assert.equal(JSON.parse(last.out).entry, first);
+  const second = log('דיברתי עם נועה בערב.');
+  assert.equal(JSON.parse(run(['--data', data, 'retract-entry', second], { cwd }).out).entry, second);
+  assert.match(run(['--data', data, 'retract-entry', first], { cwd }).err, /already retracted/);
+
+  const read = (...flags) => JSON.parse(run(['--data', data, 'read-trainee', noa.id, ...flags], { cwd }).out);
+  assert.deepEqual(read().entries, []);
+  assert.deepEqual(read('--retracted').entries.map((e) => e.id).sort(), [first, second].sort());
+
+  assert.equal(run(['--data', data, 'hard-delete'], { cwd }).code, 1, 'hard-delete names the Entry');
+  assert.equal(JSON.parse(run(['--data', data, 'hard-delete', first], { cwd }).out).entry, first);
+  assert.deepEqual(read('--retracted', '--since', '2026-10-01').entries.map((e) => e.id), [second]);
+});

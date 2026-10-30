@@ -40,7 +40,8 @@ const SENSITIVE_KINDS = KINDS.filter((k) => !Object.keys(KIND_FIELDS[k]).length)
 
 // dataDir holds the pointer cycles.json = {current, archived}; `current` names the store.
 // `interrupt(point, info)` is called at each step boundary of a multi-step write; tests use it
-// to simulate a crash (throw) or a racing writer. Points: 'seeded', 'chunk', 'chunk-written'.
+// to simulate a crash (throw) or a racing writer. Points: 'seeded', 'chunk', 'chunk-written',
+// 'withdraw', 'withdrawn' (a Retraction or hard delete chunk).
 export function openStore({ dataDir, now = () => new Date(), rand = randomChars, interrupt = () => {} } = {}) {
   if (!dataDir) throw new StoreError('missing plugin data dir');
   const pointerPath = path.join(dataDir, POINTER);
@@ -104,8 +105,10 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     } catch (e) {
       if (!lostRace(e)) throw e;
       // Another session moved the card or wrote these records first: keep whatever records are
-      // still missing, then rebuild the card from sources.
-      for (const c of creates) {
+      // still missing, then rebuild the card from sources. Unless it has hard-deleted the Entry
+      // meanwhile: then they are missing on purpose.
+      const entry = docs.get(`entries/${missing[0].data.entry}`);
+      for (const c of entry && !entry.data.deletion ? creates : []) {
         try {
           docs.batch([c]);
         } catch (err) {
@@ -119,12 +122,68 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
 
   function finishEntry(docs, id) {
     for (const chunk of docs.get(`entries/${id}`).data.pending ?? []) writeChunk(docs, chunk);
+    writeEntry(docs, id, ({ data }) => {
+      if (data.status === 'done') return null; // another session finished it
+      const { pending, ...rest } = data;
+      return { op: 'set', data: { ...rest, status: 'done' } };
+    });
+  }
+
+  // One Trainee's share of a Retraction or hard delete (`how` = RETRACT | DELETE): the records of
+  // `ids` still to withdraw, flagged or removed in one version-pinned batch with the rebuilt card.
+  function withdrawChunk(docs, tid, ids, how) {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const todo = childrenOf(docs, tid, ids).filter(how.pending);
+      if (!todo.length) {
+        rebuildCard(docs, tid); // done earlier; make sure the card caught up
+        return;
+      }
+      const card = docs.get(`trainees/${tid}`);
+      const next = derive(docs, tid, todo.flatMap(how.after), new Set(todo.map((r) => r.path)));
+      interrupt('withdraw', { trainee: tid });
+      try {
+        docs.batch([
+          ...todo.map(how.write),
+          card ? { op: 'set', path: `trainees/${tid}`, data: next, ifVersion: card.version } : { op: 'create', path: `trainees/${tid}`, data: next },
+        ]);
+      } catch (e) {
+        if (!lostRace(e)) throw e;
+        continue;
+      }
+      interrupt('withdrawn', { trainee: tid });
+      return;
+    }
+    throw new StoreError(`card ${tid} kept changing; try again`);
+  }
+
+  // Withdraws everything cut from a marked Entry, Trainee by Trainee, then closes the mark.
+  // Gone already (another session hard-deleted it): nothing left to do.
+  function finishWithdrawal(docs, id, how) {
+    const entry = docs.get(`entries/${id}`);
+    if (!entry) return;
+    for (const tid of entry.data.trainees) withdrawChunk(docs, tid, entry.data.children, how);
+    writeEntry(docs, id, how.close);
+  }
+
+  // The Entry by id, or the last one written; finished first if an earlier session left it half-written.
+  function entryToWithdraw(docs, eid) {
+    const all = docs.list('entries').filter((e) => !e.data.deletion);
+    const entry = eid ? all.find((e) => e.id === eid) : all.sort((a, b) => byAt(a.data, b.data) || a.id.localeCompare(b.id)).at(-1);
+    if (!entry) throw new StoreError(eid ? `no Entry ${eid}` : 'nothing has been recorded yet');
+    // A chunk written after the Retraction would bring its records back unflagged.
+    if (entry.data.status === 'writing') finishEntry(docs, entry.id);
+    return entry.id;
+  }
+
+  // A pinned write on an Entry, retried while other sessions move it. `write(entry)` gives the
+  // write ({op, data}) or null when there is nothing left to do.
+  function writeEntry(docs, id, write) {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       const entry = docs.get(`entries/${id}`);
-      if (entry.data.status === 'done') return; // another session finished it
-      const { pending, ...rest } = entry.data;
+      const w = entry && write(entry);
+      if (!w) return;
       try {
-        docs.batch([{ op: 'set', path: `entries/${id}`, data: { ...rest, status: 'done' }, ifVersion: entry.version }]);
+        docs.batch([{ ...w, path: `entries/${id}`, ifVersion: entry.version }]);
         return;
       } catch (e) {
         if (!(e instanceof VersionConflict)) throw e;
@@ -217,11 +276,13 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       return flat(open().list('trainees'));
     },
 
-    readTrainee(tid, { since } = {}) {
+    // Retracted records and Entries are left out unless `retracted` asks for them too.
+    readTrainee(tid, { since, retracted = false } = {}) {
       const docs = open();
       const card = docs.get(`trainees/${tid}`);
       if (!card) throw new StoreError(`unknown Trainee ${tid}`);
-      const sub = (name) => flat(docs.list(`trainees/${tid}/${name}`));
+      const shown = (x) => retracted || x.retracted === false;
+      const sub = (name) => flat(docs.list(`trainees/${tid}/${name}`)).filter(shown);
       const from = (d) => !since || d >= since;
       return {
         card: { id: tid, ...card.data },
@@ -230,8 +291,8 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         followups: sub('followups'),
         items: sub('items'),
         changes: sub('changes'),
-        sensitive: sensitiveOf(docs, tid).filter((s) => from(s.date)),
-        entries: flat(docs.list('entries')).filter((e) => e.trainees.includes(tid) && from(e.at.slice(0, 10))),
+        sensitive: sensitiveOf(docs, tid).filter((s) => shown(s) && from(s.date)),
+        entries: flat(docs.list('entries')).filter((e) => shown(e) && !e.deletion && e.trainees.includes(tid) && from(e.at.slice(0, 10))),
       };
     },
 
@@ -467,10 +528,11 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
           continue;
         }
         const toPublic = Boolean(sensitiveDoc);
+        const evidence = toPublic ? sensitiveDoc : docs.get(`trainees/${tid}/evidence/${evidenceId}`);
+        if (evidence.data.retracted !== false) throw new StoreError(`${evidenceId} is retracted; it no longer counts or shows`);
         if (!toPublic && !FLIP_CATEGORIES.includes(category)) {
           throw new StoreError(`marking sensitive needs a category (one of ${FLIP_CATEGORIES.join(', ')})`);
         }
-        const evidence = toPublic ? sensitiveDoc : docs.get(`trainees/${tid}/evidence/${evidenceId}`);
         const followups = toPublic
           ? docs.list('sensitive').filter((d) => d.data.record === 'followup' && d.data.from === evidenceId)
           : docs.list(`trainees/${tid}/followups`).filter((d) => d.data.from === evidenceId);
@@ -503,12 +565,46 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       throw new StoreError(`${evidenceId} kept changing; try again`);
     },
 
-    // Finish every Entry an earlier session left at `writing`. Returns their ids.
+    // Retracts the named Entry, or the last one written: the Entry is marked first
+    // (`retracted: {at}`, `retraction: writing`), then everything cut from it is flagged Trainee
+    // by Trainee with the rebuilt cards, then `retraction: done`. Nothing is deleted or edited.
+    retractEntry(eid) {
+      const docs = open();
+      const id = entryToWithdraw(docs, eid);
+      writeEntry(docs, id, ({ data }) => {
+        if (data.retraction === 'done') throw new StoreError(`Entry ${id} is already retracted`);
+        if (data.retraction === 'writing') return null; // an earlier session started it
+        return { op: 'update', data: { retracted: { at: isoWithOffset(now()) }, retraction: 'writing' } };
+      });
+      const { trainees, children } = docs.get(`entries/${id}`).data;
+      finishWithdrawal(docs, id, RETRACT);
+      return { entry: id, trainees, retracted: children };
+    },
+
+    // Permanently removes an Entry and everything cut from it, rebuilding the cards. Only on the
+    // Commander's explicit request, after they confirmed.
+    hardDelete(eid) {
+      if (!eid) throw new StoreError('hardDelete needs the id of the Entry to delete');
+      const docs = open();
+      const id = entryToWithdraw(docs, eid);
+      const { trainees, children } = docs.get(`entries/${id}`).data;
+      writeEntry(docs, id, () => ({ op: 'update', data: { deletion: 'writing' } }));
+      finishWithdrawal(docs, id, DELETE);
+      return { entry: id, trainees, deleted: children };
+    },
+
+    // Finish every Entry, Retraction and hard delete an earlier session left at `writing`.
+    // Returns the Entry ids.
     resumePending() {
       const docs = open();
-      const stuck = docs.list('entries').filter((e) => e.data.status === 'writing').map((e) => e.id);
-      for (const id of stuck) finishEntry(docs, id);
-      return { finished: stuck };
+      const stuck = (key) => docs.list('entries').filter((e) => e.data[key] === 'writing').map((e) => e.id);
+      const writing = stuck('status');
+      for (const id of writing) finishEntry(docs, id);
+      const retracting = stuck('retraction');
+      for (const id of retracting) finishWithdrawal(docs, id, RETRACT);
+      const deleting = stuck('deletion');
+      for (const id of deleting) finishWithdrawal(docs, id, DELETE);
+      return { finished: [...new Set([...writing, ...retracting, ...deleting])] };
     },
 
     rebuildCard(tid) {
@@ -582,7 +678,37 @@ function evidenceOf(docs, tid, id) {
   const pub = docs.get(`trainees/${tid}/evidence/${id}`)?.data;
   const s = docs.get(`sensitive/${id}`)?.data;
   const found = pub ?? (s?.record === 'evidence' && s.trainee === tid ? s : null);
-  return found ? { id, date: found.date, kind: found.kind } : null;
+  return found?.retracted === false ? { id, date: found.date, kind: found.kind } : null;
+}
+
+// How a Retraction and a hard delete withdraw an Entry's records: which still need it, the write
+// for each, the record as the card should see it afterwards, and the write that closes the Entry.
+const RETRACT = {
+  pending: (r) => r.data.retracted === false,
+  write: (r) => ({ op: 'update', path: r.path, data: { retracted: true }, ifVersion: r.version }),
+  after: (r) => [{ path: r.path, data: { ...r.data, retracted: true } }],
+  close: ({ data }) => (data.retraction === 'done' ? null : { op: 'update', data: { retraction: 'done' } }),
+};
+const DELETE = {
+  pending: () => true,
+  write: (r) => ({ op: 'delete', path: r.path, ifVersion: r.version }),
+  after: () => [],
+  close: () => ({ op: 'delete' }),
+};
+
+// Subcollections that hold records cut from an Entry.
+const CHILD_KINDS = ['evidence', 'followups', 'assessments', 'items'];
+
+// Where each of `ids` that belongs to this Trainee is now, as {path, version, data}: in their
+// subcollections, or in `sensitive/` wherever a flip has moved it.
+function childrenOf(docs, tid, ids) {
+  return ids.flatMap((cid) => {
+    for (const p of [...CHILD_KINDS.map((k) => `trainees/${tid}/${k}/${cid}`), `sensitive/${cid}`]) {
+      const doc = docs.get(p);
+      if (doc?.data.trainee === tid) return [{ path: p, ...doc }];
+    }
+    return [];
+  });
 }
 
 const AUTHORS = ['agent', 'commander', 'trainee'];
