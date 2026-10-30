@@ -130,7 +130,6 @@ export function traineeWindow(card, { skills, preset, teams = [], evidence, toda
   const project = (id) => preset?.projects?.find((p) => p.id === id)?.name ?? MARK;
   const live = evidence ? evidence.filter((e) => e.retracted === false) : null;
   const latest = (kind) => (live ? live.filter((e) => e.kind === kind).sort(byDayDesc)[0]?.excerpt ?? null : null);
-  const s = card.status;
   return {
     id: card.id,
     name: card.name,
@@ -138,7 +137,7 @@ export function traineeWindow(card, { skills, preset, teams = [], evidence, toda
     days,
     evalStage: card.evalStage ?? null,
     snapshot: card.snapshot ?? null,
-    status: s ? { value: s.value, label: STATUS_LABELS[s.value] ?? s.value, by: s.by, reason: s.reason } : null,
+    status: statusOf(card),
     groups: shown,
     details: {
       lastTalk: card.lastTalk ? { date: card.lastTalk, days } : null,
@@ -156,7 +155,191 @@ export function traineeWindow(card, { skills, preset, teams = [], evidence, toda
   };
 }
 
+const statusOf = ({ status: s }) => (s ? { value: s.value, label: STATUS_LABELS[s.value] ?? s.value, by: s.by, reason: s.reason } : null);
+
+// The Trainee file (ticket 08, level 3): everything it shows, from the card plus every card
+// (`cards`, for the side list and the team line), `skills`, `preset`, `cycle` (meta/cycle, for
+// the start date), and the Trainee's live public `evidence` and `changes` (null while loading).
+// `kind` filters the timeline. A Trainee who left is read-only: no Talk chip.
+export function traineeFile(card, { cards, skills, preset, cycle, evidence, changes, today, talk, kind }) {
+  const left = isActive(card) ? null : card.left ?? { date: null };
+  const days = left ? null : daysSince(card.lastTalk, today);
+  const start = cycle?.start ?? today;
+  const groups = [...(skills?.groups ?? [])].sort((a, b) => a.order - b.order);
+  const row = (id, name) => {
+    const s = card.skills?.[id];
+    return { id, name, rating: rating(s, today), history: s?.a ?? [], n: s?.n ?? 0 };
+  };
+  const shown = groups.map((g) => {
+    const rows = g.skills.map((k) => row(k.id, k.name)).filter((k, i) => !g.skills[i].archived || k.rating);
+    return { id: g.id, name: g.name, mean: mean(rows.filter((k) => k.rating).map((k) => k.rating.score)), skills: rows };
+  });
+  const known = new Set(groups.flatMap((g) => g.skills.map((k) => k.id)));
+  const unknown = Object.keys(card.skills ?? {}).filter((id) => !known.has(id)).map((id) => row(id, MARK)).filter((k) => k.rating);
+  if (unknown.length) shown.push({ id: null, name: MARK, mean: mean(unknown.map((k) => k.rating.score)), skills: unknown });
+  const items = (k) => (card.items ?? []).filter((i) => i.kind === k).map(({ text, by }) => ({ text, by }));
+  return {
+    id: card.id,
+    name: card.name,
+    left,
+    days,
+    color: left ? null : talkColor(days, talk),
+    evalStage: card.evalStage ?? null,
+    status: statusOf(card),
+    lastTalk: card.lastTalk ?? null,
+    snapshot: card.snapshot ?? null,
+    start,
+    nav: fileNav(cards, { today, talk }),
+    growth: growth(card, { cards, skills, start, today }),
+    items: { improve: items('improve'), keep: items('keep') },
+    followups: (card.followups ?? []).map(({ text, date }) => ({ text, date })),
+    skills: shown,
+    timeline: timeline(evidence, changes, { preset, kind }),
+  };
+}
+
 // Newest day first; on the same day, the higher id (written later) first.
 function byDayDesc(a, b) {
   return (a.date < b.date ? 1 : a.date > b.date ? -1 : 0) || b.id.localeCompare(a.id, 'en', { numeric: true });
+}
+
+// Growth and trends (ticket 08): the card's counting Assessments replayed with the Rating rule at
+// the end of each Cycle week (the last week ends today). A line value is the mean Rating over the
+// Skills rated by then, per Stage / Interpersonal group and overall; the team line is the mean of
+// the active Trainees' values (this one included when active). null = nothing rated yet.
+export function growth(card, { cards, skills, start, today }) {
+  const groups = [...(skills?.groups ?? [])].sort((a, b) => a.order - b.order);
+  const weeks = cycleWeeks(start, today);
+  const ids = (g) => g.skills.map((k) => k.id);
+  const all = groups.flatMap(ids);
+  const team = cards.filter(isActive);
+  const lineOf = (c, these) => weeks.map((w) => meanAt(c, these, w.end));
+  const teamOf = (these) => {
+    const lines = team.map((c) => lineOf(c, these));
+    return weeks.map((_, i) => mean(lines.map((l) => l[i]).filter((v) => v !== null)));
+  };
+  const overall = { me: lineOf(card, all), team: teamOf(all) };
+  const then = shiftDate(today, -28);
+  const now = meanAt(card, all, today);
+  const was = meanAt(card, all, then);
+
+  // Each rated Skill's Rating today against 28 days earlier (the Trend baseline).
+  const rated = groups.flatMap((g) => g.skills.map((k) => {
+    const list = card.skills?.[k.id]?.a ?? [];
+    const r = rating(card.skills?.[k.id], today);
+    const base = ratingAt(list, then);
+    return r && { id: k.id, name: k.name, group: g.name, now: r.score, stale: r.stale, delta: base ? r.score - base.score : null };
+  })).filter(Boolean);
+  const movers = rated.filter((k) => k.delta)
+    .map(({ id, name, group, delta, now: score }) => ({ id, name, group, delta, now: score }))
+    .sort((a, b) => b.delta - a.delta);
+  const first = overall.me.findIndex((v) => v !== null);
+  const ratedIds = new Set(rated.map((k) => k.id));
+
+  return {
+    weeks,
+    // `change`: this week's value against the first week with one ("since the Cycle started").
+    groups: groups.map((g) => {
+      const me = lineOf(card, ids(g));
+      const from = me.find((v) => v !== null) ?? null;
+      const last = me.at(-1);
+      return { id: g.id, name: g.name, me, team: teamOf(ids(g)), now: last, change: from !== null && last !== null ? last - from : null };
+    }),
+    overall,
+    average: { now, delta: now !== null && was !== null ? now - was : null, team: overall.team.at(-1) },
+    moves: {
+      rose: movers.filter((m) => m.delta > 0).length,
+      fell: movers.filter((m) => m.delta < 0).length,
+      flat: rated.filter((k) => k.delta === 0).length,
+      fresh: rated.filter((k) => k.delta === null).length,
+    },
+    movers,
+    coverage: {
+      rated: rated.length,
+      // Skills in use: every one not archived, and an archived one while it still has a Rating.
+      total: groups.flatMap((g) => g.skills).filter((k) => !k.archived || ratedIds.has(k.id)).length,
+      firstWeek: first < 0 ? null : first + 1,
+      stale: rated.filter((k) => k.stale).length,
+    },
+  };
+}
+
+// The Trainee file's side list: active Trainees by Status (those needing care first, no Status
+// last), reddest first within a group as on the circles; then those who left, by name.
+export function fileNav(cards, { today, talk }) {
+  const item = (c) => {
+    const left = !isActive(c);
+    const days = left ? null : daysSince(c.lastTalk, today);
+    return { id: c.id, name: c.name, evalStage: left ? null : c.evalStage ?? null, days, color: left ? null : talkColor(days, talk), left };
+  };
+  const reddest = (a, b) => (b.days ?? Infinity) - (a.days ?? Infinity) || a.name.localeCompare(b.name, 'he');
+  const active = cards.filter(isActive);
+  const status = (c) => (STATUS_LABELS[c.status?.value] ? c.status.value : 'none');
+  const groups = [
+    ...NAV_GROUPS.map(([key, label]) => ({ key, label, items: active.filter((c) => status(c) === key).map(item).sort(reddest) })),
+    { key: 'left', label: 'עזבו', items: cards.filter((c) => !isActive(c)).map(item).sort((a, b) => a.name.localeCompare(b.name, 'he')) },
+  ];
+  return groups.filter((g) => g.items.length);
+}
+
+// Evidence kinds as the Commander calls them, in the order the timeline's chips list them.
+export const KIND_LABELS = {
+  talk: 'שיחה', test: 'תרץ', 'code-review': 'סקד', 'project-observation': 'תצפית פרויקט', 'self-assessment': 'רמ"ת',
+  'improve-keep': 'שיפור/שימור', goal: 'שאיפות', background: 'רקע', 'evaluation-event': 'תהליך הערכה',
+  clarification: 'הבהרה', note: 'הערה', status: 'שינוי סטטוס',
+};
+
+// The Trainee file's timeline: their live public Evidence and Status changes (from `changes`),
+// newest first; `kind` narrows it to one kind ('all' or a kind not present: everything).
+// null while the Evidence loads; with `changes` still loading, the Evidence shows meanwhile.
+export function timeline(evidence, changes, { preset, kind = 'all' }) {
+  if (!evidence) return null;
+  const project = (id) => preset?.projects?.find((p) => p.id === id)?.name ?? MARK;
+  const detail = (e) => {
+    if (e.kind === 'test') {
+      const parts = [e.test, e.score ?? (e.test ? '—' : null), e.self ? `לדבריו/ה: ${e.self}` : null].filter((x) => x != null);
+      return parts.length ? parts.join(' · ') : null;
+    }
+    if (e.kind === 'code-review') return e.test ?? null;
+    if (e.kind === 'project-observation') return e.project ? project(e.project) : null;
+    return null;
+  };
+  const label = (k) => KIND_LABELS[k] ?? k;
+  const status = (v) => (v ? STATUS_LABELS[v] ?? v : null);
+  const all = [
+    ...evidence.filter((e) => e.retracted === false).map((e) => ({
+      id: e.id, date: e.date, at: e.at ?? '', kind: e.kind, label: label(e.kind), text: e.excerpt, detail: detail(e),
+    })),
+    ...(changes ?? []).filter((c) => c.retracted === false && c.type === 'status').map((c) => ({
+      id: c.id, date: String(c.at).slice(0, 10), at: c.at, kind: 'status', label: label('status'),
+      text: c.reason ?? '', from: status(c.from), to: status(c.to), by: c.by,
+    })),
+  ].sort((a, b) => cmp(b.date, a.date) || cmp(b.at, a.at) || b.id.localeCompare(a.id, 'en', { numeric: true }));
+  const order = Object.keys(KIND_LABELS);
+  const present = [...new Set(all.map((e) => e.kind))]
+    .sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+  const kinds = present.map((k) => ({ kind: k, label: label(k), count: all.filter((e) => e.kind === k).length }));
+  return { kinds, entries: present.includes(kind) ? all.filter((e) => e.kind === kind) : all };
+}
+
+const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+const NAV_GROUPS = [['concern', 'דורשים טיפול'], ['watch', 'במעקב'], ['good', 'במסלול'], ['none', 'ללא סטטוס']];
+
+const isActive = (c) => c.active !== false && !c.left;
+const mean = (v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
+
+// The mean Rating over `ids` as of the end of `day`, or null when none is rated by then.
+function meanAt(card, ids, day) {
+  return mean(ids.map((id) => ratingAt(card.skills?.[id]?.a ?? [], day)).filter(Boolean).map((r) => r.score));
+}
+
+// Cycle weeks up to today: week w ends start + 7w − 1 days, the current one today.
+function cycleWeeks(start, today) {
+  const from = start && start <= today ? start : today;
+  const n = Math.floor(daysSince(from, today) / 7) + 1;
+  return Array.from({ length: n }, (_, i) => {
+    const end = shiftDate(from, 7 * (i + 1) - 1);
+    return { week: i + 1, end: end < today ? end : today };
+  });
 }

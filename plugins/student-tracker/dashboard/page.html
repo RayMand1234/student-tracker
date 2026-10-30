@@ -15,6 +15,8 @@
   --r1: #6b0e17; --r2: #c43a2c; --r3: #e6a21a; --r4: #7dc142; --r5: #10bf4c;
   --r1-ink: #ffffff; --r2-ink: #ffffff; --r3-ink: #2a1f05; --r4-ink: #13240a; --r5-ink: #ffffff;
   --shadow: 0 1px 2px rgb(20 30 20 / .06), 0 4px 16px rgb(20 30 20 / .06);
+  /* Charts (ticket 08): Trainee blue, team gray, decline red. */
+  --s1: #2a78d6; --down: #e34948; --cmp: #898781; --grid: #e3e6de; --axis: #c3c8bc; --accent-ink: #ffffff;
   --display: "Secular One", "IBM Plex Sans Hebrew", system-ui, sans-serif;
   --body: "IBM Plex Sans Hebrew", "Segoe UI", Arial, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
@@ -29,6 +31,7 @@
     --r1: #8c1d27; --r2: #d24a3b; --r3: #e9a925; --r4: #7fc64a; --r5: #1fd660;
     --r1-ink: #ffffff; --r2-ink: #ffffff; --r3-ink: #241a03; --r4-ink: #10200a; --r5-ink: #062410;
     --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
+    --s1: #3987e5; --down: #e66767; --cmp: #898781; --grid: #2a2f2b; --axis: #3a403b; --accent-ink: #0d1a15;
     color-scheme: dark;
   }
 }
@@ -41,6 +44,7 @@
   --r1: #8c1d27; --r2: #d24a3b; --r3: #e9a925; --r4: #7fc64a; --r5: #1fd660;
   --r1-ink: #ffffff; --r2-ink: #ffffff; --r3-ink: #241a03; --r4-ink: #10200a; --r5-ink: #062410;
   --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
+  --s1: #3987e5; --down: #e66767; --cmp: #898781; --grid: #2a2f2b; --axis: #3a403b; --accent-ink: #0d1a15;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -126,19 +130,112 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .q li { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: grid; gap: 2px; }
 .q .src { font-size: .74rem; color: var(--muted); }
 body.locked { overflow: hidden; }
+
+/* Trainee file (prototype variant C): side list by Status, then the file. */
+.file { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 28px; align-items: start; max-width: 1240px; margin-inline: auto; text-align: start; padding-block-start: 0; }
+.file h1, .file h2, .file h3 { font-family: var(--display); font-weight: 400; margin: 0; text-wrap: balance; line-height: 1.2; }
+.file h1 { font-size: 1.7rem; } .file h2 { font-size: 1.2rem; } .file h3 { font-size: 1.02rem; }
+.file p { margin: 0; }
+.file a { color: inherit; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.f-nav { position: sticky; top: calc(12px + env(safe-area-inset-top, 0px)); display: grid; gap: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+.f-nav .cyc { display: grid; gap: 2px; }
+.f-list { display: grid; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.f-list h3 { font-family: var(--body) !important; font-weight: 600 !important; font-size: .8rem !important; color: var(--muted); margin-block: 8px 2px !important; }
+.f-item { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-radius: 6px; padding: 6px 10px; text-decoration: none; white-space: nowrap; }
+.f-item:hover { background: var(--surface-2); }
+.f-item[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
+.f-item[aria-current="page"] .evtag { box-shadow: none; }
+.f-item .nm { display: inline-flex; gap: 7px; align-items: center; font-weight: 600; min-width: 0; }
+.f-item.gone { opacity: .62; }
+.f-item.home { font-weight: 600; color: var(--accent); }
+.dot.concern { color: var(--concern); } .dot.watch { color: var(--watch); } .dot.good { color: var(--good); } .dot.none, .dot.left { color: var(--r0); }
+.days { font-size: .8rem; font-weight: 600; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
+.file .evtag { box-shadow: inset 0 0 0 1px currentColor; }
+@media (max-width: 820px) {
+  .file { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .f-nav { position: static; max-height: none; overflow: visible; }
+  .f-list { display: flex; overflow-x: auto; gap: 6px; padding-block-end: 6px; }
+  .f-list .gh { display: none; }
+  .f-item { flex: none; border: 1px solid var(--line); }
+}
+.f-main { display: grid; gap: 28px; min-width: 0; }
+.f-hdr { display: grid; gap: 8px; }
+.f-hdr .meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.f-snap { font-size: 1.05rem; max-width: 70ch; margin-block-start: 4px !important; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; display: grid; gap: 8px; align-content: start; }
+.sec { display: grid; gap: 12px; }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 640px) { .two { grid-template-columns: 1fr; } }
+.bul { margin: 0; padding-inline-start: 18px; display: grid; gap: 4px; }
+.G-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.G-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 2px; align-content: start; }
+.G-tile .lbl { font-size: .82rem; color: var(--muted); }
+.G-tile .val { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 1.9rem; font-weight: 600; line-height: 1.15; }
+.G-tile .val small { font-family: var(--body); font-size: .82rem; font-weight: 400; color: var(--muted); }
+.G-tile .delta { font-size: .82rem; color: var(--muted); }
+.G-key { display: flex; gap: 16px; flex-wrap: wrap; font-size: .8rem; color: var(--muted); }
+.G-key span { display: inline-flex; gap: 6px; align-items: center; }
+.G-key i { display: inline-block; width: 18px; height: 2px; border-radius: 1px; }
+.G-mult { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; }
+.G-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 6px; display: grid; gap: 2px; min-width: 0; }
+.G-panel .t { display: flex; justify-content: space-between; gap: 8px; font-size: .88rem; font-weight: 600; flex-wrap: wrap; }
+.G-panel .t .v { font-weight: 500; color: var(--muted); font-size: .8rem; }
+.lc { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.G-mv .row { display: grid; grid-template-columns: minmax(0, 13em) 1fr 3.4em; gap: 10px; align-items: center; font-size: .86rem; padding: 2px 0; }
+.G-mv .track { position: relative; height: 14px; }
+.G-mv .track::before { content: ""; position: absolute; inset-block: -3px; left: 50%; width: 1px; background: var(--axis); }
+.G-mv .bar { position: absolute; inset-block: 1px; }
+.G-mv .bar.up { left: 50%; border-radius: 0 4px 4px 0; background: var(--s1); }
+.G-mv .bar.dn { right: 50%; border-radius: 4px 0 0 4px; background: var(--down); }
+.G-mv .v { font-family: var(--mono); font-size: .8rem; text-align: end; white-space: nowrap; }
+@media (max-width: 480px) { .G-mv .row { grid-template-columns: minmax(0, 1fr) 30% 3.2em; } }
+.G-tbl { overflow-x: auto; margin-block-start: 8px; }
+.G-tbl table { border-collapse: collapse; font-size: .8rem; }
+.G-tbl td, .G-tbl th { padding: 3px 8px; border-bottom: 1px solid var(--line); text-align: center; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.G-tbl th { font-family: var(--body); font-weight: 600; }
+summary { cursor: pointer; }
+#tip { position: fixed; z-index: 60; pointer-events: none; background: var(--fg); color: var(--bg); font-size: .8rem; padding: 6px 9px; border-radius: 6px; box-shadow: var(--shadow); display: grid; gap: 1px; max-width: 240px; }
+#tip[hidden] { display: none; }
+.f-stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr)); gap: 18px 28px; }
+.f-stage { display: grid; gap: 4px; align-content: start; }
+.f-stage h3 { display: flex; gap: 10px; align-items: baseline; }
+.f-sk { display: grid; grid-template-columns: minmax(0, 14em) 34px minmax(0, 1fr) 4.8em; gap: 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.f-sk .lbl { font-size: .88rem; }
+.f-sk .n { font-size: .75rem; color: var(--muted); text-align: end; }
+.hist { display: block; max-width: 100%; }
+@media (max-width: 560px) { .f-sk { grid-template-columns: minmax(0, 1fr) 34px 4.6em; } .f-sk .hist, .f-sk .nohist { display: none; } }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 999px; padding: 2px 11px; font: inherit; font-size: .8rem; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.feed { list-style: none; margin: 0; padding: 0; display: grid; }
+.feed li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.feed li:last-child { border-bottom: 0; }
+.feed .when { font-family: var(--mono); font-size: .78rem; color: var(--muted); padding-top: 2px; }
+.feed .what { min-width: 0; display: grid; gap: 3px; }
+.feed .hd { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.kind { font-size: .72rem; font-weight: 600; padding: 1px 7px; border-radius: 3px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.kind.status { color: var(--fg); }
 </style>
 
 <main class="page" dir="rtl" lang="he" id="app">
   <header class="head"><h1>מעקב חניכים</h1><p class="sub">טוען את המחזור…</p></header>
 </main>
 <div id="win" dir="rtl" lang="he"></div>
+<div id="tip" dir="rtl" lang="he" hidden></div>
 
 <script type="module">
 /* @inline derive.mjs */
 
 const app = document.getElementById('app');
 const win = document.getElementById('win');
-const state = { ready: false, failed: false, meta: {}, settings: null, cards: [], teams: [], evidence: null, evidenceFailed: false };
+const tip = document.getElementById('tip');
+const state = {
+  ready: false, failed: false, meta: {}, settings: null, cards: [], teams: [],
+  evidence: null, evidenceFailed: false, changes: null, changesFailed: false, // the open Trainee's
+  fileKind: 'all', tableOpen: false, // the Trainee file's timeline filter and table view
+};
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 // Escaped, with the marker for a cut-out sensitive part shown as a muted chip.
@@ -154,8 +251,21 @@ function route() {
   return /^t-[a-z0-9]+$/.test(h) ? { open: h } : {};
 }
 
+// Draws the page behind the window: `cls` is its layout (`page` = circles and notes, `file`).
+// An unchanged page is left alone; a redraw keeps the focused element by id.
+let shownApp = '';
+function paint(cls, html) {
+  if (cls === app.className && html === shownApp) return false;
+  const focused = app.contains(document.activeElement) ? document.activeElement.id : null;
+  app.className = cls;
+  app.innerHTML = html;
+  shownApp = html;
+  if (focused) document.getElementById(focused)?.focus({ preventScroll: true });
+  return true;
+}
+
 function note(title, text) {
-  app.innerHTML = `<header class="head"><h1>${esc(title)}</h1></header><p class="note">${esc(text)}</p>`;
+  paint('page', `<header class="head"><h1>${esc(title)}</h1></header><p class="note">${esc(text)}</p>`);
 }
 
 // A Rating square: dark red (1) → green (5), ↑/↓ Trend, faded when stale, a small square when the
@@ -216,6 +326,198 @@ function windowHtml(w) {
   </div></div>`;
 }
 
+// ---------- Trainee file ----------
+const f1 = (v) => (v === null || v === undefined ? '—' : v.toFixed(1));
+const signed = (v) => (v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1));
+const rVar = (v) => `var(--r${Math.max(1, Math.min(5, Math.round(v)))})`;
+const chipOf = (days, color) => (color
+  ? `<span class="days" style="background:${color.bg};color:${color.ink}" title="ימים מאז השיחה האחרונה">${days === null ? 'טרם שיחה' : `<bdi class="mono">${days}</bdi> ימים`}</span>`
+  : '');
+const utcOf = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+
+// A line chart on the 1–5 scale, weeks running right to left (Cycle start on the right). Its
+// series ride along in data-lc for the hover readout.
+function lineChart(series, n, { W = 300, H = 130, axis = true } = {}) {
+  const pl = 8, pr = axis ? 22 : 6, pt = 8, pb = axis ? 20 : 6, pw = W - pl - pr, ph = H - pt - pb;
+  const x = (i) => W - pr - (n > 1 ? i / (n - 1) : 0) * pw;
+  const y = (v) => pt + ((5 - v) / 4) * ph;
+  const path = (vals) => {
+    let d = '', on = false;
+    vals.forEach((v, i) => {
+      if (v === null) { on = false; return; }
+      d += `${on ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`;
+      on = true;
+    });
+    return d;
+  };
+  const lastOf = (vals) => { for (let i = vals.length - 1; i >= 0; i--) if (vals[i] !== null) return [i, vals[i]]; return null; };
+  const grid = axis
+    ? [1, 2, 3, 4, 5].map((v) => `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${W - pr + 5}" y="${y(v) + 4}" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${v}</text>`).join('')
+      + Array.from({ length: n }, (_, i) => i).filter((i) => i % 4 === 0).map((i) => `<text x="${x(i)}" y="${H - 5}" font-size="10" fill="var(--muted)" text-anchor="middle">ש׳ ${i + 1}</text>`).join('')
+      + `<line x1="${pl}" x2="${W - pr}" y1="${pt + ph}" y2="${pt + ph}" stroke="var(--axis)" stroke-width="1"/>`
+    : '';
+  const marks = series.map((s) => `<path d="${path(s.vals)}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`).join('')
+    + series.filter((s) => s.dot).map((s) => { const l = lastOf(s.vals); return l ? `<circle cx="${x(l[0])}" cy="${y(l[1])}" r="4" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>` : ''; }).join('')
+    // A single rated week draws no line: mark each series' point so it still shows.
+    + series.map((s) => s.vals.map((v, i) => (v !== null && s.vals[i - 1] == null && s.vals[i + 1] == null ? `<circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="${s.color}"/>` : '')).join('')).join('');
+  const data = esc(JSON.stringify({ W, pl, pr, n, s: series.map((s) => ({ n: s.name, c: s.color, v: s.vals })) }));
+  const label = series.map((s) => `${s.name}: ${f1(lastOf(s.vals)?.[1])}`).join(', ');
+  return `<svg class="lc" viewBox="0 0 ${W} ${H}" direction="ltr" data-lc="${data}" role="img" aria-label="${esc(label)}">${grid}${marks}
+    <line class="xh" x1="0" x2="0" y1="${pt}" y2="${pt + ph}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg>`;
+}
+
+// A Skill's history strip: each counting Assessment from the Cycle start (right) to today (left);
+// a circle for the agent's, a square for the Commander's.
+function histSvg(list, start, today, w = 160, h = 22) {
+  const s = utcOf(start), e = Math.max(utcOf(today), s + 1);
+  const x = (d) => 6 + (w - 12) * (1 - (Math.min(Math.max(utcOf(d), s), e) - s) / (e - s));
+  const y = (v) => h - 4 - (v - 1) * ((h - 8) / 4);
+  const pts = list.map(([d, v]) => [x(d).toFixed(1), y(v).toFixed(1)]);
+  return `<svg class="hist" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">
+    <line x1="4" x2="${w - 4}" y1="${h - 4}" y2="${h - 4}" stroke="var(--line)" stroke-width="1"/>
+    ${pts.length > 1 ? `<polyline points="${pts.map((p) => p.join(',')).join(' ')}" fill="none" stroke="var(--muted)" stroke-width="1" opacity=".6"/>` : ''}
+    ${list.map(([, v, a], i) => (a === 'commander'
+      ? `<rect x="${pts[i][0] - 4}" y="${pts[i][1] - 4}" width="8" height="8" fill="${rVar(v)}" stroke="var(--fg)" stroke-width="1"/>`
+      : `<circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="4" fill="${rVar(v)}"/>`)).join('')}
+  </svg>`;
+}
+
+function growthHtml(f) {
+  const g = f.growth;
+  const n = g.weeks.length;
+  const me = (vals) => ({ name: f.name, color: 'var(--s1)', vals, dot: true });
+  const team = (vals) => ({ name: 'ממוצע הצוות', color: 'var(--cmp)', vals });
+  const { average: a, moves: m, coverage: c } = g;
+  const delta = a.delta === null ? 'אין בסיס להשוואה'
+    : `${a.delta > 0 ? '↑ ' : a.delta < 0 ? '↓ ' : ''}${signed(a.delta)} מול לפני 4 שבועות`;
+  const tiles = `<div class="G-tiles">
+      <div class="G-tile"><span class="lbl">ממוצע כל המיומנויות</span><span class="val">${f1(a.now)}</span>
+        <span class="delta">${delta} · צוות ${f1(a.team)}</span>
+        ${lineChart([team(g.overall.team), me(g.overall.me)], n, { W: 240, H: 46, axis: false })}</div>
+      <div class="G-tile"><span class="lbl">ב-4 השבועות האחרונים</span><span class="val">${m.rose} <small>עלו</small> · ${m.fell} <small>ירדו</small></span>
+        <span class="delta">${m.flat} ללא שינוי · ${m.fresh} חדשות (בלי בסיס)</span></div>
+      <div class="G-tile"><span class="lbl">מכוסות בתיעוד</span><span class="val">${c.rated}/${c.total}</span>
+        <span class="delta">${c.firstWeek ? `דירוג ראשון בשבוע ${c.firstWeek}` : 'עוד אין דירוגים'} · ${c.stale} ישנים</span></div>
+    </div>`;
+  const panels = g.groups.map((p) => `<div class="G-panel"><div class="t"><span>${esc(p.name)}</span><span class="v"><bdi class="mono">${f1(p.now)}</bdi>${p.change ? ` (<bdi class="mono">${signed(p.change)}</bdi> מתחילת המחזור)` : ''}</span></div>
+      ${lineChart([team(p.team), me(p.me)], n)}</div>`).join('');
+  const table = `<details id="g-table"${state.tableOpen ? ' open' : ''}><summary class="small muted">הצג כטבלה</summary><div class="G-tbl"><table>
+      <thead><tr><th>שבוע</th>${g.groups.map((p) => `<th>${esc(p.name)}</th>`).join('')}<th>הכל</th><th>צוות</th></tr></thead>
+      <tbody>${g.weeks.map((w, i) => `<tr><td>${w.week}</td>${g.groups.map((p) => `<td>${f1(p.me[i])}</td>`).join('')}<td>${f1(g.overall.me[i])}</td><td>${f1(g.overall.team[i])}</td></tr>`).join('')}</tbody>
+    </table></div></details>`;
+  const movers = g.movers.length
+    ? g.movers.map((k) => `<div class="row" data-tip="${esc(`${k.name} · ${k.group}|${k.delta > 0 ? 'עלה' : 'ירד'} ${Math.abs(k.delta)} מול לפני 4 שבועות, עכשיו ${k.now}`)}">
+        <span>${esc(k.name)} <span class="small muted">${esc(k.group)}</span></span>
+        <span class="track"><span class="bar ${k.delta > 0 ? 'up' : 'dn'}" style="width:${(Math.abs(k.delta) / 4) * 50}%"></span></span>
+        <span class="v">${k.delta > 0 ? `↑ +${k.delta}` : `↓ ${k.delta}`}</span></div>`).join('')
+    : '<p class="muted small">אין שינויים ב-4 השבועות האחרונים.</p>';
+  return `<section class="sec"><div class="sec-head"><h2>צמיחה ומגמות</h2><span class="small muted">ממוצע הדירוגים בסוף כל שבוע · ימין = תחילת המחזור</span></div>
+    ${tiles}
+    <div class="G-key"><span><i style="background:var(--s1)"></i>${esc(f.name)}</span><span><i style="background:var(--cmp)"></i>ממוצע הצוות</span></div>
+    <div class="G-mult">${panels}</div>
+    ${table}
+    <div class="panel G-mv"><h3>מה זז ב-4 השבועות האחרונים</h3>${movers}</div>
+  </section>`;
+}
+
+function timelineHtml(f) {
+  if (state.evidenceFailed) return '<p class="muted">התיעודים לא נטענו.</p>';
+  const t = f.timeline;
+  if (!t) return '<p class="muted">טוען…</p>';
+  const chips = t.kinds.length ? `<div class="chips" role="group" aria-label="סינון לפי סוג">${[{ kind: 'all', label: 'הכל' }, ...t.kinds].map((k) => {
+    const on = state.fileKind === k.kind || (k.kind === 'all' && !t.kinds.some((x) => x.kind === state.fileKind));
+    return `<button class="chip" id="k-${esc(k.kind)}" data-kind="${esc(k.kind)}" aria-pressed="${on}">${esc(k.label)}${k.count ? ` <span class="mono">${k.count}</span>` : ''}</button>`;
+  }).join('')}</div>` : '';
+  const item = (e) => {
+    const head = e.kind === 'status'
+      ? `<b>${e.from ? `${esc(e.from)} ← ` : 'נקבע: '}${esc(e.to)}</b><span class="assess">${e.by === 'commander' ? 'מפקד' : 'הערכה'}</span>`
+      : e.detail ? `<span class="small muted">${redact(e.detail)}</span>` : '';
+    return `<li><span class="when">${ddmm(e.date)}</span><div class="what"><div class="hd"><span class="kind${e.kind === 'status' ? ' status' : ''}">${esc(e.label)}</span>${head}</div>
+      ${e.text ? `<p>${redact(e.text)}</p>` : ''}</div></li>`;
+  };
+  return `${chips}${state.changesFailed ? '<p class="small muted">שינויי הסטטוס לא נטענו.</p>' : ''}
+    <div class="panel">${t.entries.length ? `<ul class="feed">${t.entries.map(item).join('')}</ul>` : '<p class="muted">עוד אין תיעודים.</p>'}</div>`;
+}
+
+function fileHtml(f, cycle, weeksTotal) {
+  const nav = `<nav class="f-nav" aria-label="חניכים">
+      <div class="cyc"><h2>${esc(cycle.name)}</h2><span class="small muted">שבוע ${f.growth.weeks.length}${weeksTotal ? `/${weeksTotal}` : ''}</span></div>
+      <ul class="f-list">
+        <li><a class="f-item home" id="nav-home" href="#">→ לעיגולי השיחות</a></li>
+        ${f.nav.map((grp) => `<li class="gh"><h3>${esc(grp.label)}</h3></li>${grp.items.map((t) => `<li><a class="f-item${t.left ? ' gone' : ''}" id="nav-${esc(t.id)}" href="#file:${esc(t.id)}"${t.id === f.id ? ' aria-current="page"' : ''}>
+          <span class="nm"><span class="dot ${esc(grp.key)}" aria-hidden="true"></span>${esc(t.name)}${t.evalStage ? ` <span class="evtag">${esc(t.evalStage)}</span>` : ''}</span>${chipOf(t.days, t.color)}</a></li>`).join('')}`).join('')}
+      </ul></nav>`;
+  const sub = f.left
+    ? `עזב/ה${f.left.date ? ` ב-${ddmm(f.left.date)}` : ''}${f.left.reason ? ` · ${redact(f.left.reason)}` : ''} · לא נכלל בממוצע הצוות`
+    : f.lastTalk ? `שיחה אחרונה ${ddmm(f.lastTalk)}` : 'טרם נערכה שיחה';
+  const head = `<section class="f-hdr">
+      <div class="meta"><h1 id="file-name">${esc(f.name)}</h1>${f.status ? pill(f.status) : ''}${f.evalStage ? `<span class="evtag">${esc(f.evalStage)}</span>` : ''}${chipOf(f.days, f.color)}</div>
+      <span class="small muted">${sub}</span>
+      ${f.snapshot
+        ? `<div><span class="assess">הערכה</span> <span class="small muted">תמונת מצב · ${ddmm(String(f.snapshot.at).slice(0, 10))}</span><p class="f-snap">${redact(f.snapshot.text)}</p></div>`
+        : '<p class="muted">עוד אין תמונת מצב.</p>'}
+    </section>`;
+  const list = (items) => (items.length
+    ? items.map((i) => `<li>${redact(i.text)}${i.by === 'agent' ? ' <span class="assess">הצעה</span>' : ''}</li>`).join('')
+    : '<li class="muted">—</li>');
+  const keep = `<section class="two">
+      <div class="panel"><h2>שיפור</h2><ul class="bul">${list(f.items.improve)}</ul></div>
+      <div class="panel"><h2>שימור</h2><ul class="bul">${list(f.items.keep)}</ul></div>
+    </section>`;
+  const open = f.followups.length
+    ? `<section class="panel"><h2>נקודות פתוחות</h2><ul class="bul">${f.followups.map((x) => `<li>${redact(x.text)} <span class="small muted">מ-${ddmm(x.date)}</span></li>`).join('')}</ul></section>`
+    : '';
+  const today = localToday();
+  const skills = `<section class="sec"><div class="sec-head"><h2>מיומנויות לאורך המחזור</h2>${LEGEND}</div>
+      <div class="f-stages">${f.skills.map((st) => `<div class="f-stage"><h3>${esc(st.name)} <span class="mono small muted">${f1(st.mean)}</span></h3>
+        ${st.skills.map((k) => `<div class="f-sk"><span class="lbl">${esc(k.name)}</span>${square(k.rating, k.name)}${k.history.length ? histSvg(k.history, f.start, today) : '<span class="nohist small muted">אין תיעוד</span>'}<span class="n">${k.n ? `<bdi class="mono">${k.n}</bdi> ${k.n === 1 ? 'תיעוד' : 'תיעודים'}` : ''}</span></div>`).join('')}
+      </div>`).join('')}</div>
+      <p class="small muted">קו הזמן: ימין = תחילת המחזור (${ddmm(f.start)}), שמאל = היום. עיגול = הסוכן, ריבוע = מפקד.</p></section>`;
+  return `${nav}<div class="f-main">${head}${growthHtml(f)}${keep}${open}${skills}
+    <section class="sec"><h2>ציר זמן</h2>${timelineHtml(f)}</section></div>`;
+}
+
+// One readout for every chart: the week under the pointer on a line chart, the row on the movers.
+function showTip(lines, cx, cy) {
+  tip.replaceChildren(...lines.map(([text, color], i) => {
+    const s = document.createElement('span');
+    s.style.cssText = `display:flex;gap:6px;align-items:center${i === 0 ? ';font-weight:600' : ''}`;
+    if (color) {
+      const k = document.createElement('i');
+      k.style.cssText = `width:12px;height:2px;border-radius:1px;background:${color}`;
+      s.append(k);
+    }
+    s.append(document.createTextNode(text));
+    return s;
+  }));
+  tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  tip.style.left = `${Math.min(window.innerWidth - r.width - 8, Math.max(8, cx - r.width / 2))}px`;
+  tip.style.top = `${Math.max(8, cy - r.height - 14)}px`;
+}
+function hideTip() {
+  if (tip.hidden) return;
+  tip.hidden = true;
+  document.querySelectorAll('.lc .xh').forEach((l) => l.setAttribute('visibility', 'hidden'));
+}
+document.addEventListener('pointermove', (e) => {
+  const row = e.target.closest?.('[data-tip]');
+  if (row) { const [a, b] = row.dataset.tip.split('|'); return showTip([[a], [b]], e.clientX, row.getBoundingClientRect().top); }
+  const svg = e.target.closest?.('svg[data-lc]');
+  if (!svg) return hideTip();
+  const m = JSON.parse(svg.dataset.lc);
+  const r = svg.getBoundingClientRect();
+  const k = m.W / r.width, pw = m.W - m.pl - m.pr;
+  const i = Math.max(0, Math.min(m.n - 1, Math.round(((m.W - m.pr - (e.clientX - r.left) * k) / pw) * (m.n - 1))));
+  const xx = m.W - m.pr - (m.n > 1 ? i / (m.n - 1) : 0) * pw;
+  svg.querySelectorAll('.xh').forEach((l) => { l.setAttribute('x1', xx); l.setAttribute('x2', xx); l.setAttribute('visibility', 'visible'); });
+  showTip([[`שבוע ${i + 1}`], ...[...m.s].reverse().map((s) => [`${s.n}: ${f1(s.v[i])}`, s.c])], r.left + xx / k, r.top);
+});
+document.addEventListener('pointerleave', hideTip);
+window.addEventListener('scroll', hideTip, { passive: true });
+// The table view stays open across live updates.
+document.addEventListener('toggle', (e) => { if (e.target.id === 'g-table') state.tableOpen = e.target.open; }, true);
+
 let shownWindow = '';
 function renderWindow() {
   const { open } = route();
@@ -241,6 +543,8 @@ function renderWindow() {
 
 // After the window closes, focus goes back to the circle that opened it, once the circles are drawn.
 let returnTo = null;
+// The Trainee whose file was just opened, until it is drawn.
+let navTo = null;
 
 function render() {
   renderWindow();
@@ -253,9 +557,15 @@ function render() {
   const { file } = route();
   const fileOf = file && cards.find((c) => c.id === file);
   if (fileOf) {
-    app.innerHTML = `<header class="head"><h1>${esc(fileOf.name)}</h1><span class="sub">התיק המלא עוד לא זמין בגרסה הזו.</span></header>
-      <span><button class="btn plain" data-open="${esc(fileOf.id)}">חזרה לחלון</button>
-      <button class="btn plain" data-home="1">לעיגולים</button></span>`;
+    const f = traineeFile(fileOf, {
+      cards, skills: state.meta.skills, preset: state.meta.preset, cycle, evidence: state.evidence, changes: state.changes,
+      today: localToday(), talk: talkOf(), kind: state.fileKind,
+    });
+    paint('file', fileHtml(f, cycle, state.meta.preset?.schedule?.length));
+    if (navTo === file) { // just opened: on a phone the side list is a row; bring this Trainee into view
+      navTo = null;
+      app.querySelector('.f-item[aria-current]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
     return;
   }
   const talk = talkOf();
@@ -271,7 +581,7 @@ function render() {
         </button></li>`).join('')}</ul>`
     : `<p class="note">עוד אין חניכים במחזור. אפשר להוסיף בצ'אט: "תוסיף חניכה בשם נועה".</p>`;
 
-  app.innerHTML = `
+  paint('page', `
     <header class="head">
       <h1>${esc(cycle.name)}</h1>
       <span class="sub">ימים מאז השיחה האחרונה · יעד: כל ${esc(talk.target)} ימים</span>
@@ -281,7 +591,7 @@ function render() {
       </div>
     </header>
     ${ring}
-    ${left.length ? `<p class="left">עזבו: ${left.map(esc).join(', ')}</p>` : ''}`;
+    ${left.length ? `<p class="left">עזבו: ${left.map(esc).join(', ')}</p>` : ''}`);
   if (returnTo && !route().open) {
     document.querySelector(`[data-open="${CSS.escape(returnTo)}"]`)?.focus();
     returnTo = null;
@@ -297,6 +607,8 @@ const close = () => {
   else go('');
 };
 document.addEventListener('click', (e) => {
+  const k = e.target.closest('[data-kind]');
+  if (k) { state.fileKind = k.dataset.kind; render(); return; }
   const t = e.target.closest('[data-open], [data-file], [data-close], [data-home]');
   if (!t) return;
   // A click inside the window closes it only on its close button, not anywhere on the sheet.
@@ -329,22 +641,42 @@ if (!db) {
     state.teams = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   }), failed);
 
+  // One Trainee's live records of one subcollection, in state[field]; null = none open or loading.
+  const subscription = (field, sub) => {
+    let current = null;
+    let stop = () => {};
+    return (tid) => {
+      if (tid === current) return;
+      stop();
+      current = tid;
+      state[field] = null;
+      state[`${field}Failed`] = false;
+      stop = tid
+        ? db.collection(`trainees/${tid}/${sub}`).where('retracted', '==', false).onSnapshot((snap) => {
+          state[field] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          render();
+        }, () => { state[`${field}Failed`] = true; render(); })
+        : () => {};
+    };
+  };
+  const evidenceOf = subscription('evidence', 'evidence'); // while their window or file is open
+  const changesOf = subscription('changes', 'changes'); // Status changes, while their file is open
   let watching = null;
-  let stop = () => {};
+  let filed = null;
   const follow = () => {
-    const { open } = route();
+    const { open, file } = route();
     if (open !== watching) {
       if (watching && !open) { returnTo = watching; openedHere = false; } // closed, however it was
-      stop();
       watching = open;
-      state.evidence = null;
-      state.evidenceFailed = false;
-      stop = open
-        ? db.collection(`trainees/${open}/evidence`).where('retracted', '==', false).onSnapshot((snap) => {
-          state.evidence = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          render();
-        }, () => { state.evidenceFailed = true; render(); })
-        : () => {};
+    }
+    evidenceOf(open ?? file ?? null);
+    changesOf(file ?? null);
+    if (file !== filed) {
+      filed = file;
+      state.fileKind = 'all';
+      hideTip();
+      navTo = file;
+      if (file) window.scrollTo(0, 0);
     }
     render();
   };
