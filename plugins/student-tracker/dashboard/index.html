@@ -139,6 +139,35 @@ function talkScale(talk) {
   return { max, ticks: stops.map((s) => s[0]), gradient };
 }
 
+// A Skill's Rating on `today`, from its card entry `skill` = {a: [[date, score, author], …], n}
+// (the counting Assessments, oldest first) — the rule of ticket 05, as the agent applies it:
+// the latest Commander Assessment if there is one, else the latest agent one; null = unrated.
+// Trend = sign of now − 28 days earlier (null when unrated then); stale = older than 42 days.
+function rating(skill, today) {
+  const now = ratingAt(skill?.a ?? [], today);
+  if (!now) return null;
+  const then = ratingAt(skill.a, shiftDate(today, -28));
+  return {
+    ...now,
+    trend: then ? Math.sign(now.score - then.score) : null,
+    stale: daysSince(now.date, today) > 42,
+    n: skill.n,
+  };
+}
+
+// The Rating as of the end of `day`: on equal dates the later in the list (written last) wins.
+function ratingAt(list, day) {
+  const known = list.filter(([date, , author]) => date <= day && author !== 'trainee');
+  const commander = known.filter(([, , author]) => author === 'commander');
+  const pick = (commander.length ? commander : known).at(-1);
+  return pick ? { date: pick[0], score: pick[1], author: pick[2] } : null;
+}
+
+function shiftDate(day, days) {
+  const d = new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10) + days));
+  return d.toISOString().slice(0, 10);
+}
+
 const app = document.getElementById('app');
 const state = { ready: false, failed: false, cycle: undefined, settings: null, cards: [] };
 

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
-import { parseCycle, parseEntry, parseCycleChange } from './payload.mjs';
+import { parseCycle, parseEntry, parseAssessments, parseCycleChange } from './payload.mjs';
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation> [args]
   connect
@@ -10,7 +10,9 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
   read-trainee <tid> [--since YYYY-MM-DD]
   record-entry            < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>",
                             "+key: value" field lines, excerpt; "--- followup" + text after its Evidence;
-                            "--- sensitive <category>" + "+kind:"/"+closes:" lines + sentence after its Evidence
+                            "--- sensitive <category>" + "+kind:"/"+closes:" lines + sentence after its Evidence;
+                            "--- assessment <tid> <skill id> <score> <author>" + "+evidence: #<n>, <id>" + reason
+  record-assessments      < "--- assessment" blocks of one Trainee, citing stored Evidence ids
   flip-sensitive <evidence id> [--category <category>]
   update-cycle            < lines "add-test: <name>", "subject: <id>", "number: <n>", "alias: <alias>" (repeat)
   resume-pending
@@ -38,6 +40,10 @@ export async function main(argv) {
       'read-team': () => store.readTeam(),
       'read-trainee': () => store.readTrainee(rest[0], { since }),
       'record-entry': () => store.recordEntry(parseEntry(stdin())),
+      'record-assessments': () => {
+        const { trainee, assessments } = parseAssessments(stdin());
+        return store.recordAssessments(trainee, assessments);
+      },
       'update-cycle': () => store.updateCycle(parseCycleChange(stdin())),
       'flip-sensitive': () => store.flipSensitive(rest[0], { category }),
       'resume-pending': () => store.resumePending(),

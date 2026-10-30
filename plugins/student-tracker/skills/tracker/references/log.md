@@ -30,8 +30,9 @@ After the Commander answers, record the original message as the Entry (word-for-
 4. **Date** each Evidence: the day the thing happened, `YYYY-MM-DD`. Not stated = today. Run `date '+%F %A'` for today and its weekday, then resolve "אתמול", "שלשום", "ביום שני", "בשבוע שעבר ביום ג׳" to the actual date: the most recent such day, never in the future ("ביום שני" said on a Monday means today).
 5. **Sensitive details.** Cut them out (below).
 6. **Follow-ups.** Open and close them (below).
-7. **Record.** One `recordEntry` call with the full text and all its Evidence. On a refusal, fix what it names and call again; ask the Commander only when the fix needs their word.
-8. **Reply** (format below). Don't repeat the Commander's message back.
+7. **Assess.** Write Assessments on the Skills the Evidence speaks to, by [assess.md](assess.md): the Commander's own Assessments ("הדיבאג של נועה זה 4"), self-assessment forms and corrections included.
+8. **Record.** One `recordEntry` call with the full text, all its Evidence and its Assessments. On a refusal, fix what it names and call again; ask the Commander only when the fix needs their word.
+9. **Reply** (format below). Don't repeat the Commander's message back.
 
 ## Kinds
 
@@ -94,17 +95,19 @@ The evaluation process (רף מקס …) is not sensitive by default. Course mat
 
 ## Confirmation reply
 
-One line per Trainee saying what was recorded (kind and date, Test and score when given), then any professional-help line, then any question (unknown Test), then the Retraction line, last:
+One line per Trainee saying what was recorded (kind and date, Test and score when given), each followed by its Assessment lines ([assess.md](assess.md)), then any professional-help line, then any question (unknown Test, a proposal's "לעדכן?"), then the Retraction line, last:
 
 ```
 נועה — שיחה (30/10). [פרט אישי — בתיק] סומן כרגיש (משפחה) — 'זה לא רגיש' לביטול הסימון. נקודה פתוחה: "סיכמנו שתשב עם דני על זה".
+  יכולות דיבאג 2→3 (הערכה): מצאה לבד את הבאג עם הדפסות — שיחה 30/10
 דני — תרץ FOV (29/10), ציון 85.
 מאיה — תצפית בפרויקט Padens (30/10).
+  עבודת צוות —→4 (הערכה): הובילה את החלוקה למשימות — תצפית Padens 30/10
 קרוקודיל לא בקטלוג התרצים — להוסיף אותו? (באיזה מקצוע?)
 לביטול: 'בטל'
 ```
 
 - Dates as `DD/MM`. Mention a closed Follow-up as "נסגרה: …".
 - For each sensitive part: "[פרט אישי — בתיק] סומן כרגיש (<category in Hebrew: בריאות / משפחה / מצוקה / כספים / זוגיות / משמעת>)", then once per reply "'זה לא רגיש' לביטול הסימון". Never repeat a word of the sensitive part, nor of a Follow-up it opened (write that one as "נקודה פתוחה: [פרט אישי — בתיק]").
-- No Assessments, Ratings, advice or suggestions in this version.
+- No Advice on the confirmation reply; a proposal "(הצעה) מציע לעדכן …" is the only suggestion it carries.
 - The reply always ends with the line `לביטול: 'בטל'` when something was recorded. A reply that only asks a question records nothing and has no Retraction line.

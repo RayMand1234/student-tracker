@@ -68,7 +68,9 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     ];
     const sensitive = [...kept('sensitive/', sensitiveOf(docs, tid)), ...fromExtra('sensitive/')];
     const prev = docs.get(`trainees/${tid}`)?.data;
-    return deriveCard({ changes: sub('changes'), evidence: sub('evidence'), followups: sub('followups'), sensitive }, prev);
+    return deriveCard({
+      changes: sub('changes'), evidence: sub('evidence'), followups: sub('followups'), assessments: sub('assessments'), sensitive,
+    }, prev);
   }
 
   function rebuildCard(docs, tid) {
@@ -235,7 +237,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
 
     // Entry written as `writing` with its whole plan → one chunk per Trainee → `done`.
     // Child ids are deterministic, so finishing it again never duplicates a record.
-    recordEntry({ text, evidence = [] }) {
+    recordEntry({ text, evidence = [], assessments = [] }) {
       const docs = open();
       if (!text) throw new StoreError('Entry text is required');
       if (!evidence.length) throw new StoreError('an Entry needs at least one Evidence');
@@ -265,7 +267,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
           throw new StoreError(`excerpt must be copied word-for-word from the Entry: "${ev.excerpt}"`);
         }
         const fields = kindFields(ev, preset);
-        if (ev.kind === 'clarification' && !isEvidenceOf(docs, ev.trainee, fields.clarifies)) {
+        if (ev.kind === 'clarification' && !evidenceOf(docs, ev.trainee, fields.clarifies)) {
           throw new StoreError(`a clarification needs clarifies = the id of the ${ev.trainee} Evidence it corrects`);
         }
         checkFollowups(followups);
@@ -298,7 +300,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
 
       const d = now();
       const at = isoWithOffset(d);
-      const stamp = `e-${localDate(d).replaceAll('-', '')}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+      const stamp = stampOf('e', d);
       let id;
       do id = `${stamp}-${rand(2)}`; while (docs.get(`entries/${id}`));
 
@@ -347,7 +349,22 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         openFollowups(ev.followups ?? [], children[i]);
         for (const part of partsOf[i]) openFollowups(part.followups, part);
       }
-      const all = [...children, ...parts, ...opened];
+      // Assessments come last; `#<n>` cites this Entry's record `<entryId>-<n>`.
+      const ours = [...children, ...parts];
+      const judged = checkAssessments(docs, assessments, (ref, tid) => {
+        const local = /^#\d+$/.test(ref) && ours.find((c) => c.id === `${id}-${ref.slice(1)}`);
+        if (local) return local.trainee === tid ? { id: local.id, date: local.data.date, kind: local.data.kind } : null;
+        return /^#/.test(ref) ? null : evidenceOf(docs, tid, ref);
+      }).map((a) => {
+        const childId = nextId();
+        return {
+          id: childId,
+          path: `trainees/${a.trainee}/assessments/${childId}`,
+          trainee: a.trainee,
+          data: { entry: id, ...a, at, retracted: false },
+        };
+      });
+      const all = [...children, ...parts, ...opened, ...judged];
       const trainees = [...new Set(all.map((c) => c.trainee))];
       const pending = trainees.map((trainee) => ({
         trainee,
@@ -371,7 +388,39 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         evidence: children.map((c) => c.id),
         sensitive: parts.map((c) => c.id),
         followups: opened.map((c) => c.id),
+        assessments: judged.map((c) => c.id),
       };
+    },
+
+    // Assessments of one Trainee outside an Entry (a re-rate, an accepted proposal), dated today,
+    // in one version-pinned batch with the card.
+    recordAssessments(tid, assessments = []) {
+      const docs = open();
+      if (!assessments.length) throw new StoreError('give at least one Assessment');
+      const checked = checkAssessments(docs, assessments.map((a) => ({ ...a, trainee: tid })), (ref) => evidenceOf(docs, tid, ref));
+      const d = now();
+      const at = isoWithOffset(d);
+      const stamp = stampOf('a', d);
+      const taken = new Set();
+      const records = checked.map((a) => {
+        let id;
+        do id = `${stamp}-${rand(2)}`; while (taken.has(id) || docs.get(`trainees/${tid}/assessments/${id}`));
+        taken.add(id);
+        return { path: `trainees/${tid}/assessments/${id}`, data: { entry: null, ...a, date: today(), at, retracted: false } };
+      });
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        const card = docs.get(`trainees/${tid}`);
+        try {
+          docs.batch([
+            ...records.map((r) => ({ op: 'create', path: r.path, data: r.data })),
+            { op: 'set', path: `trainees/${tid}`, data: derive(docs, tid, records), ifVersion: card.version },
+          ]);
+          return { assessments: records.map((r) => r.path.split('/').at(-1)) };
+        } catch (e) {
+          if (!(e instanceof VersionConflict)) throw e;
+        }
+      }
+      throw new StoreError(`card ${tid} kept changing; try again`);
     },
 
     // Only after the Commander confirms. This version handles one change: adding a Test.
@@ -528,11 +577,43 @@ function wordForWord(text, excerpt) {
   return true;
 }
 
-// The Trainee's Evidence by that id, public or sensitive.
-function isEvidenceOf(docs, tid, id) {
-  if (docs.get(`trainees/${tid}/evidence/${id}`)) return true;
+// The Trainee's Evidence by that id, public or sensitive, as {id, date, kind}; null if there is none.
+function evidenceOf(docs, tid, id) {
+  const pub = docs.get(`trainees/${tid}/evidence/${id}`)?.data;
   const s = docs.get(`sensitive/${id}`)?.data;
-  return s?.record === 'evidence' && s.trainee === tid;
+  const found = pub ?? (s?.record === 'evidence' && s.trainee === tid ? s : null);
+  return found ? { id, date: found.date, kind: found.kind } : null;
+}
+
+const AUTHORS = ['agent', 'commander', 'trainee'];
+
+// Checks Assessments against the Skill framework; `cite(ref, tid)` resolves a cited ref to that
+// Trainee's Evidence {id, date, kind}, or null. Returns each with its Evidence ids, dated by the latest.
+function checkAssessments(docs, assessments, cite) {
+  const skills = new Set((docs.get('meta/skills')?.data.groups ?? []).flatMap((g) => g.skills.filter((k) => !k.archived).map((k) => k.id)));
+  const seen = new Set();
+  return assessments.map((a) => {
+    const { trainee, skill, score, author, reason, evidence = [], ...rest } = a;
+    if (Object.keys(rest).length) throw new StoreError(`an Assessment takes only trainee, skill, score, author, reason and evidence`);
+    if (!docs.get(`trainees/${trainee}`)) throw new StoreError(`unknown Trainee ${trainee}`);
+    if (!skills.has(skill)) throw new StoreError(`unknown Skill "${skill}"; use a Skill id from meta/skills`);
+    if (!Number.isInteger(score) || score < 1 || score > 5) throw new StoreError(`an Assessment score is a whole number from 1 to 5, got ${JSON.stringify(score)}`);
+    if (!AUTHORS.includes(author)) throw new StoreError(`author is one of ${AUTHORS.join(', ')}, got "${author}"`);
+    if (typeof reason !== 'string' || !reason.trim()) throw new StoreError('an Assessment needs a reason');
+    if (!evidence.length) throw new StoreError('an Assessment rests on at least one Evidence');
+    const key = `${trainee} ${skill} ${author}`;
+    if (seen.has(key)) throw new StoreError(`${skill} of ${trainee} is assessed twice by the ${author}; write one holistic Assessment`);
+    seen.add(key);
+    const cited = evidence.map((ref) => {
+      const found = cite(ref, trainee);
+      if (!found) throw new StoreError(`"${ref}" is no Evidence of ${trainee} (cite this Entry's Evidence as #<n>, or a stored Evidence id)`);
+      return found;
+    });
+    if (author === 'trainee' && !cited.some((c) => c.kind === 'self-assessment')) {
+      throw new StoreError('a Trainee\'s own Assessment comes from their self-assessment form: cite that self-assessment Evidence');
+    }
+    return { trainee, skill, score, author, reason, evidence: cited.map((c) => c.id), date: cited.map((c) => c.date).sort().at(-1) };
+  });
 }
 
 // Every [start, end) at which `part` stands in `text`.
@@ -554,7 +635,7 @@ function stillOpen(followups, evidence) {
 // The card is derived from the Trainee's records alone. Agent-written caches (Snapshot,
 // next-Talk questions) are not derivable, so they carry over from the previous card. It is
 // display-safe: a sensitive Follow-up shows as MARK.
-function deriveCard({ changes, evidence, followups = [], sensitive = [] }, prev = {}) {
+function deriveCard({ changes, evidence, followups = [], assessments = [], sensitive = [] }, prev = {}) {
   const live = (xs) => xs.filter((x) => x.retracted === false);
   const named = live(changes).filter((c) => c.name).sort(byAt).at(-1);
   const masked = sensitive.filter((s) => s.record === 'followup').map((f) => ({ ...f, text: MARK }));
@@ -574,11 +655,32 @@ function deriveCard({ changes, evidence, followups = [], sensitive = [] }, prev 
       .sort((a, b) => (a.date + a.id < b.date + b.id ? -1 : 1))
       .map(({ id, text, date }) => ({ id, text, date })),
     nextTalk: prev?.nextTalk ?? null,
-    skills: {},
+    skills: skillsOf(assessments, allEvidence),
   };
 }
 
+// Per Skill, the Assessments that count toward its Rating as [date, score, author], oldest first,
+// and `n`, how many live Evidence those counting Assessments cite. A Trainee's own never
+// count; once the Commander has assessed a Skill, the agent's later ones are kept but don't either.
+function skillsOf(assessments, evidence) {
+  const live = new Set(evidence.filter((e) => e.retracted === false).map((e) => e.id));
+  const bySkill = {};
+  for (const a of assessments.filter((x) => x.retracted === false && x.author !== 'trainee').sort(byDate)) {
+    (bySkill[a.skill] ??= []).push(a);
+  }
+  return Object.fromEntries(Object.keys(bySkill).sort().map((skill) => {
+    const list = bySkill[skill];
+    const first = list.findIndex((a) => a.author === 'commander');
+    const counting = first === -1 ? list : list.filter((a, i) => i < first || a.author === 'commander');
+    const cited = new Set(counting.flatMap((a) => a.evidence).filter((eid) => live.has(eid)));
+    return [skill, { a: counting.map((a) => [a.date, a.score, a.author]), n: cited.size }];
+  }));
+}
+
 const byAt = (a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
+// By the day it happened, then when it was written, then id (`…-10` after `…-9`).
+const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) || byAt(a, b)
+  || a.id.localeCompare(b.id, 'en', { numeric: true });
 
 const flat = (docs) => docs.map((d) => ({ id: d.id, ...d.data }));
 const sensitiveOf = (docs, tid) => flat(docs.list('sensitive')).filter((s) => s.trainee === tid);
@@ -611,6 +713,9 @@ const pad = (n) => String(n).padStart(2, '0');
 function localDate(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+// `<prefix>-YYYYMMDD-HHMM`, local time: the stem of Entry and standalone Assessment ids.
+const stampOf = (prefix, d) => `${prefix}-${localDate(d).replaceAll('-', '')}-${pad(d.getHours())}${pad(d.getMinutes())}`;
 
 function isoWithOffset(d) {
   const off = -d.getTimezoneOffset();

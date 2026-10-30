@@ -190,3 +190,38 @@ test('a sensitive block takes only kind and closes lines', () => {
   assert.equal(r.code, 1);
   assert.match(r.err, /sensitive part takes only/);
 });
+
+test('record-entry takes Assessments as blocks citing #<n> or stored ids; record-assessments writes them on their own', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  const input = `--- entry
+דיברתי עם נועה, היא מצאה לבד את הבאג. הדיבאג של נועה זה 4
+--- evidence ${noa.id} talk 2026-10-30
++topics: דיבאג
+דיברתי עם נועה, היא מצאה לבד את הבאג.
+--- evidence ${noa.id} note 2026-10-30
+הדיבאג של נועה זה 4
+--- assessment ${noa.id} impl.debugging 4 commander
++evidence: #2, #1
+המפקד קבע 4
+--- assessment ${noa.id} learn.independence 3 agent
++evidence: #1
+מצאה את הבאג לבד
+`;
+  const logged = run(['--data', data, 'record-entry'], { cwd, input });
+  assert.equal(logged.code, 0, logged.err);
+  const { entry, assessments } = JSON.parse(logged.out);
+  assert.deepEqual(assessments, [`${entry}-3`, `${entry}-4`]);
+  const t = JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out);
+  assert.deepEqual(t.assessments.map((a) => [a.skill, a.score, a.author, a.reason, a.evidence]), [
+    ['impl.debugging', 4, 'commander', 'המפקד קבע 4', [`${entry}-2`, `${entry}-1`]],
+    ['learn.independence', 3, 'agent', 'מצאה את הבאג לבד', [`${entry}-1`]],
+  ]);
+
+  const again = run(['--data', data, 'record-assessments'], { cwd, input: `--- assessment ${noa.id} impl.debugging 3 agent\n+evidence: ${entry}-1\nבדיקה מחדש\n` });
+  assert.equal(again.code, 0, again.err);
+  assert.match(JSON.parse(again.out).assessments[0], /^a-\d{8}-\d{4}-[a-z0-9]{2}$/);
+  const bad = run(['--data', data, 'record-assessments'], { cwd, input: `--- assessment ${noa.id} impl.debugging 3.5 agent\n+evidence: ${entry}-1\nx\n` });
+  assert.equal(bad.code, 1);
+  assert.match(bad.err, /whole number/);
+});
