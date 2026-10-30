@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
-import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings } from './payload.mjs';
+import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings, parseNextTalk } from './payload.mjs';
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation> [args]
   connect
@@ -11,6 +11,9 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
   read-team
   read-trainee <tid> [--since YYYY-MM-DD] [--retracted]
   read-playbook <tid> [<skill id> …]   (the Playbook items for Advice; no Skill: the Trainee's targets)
+  read-status             (team status: who needs a Talk, who is declining, shared weaknesses)
+  take-alert [<tid> <theme…>]   (the one alert for this reply, marked shown today; <tid> <theme>: a
+                            pattern repeated 3+ times for the Trainee just written about)
   record-entry [--insist] < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>",
                             "+key: value" field lines, excerpt; "--- followup" + text after its Evidence;
                             "--- sensitive <category>" + "+kind:"/"+closes:" lines + sentence after its Evidence;
@@ -22,6 +25,7 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
                           < "--- assessment" blocks of one Trainee, citing stored Evidence ids,
                             optional "--- next-talk <tid>" + one question per line
                           (--insist: the Commander asked to record about a Trainee who left)
+  record-next-talk        < "--- next-talk <tid>" + one question per line (the brief's questions)
   flip-sensitive <evidence id> [--category <category>]
   retract-entry [<entry id>]   (the last Entry when none is named)
   hard-delete <entry id>       (only on the Commander's explicit, confirmed request)
@@ -67,6 +71,12 @@ export async function main(argv) {
       'read-trainee': () => store.readTrainee(rest[0], { since, retracted }),
       'record-entry': () => store.recordEntry({ ...parseEntry(stdin()), insist }),
       'read-playbook': () => store.readPlaybook(rest[0], { skills: rest.slice(1) }),
+      'read-status': () => store.readStatus(),
+      'take-alert': () => store.takeAlert(rest.length ? { pattern: { trainee: rest[0], theme: rest.slice(1).join(' ') } } : {}),
+      'record-next-talk': () => {
+        const { trainee, questions } = parseNextTalk(stdin());
+        return store.recordNextTalk(trainee, questions);
+      },
       'record-assessments': () => {
         const { trainee, assessments, nextTalk } = parseAssessments(stdin());
         return store.recordAssessments(trainee, assessments, { insist, nextTalk });

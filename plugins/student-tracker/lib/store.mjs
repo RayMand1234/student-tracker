@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { openDocs, StoreError, VersionConflict, AlreadyExists, MAX_BATCH_WRITES, MAX_BATCH_BYTES } from './docs.mjs';
 import { basePlaybook, pickPlaybook } from './playbook.mjs';
 import { rating } from '../dashboard/derive.mjs';
+import { teamStatus, dueAlerts, keepShown } from './team.mjs';
 
 export { StoreError, VersionConflict };
 
@@ -73,6 +74,14 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     if (found.length === 1) writeJson(pointerPath, { ...pointer, current: found[0].url });
   }
   const today = () => localDate(now());
+  // What team status and alerts are computed from.
+  const teamInputs = (docs) => ({
+    cards: flat(docs.list('trainees')),
+    cycle: docs.get('meta/cycle')?.data,
+    framework: docs.get('meta/skills')?.data,
+    talk: docs.get('commander/settings')?.data?.talk ?? DEFAULT_TALK,
+    today: today(),
+  });
 
   // Read every source record of one Trainee (its sensitive records included) and derive the
   // card from them, plus `extra` records ({path, data}) about to be written.
@@ -194,7 +203,9 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
   }
 
   // One `changes` record of a Trainee plus their rebuilt card, in one version-pinned batch.
-  function writeChange(docs, tid, change) {
+  const writeChange = (docs, tid, change) => writeChangeRecord(docs, tid, change).card;
+  // The same, giving the record's id too: {id, card}.
+  function writeChangeRecord(docs, tid, change) {
     const d = now();
     let id;
     do id = `${stampOf('c', d)}-${rand(2)}`; while (docs.get(`trainees/${tid}/changes/${id}`));
@@ -207,7 +218,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
           { op: 'create', path: record.path, data: change },
           { op: 'set', path: `trainees/${tid}`, data: next, ifVersion: card.version },
         ]);
-        return { id: tid, ...next };
+        return { id, card: { id: tid, ...next } };
       } catch (e) {
         if (!(e instanceof VersionConflict)) throw e;
       }
@@ -367,6 +378,36 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         rate: rating,
         focus: skills,
       });
+    },
+
+    // "מה המצב": who needs a Talk, who is declining, shared weaknesses, the rest. A read.
+    readStatus() {
+      return teamStatus(teamInputs(open()));
+    },
+
+    // The one proactive alert for this reply, if any is due, and how many more are; marks it shown
+    // today in `meta/alerts`, so no conversation shows it again today. `pattern`: {trainee, theme},
+    // a pattern the agent saw repeated 3+ times for the Trainee just written about.
+    takeAlert({ pattern } = {}) {
+      const docs = open();
+      if (pattern !== undefined) {
+        if (!docs.get(`trainees/${pattern?.trainee}`)) throw new StoreError(`unknown Trainee ${pattern?.trainee}`);
+        if (typeof pattern.theme !== 'string' || !pattern.theme.trim()) throw new StoreError('a pattern needs its theme');
+      }
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        const current = docs.get('meta/alerts');
+        const shown = current?.data.shown ?? {};
+        const due = dueAlerts({ ...teamInputs(docs), shown, pattern });
+        if (!due.length) return { alert: null, more: 0 };
+        const day = today();
+        try {
+          upsert(docs, 'meta/alerts', { shown: { ...keepShown(shown, day), [due[0].key]: day } }, current);
+          return { alert: due[0], more: due.length - 1 };
+        } catch (e) {
+          if (!lostRace(e)) throw e;
+        }
+      }
+      throw new StoreError('meta/alerts kept changing; try again');
     },
 
     // Entry written as `writing` with its whole plan → one chunk per Trainee → `done`.
@@ -614,6 +655,18 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         }
       }
       throw new StoreError(`card ${tid} kept changing; try again`);
+    },
+
+    // The brief's refreshed next-Talk questions, on their own: a `nextTalk` change (no Entry) with
+    // the card, so the dashboard shows the questions the brief showed.
+    recordNextTalk(tid, questions) {
+      const docs = open();
+      if (!docs.get(`trainees/${tid}`)) throw new StoreError(`unknown Trainee ${tid}`);
+      checkActive(docs, tid, false);
+      const checked = checkQuestions(questions);
+      checkSafeQuestions(docs, tid, checked);
+      const { id, card } = writeChangeRecord(docs, tid, { type: 'nextTalk', entry: null, trainee: tid, questions: checked, by: 'agent', at: isoWithOffset(now()), retracted: false });
+      return { change: id, card };
     },
 
     // A roster change, written as a `changes` record with the card in one pinned batch. Only after

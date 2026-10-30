@@ -193,6 +193,15 @@ export function parseAssessments(input) {
   };
 }
 
+// One "--- next-talk <tid>" block on its own: the brief's questions, `record-next-talk`.
+export function parseNextTalk(input) {
+  if (!/^--- next-talk /m.test(input) || /^--- (?!next-talk )/m.test(input)) {
+    throw new StoreError('record-next-talk takes one "--- next-talk <tid>" block, one question per line, and nothing else');
+  }
+  const { trainee, nextTalk } = parseAssessments(input);
+  return { trainee, questions: nextTalk };
+}
+
 function assessmentBlock(line, body) {
   const [trainee, skill, score, author, ...extra] = line.slice('--- assessment '.length).trim().split(/\s+/);
   if (!author || extra.length) throw new StoreError(`an assessment header is "--- assessment <tid> <skill id> <score> <author>": "${line}"`);

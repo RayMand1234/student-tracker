@@ -99,7 +99,7 @@ The evaluation process (רף מקס …) is not sensitive by default. Course mat
 
 ## Confirmation reply
 
-One line per Trainee saying what was recorded (kind and date, Test and score when given), each followed by its Assessment lines ([assess.md](assess.md)) and its Status, stage and improve/keep lines ([state.md](state.md)), then any professional-help line, then any question (unknown Test, a proposal's "לעדכן?" or "לשנות?", a new-Skill proposal), then the Retraction line, last:
+One line per Trainee saying what was recorded (kind and date, Test and score when given), each followed by its Assessment lines ([assess.md](assess.md)) and its Status, stage and improve/keep lines ([state.md](state.md)), then any professional-help line, then any question (unknown Test, a proposal's "לעדכן?" or "לשנות?", a new-Skill proposal), then the alert line if one is due ([alerts.md](alerts.md)), then the Retraction line, last:
 
 ```
 נועה — שיחה (30/10). [פרט אישי — בתיק] סומן כרגיש (משפחה) — 'זה לא רגיש' לביטול הסימון. נקודה פתוחה: "סיכמנו שתשב עם דני על זה".
@@ -108,6 +108,7 @@ One line per Trainee saying what was recorded (kind and date, Test and score whe
 מאיה — תצפית בפרויקט Padens (30/10).
   עבודת צוות —→4 (הערכה): הובילה את החלוקה למשימות — תצפית Padens 30/10
 קרוקודיל לא בקטלוג התרצים — להוסיף אותו? (באיזה מקצוע?)
+⚠ אור 22 ימים בלי שיחה (אדום) · +2 ב'מה המצב'
 לביטול: 'בטל'
 ```
 
