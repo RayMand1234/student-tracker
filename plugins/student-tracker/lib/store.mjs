@@ -44,7 +44,8 @@ const SENSITIVE_KINDS = KINDS.filter((k) => !Object.keys(KIND_FIELDS[k]).length)
 // `interrupt(point, info)` is called at each step boundary of a multi-step write; tests use it
 // to simulate a crash (throw) or a racing writer. Points: 'seeded', 'chunk', 'chunk-written',
 // 'withdraw', 'withdrawn' (a Retraction or hard delete chunk).
-export function openStore({ dataDir, now = () => new Date(), rand = randomChars, interrupt = () => {} } = {}) {
+// `base(framework)` gives the base Playbook items (the shipped ones by default; tests pass a fixture).
+export function openStore({ dataDir, now = () => new Date(), rand = randomChars, interrupt = () => {}, base = basePlaybook } = {}) {
   if (!dataDir) throw new StoreError('missing plugin data dir');
   const pointerPath = path.join(dataDir, POINTER);
   const readPointer = () => ({ current: null, archived: [], ...readJson(pointerPath) });
@@ -358,7 +359,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       if (!card) throw new StoreError(`unknown Trainee ${tid}`);
       const framework = docs.get('meta/skills')?.data;
       return pickPlaybook({
-        base: basePlaybook(framework),
+        base: base(framework),
         own: flat(docs.list('playbook')),
         hidden: docs.get('commander/hides')?.data?.hidden ?? [],
         framework,
