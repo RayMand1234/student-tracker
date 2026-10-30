@@ -6,16 +6,15 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { openDocs, StoreError, VersionConflict, AlreadyExists, MAX_BATCH_WRITES, MAX_BATCH_BYTES } from './docs.mjs';
 import { basePlaybook, pickPlaybook, ownItem } from './playbook.mjs';
-import { rating } from '../dashboard/derive.mjs';
+import { rating, MARK, DEFAULT_TALK } from '../dashboard/derive.mjs';
 import { teamStatus, dueAlerts, keepShown } from './team.mjs';
 
-export { StoreError, VersionConflict };
+export { StoreError, VersionConflict, MARK };
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const POINTER = 'cycles.json';
 const LOCAL = 'local:';
 const NOT_SET_UP = 'עוד לא הוקם מעקב — הרץ `/student-tracker:setup`';
-const DEFAULT_TALK = { target: 10, yellow: 10, red: 14 };
 const MAX_RETRIES = 10;
 // Evidence kinds and the kind-specific fields each may carry, with the value stored when absent.
 const TEST_FIELDS = { subject: null, test: null, unlisted: false };
@@ -33,8 +32,6 @@ const KIND_FIELDS = {
   clarification: { clarifies: null },
 };
 export const KINDS = Object.keys(KIND_FIELDS);
-// What stands in a public text where a sensitive sentence was cut out.
-export const MARK = '[פרט אישי — בתיק]';
 export const SENSITIVE_CATEGORIES = ['health', 'family', 'distress', 'finances', 'romance', 'discipline'];
 // The Commander may mark anything sensitive; what fits no category is `other`.
 const FLIP_CATEGORIES = [...SENSITIVE_CATEGORIES, 'other'];
@@ -76,7 +73,7 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
   }
   // A Cycle's store by its address, which must hold a Cycle.
   function cycleAt(url, what) {
-    const root = url?.startsWith(LOCAL) ? url.slice(LOCAL.length) : null;
+    const root = localRoot(url);
     const docs = root && fs.existsSync(root) ? openDocs(root) : null;
     if (!docs?.get('meta/cycle')) throw new StoreError(`no Cycle at ${url} to ${what}`);
     return docs;
@@ -96,6 +93,20 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
       throw new StoreError(`several Cycles on this machine: ${found.map((c) => `${c.cycle.name} (${c.url})`).join(', ')}; ask the Commander which one`);
     }
     if (found.length === 1) writeJson(pointerPath, { ...pointer, current: found[0].url });
+  }
+  // Every earlier Cycle is in the pointer's `archived`, so it stays readable: a pointer rebuilt
+  // after a lost one (or emptied by hand) gets them back by following each Cycle's `previous`.
+  // Those it lacked go in oldest first, before the ones it has.
+  function mendArchived(cycle) {
+    const pointer = readPointer();
+    const chain = [];
+    for (let c = cycle; c?.previous && !chain.includes(c.previous) && c.previous !== pointer.current;) {
+      chain.unshift(c.previous);
+      const root = localRoot(c.previous);
+      c = root && fs.existsSync(root) ? openDocs(root).get('meta/cycle')?.data : null;
+    }
+    const missing = chain.filter((u) => !pointer.archived.includes(u));
+    if (missing.length) writeJson(pointerPath, { ...pointer, archived: [...missing, ...pointer.archived] });
   }
   const today = () => localDate(now());
   // What team status and alerts are computed from.
@@ -216,6 +227,18 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
     writeEntry(docs, id, how.close);
   }
 
+  // Finishes every Entry, Retraction and hard delete left at `writing` in this store; their ids.
+  function finishPending(docs) {
+    const stuck = (key) => docs.list('entries').filter((e) => e.data[key] === 'writing').map((e) => e.id);
+    const writing = stuck('status');
+    for (const id of writing) finishEntry(docs, id);
+    const retracting = stuck('retraction');
+    for (const id of retracting) finishWithdrawal(docs, id, RETRACT);
+    const deleting = stuck('deletion');
+    for (const id of deleting) finishWithdrawal(docs, id, DELETE);
+    return [...new Set([...writing, ...retracting, ...deleting])];
+  }
+
   // The Entry by id, or the last one written; finished first if an earlier session left it half-written.
   function entryToWithdraw(docs, eid) {
     const all = docs.list('entries').filter((e) => !e.data.deletion);
@@ -230,9 +253,7 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
   const writeChange = (docs, tid, change) => writeChangeRecord(docs, tid, change).card;
   // The same, giving the record's id too: {id, card}.
   function writeChangeRecord(docs, tid, change) {
-    const d = now();
-    let id;
-    do id = `${stampOf('c', d)}-${rand(2)}`; while (docs.get(`trainees/${tid}/changes/${id}`));
+    const id = changeId(docs, tid, now());
     const record = { path: `trainees/${tid}/changes/${id}`, data: change };
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       const card = docs.get(`trainees/${tid}`);
@@ -248,6 +269,13 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
       }
     }
     throw new StoreError(`card ${tid} kept changing; try again`);
+  }
+
+  // A free id for a change record outside an Entry, `c-YYYYMMDD-HHMM-<rand2>` at `d`.
+  function changeId(docs, tid, d) {
+    let id;
+    do id = `${stampOf('c', d)}-${rand(2)}`; while (docs.get(`trainees/${tid}/changes/${id}`));
+    return id;
   }
 
   // A pinned write on an Entry, retried while other sessions move it. `write(entry)` gives the
@@ -273,6 +301,7 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
       const r = storeRoot();
       const cycle = openDocs(r).get('meta/cycle')?.data;
       if (!cycle) throw new StoreError(NOT_SET_UP);
+      if (!address) mendArchived(cycle);
       return { backend: 'local', url: `${LOCAL}${r}`, cycle: cycle.name, setup: cycle.setup, ...(cycle.archived === true ? { archived: true } : {}) };
     },
 
@@ -288,8 +317,7 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
       names.forEach((n, i) => names.slice(i + 1).forEach((m) => checkNames(n, m)));
 
       const pointer = readPointer();
-      const local = (url) => (url?.startsWith(LOCAL) ? url.slice(LOCAL.length) : null);
-      let existing = local(pointer.current);
+      let existing = localRoot(pointer.current);
       const existingCycle = existing && openDocs(existing).get('meta/cycle')?.data;
       const resuming = existingCycle?.setup === 'in-progress';
       if (previous !== undefined && !(resuming && existingCycle.previous === previous)) {
@@ -304,7 +332,7 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
       // Resuming keeps what the interrupted setup stored; answers given again replace it. A new
       // Cycle starts from the previous Cycle's settings.
       const prior = (existing && openDocs(existing).get('commander/settings')?.data)
-        ?? (local(follows) && openDocs(local(follows)).get('commander/settings')?.data);
+        ?? (localRoot(follows) && openDocs(localRoot(follows)).get('commander/settings')?.data);
       const talk = talkSettings(prior?.talk ?? DEFAULT_TALK, commander.talk);
       const r = existing ?? path.join(dataDir, 'local', `c-${rand(6)}`);
       // Pointer first, so an interrupted seed is found and resumed instead of duplicated.
@@ -435,11 +463,11 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const current = docs.get('meta/alerts');
         const shown = current?.data.shown ?? {};
-        const due = dueAlerts({ ...teamInputs(docs), shown, pattern });
+        const inputs = teamInputs(docs);
+        const due = dueAlerts({ ...inputs, shown, pattern });
         if (!due.length) return { alert: null, more: 0 };
-        const day = today();
         try {
-          upsert(docs, 'meta/alerts', { shown: { ...keepShown(shown, day), [due[0].key]: day } }, current);
+          upsert(docs, 'meta/alerts', { shown: { ...keepShown(shown, inputs), [due[0].key]: inputs.today } }, current);
           return { alert: due[0], more: due.length - 1 };
         } catch (e) {
           if (!lostRace(e)) throw e;
@@ -616,13 +644,18 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
           data: { entry: id, ...c, at, retracted: false },
         };
       });
-      // What you write yourself for the card (reasons, Snapshots, your own items) is display-safe.
+      // What you write yourself for display (reasons, Snapshots, your own items, Talk topics,
+      // next-Talk questions) repeats neither this Entry's sensitive parts nor the Trainee's stored
+      // ones; what this Entry shows in public excerpts is shown anyway.
       const repeated = repeatsSensitive(text, evidence.flatMap((ev) => (ev.sensitive ?? []).map((p) => p.excerpt)), sensitiveSpans);
+      const leaks = {};
+      const leaksOf = (tid) => (leaks[tid] ??= leaksFor(docs, tid, {
+        also: repeated,
+        shown: children.filter((c) => c.trainee === tid).flatMap((c) => c.data.excerpt.split(MARK)),
+      }));
+      for (const c of children) checkDisplaySafe(c.data.topics ?? [], leaksOf(c.trainee));
       for (const r of [...judged, ...listed, ...stated]) {
-        for (const t of [r.data.reason, r.data.by === 'agent' ? r.data.text : null]) {
-          if (t && repeated(t)) throw new StoreError(`"${t}" repeats a sensitive part; write it display-safe ("מצב אישי" at most) and cite the sensitive part by id`);
-        }
-        if (r.data.type === 'nextTalk') checkSafeQuestions(docs, r.trainee, r.data.questions, repeated);
+        checkDisplaySafe([r.data.reason, r.data.by === 'agent' ? r.data.text : null, ...(r.data.questions ?? [])], leaksOf(r.trainee));
       }
       const all = [...children, ...parts, ...opened, ...judged, ...listed, ...stated];
       const trainees = [...new Set(all.map((c) => c.trainee))];
@@ -662,23 +695,26 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
       if (!assessments.length) throw new StoreError('give at least one Assessment');
       checkActive(docs, tid, insist);
       const checked = checkAssessments(docs, assessments.map((a) => ({ ...a, trainee: tid })), (ref) => evidenceOf(docs, tid, ref));
+      const leaks = leaksFor(docs, tid);
+      checkDisplaySafe(checked.map((a) => a.reason), leaks);
       const d = now();
       const at = isoWithOffset(d);
       const stamp = stampOf('a', d);
       const taken = new Set();
-      const records = checked.map((a) => {
+      const rated = checked.map((a) => {
         let id;
         do id = `${stamp}-${rand(2)}`; while (taken.has(id) || docs.get(`trainees/${tid}/assessments/${id}`));
         taken.add(id);
-        return { path: `trainees/${tid}/assessments/${id}`, data: { entry: null, ...a, date: today(), at, retracted: false } };
+        return { id, path: `trainees/${tid}/assessments/${id}`, data: { entry: null, ...a, date: today(), at, retracted: false } };
       });
+      const talked = [];
       if (nextTalk !== undefined) {
         const questions = checkQuestions(nextTalk);
-        checkSafeQuestions(docs, tid, questions);
-        let id;
-        do id = `${stampOf('c', d)}-${rand(2)}`; while (docs.get(`trainees/${tid}/changes/${id}`));
-        records.push({ path: `trainees/${tid}/changes/${id}`, data: { type: 'nextTalk', entry: null, trainee: tid, questions, by: 'agent', at, retracted: false } });
+        checkDisplaySafe(questions, leaks);
+        const id = changeId(docs, tid, d);
+        talked.push({ id, path: `trainees/${tid}/changes/${id}`, data: { type: 'nextTalk', entry: null, trainee: tid, questions, by: 'agent', at, retracted: false } });
       }
+      const records = [...rated, ...talked];
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const card = docs.get(`trainees/${tid}`);
         try {
@@ -686,8 +722,7 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
             ...records.map((r) => ({ op: 'create', path: r.path, data: r.data })),
             { op: 'set', path: `trainees/${tid}`, data: derive(docs, tid, records), ifVersion: card.version },
           ]);
-          const idsIn = (sub) => records.filter((r) => r.path.includes(`/${sub}/`)).map((r) => r.path.split('/').at(-1));
-          return { assessments: idsIn('assessments'), ...(nextTalk !== undefined ? { changes: idsIn('changes') } : {}) };
+          return { assessments: rated.map((r) => r.id), ...(nextTalk !== undefined ? { changes: talked.map((r) => r.id) } : {}) };
         } catch (e) {
           if (!(e instanceof VersionConflict)) throw e;
         }
@@ -702,7 +737,7 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
       if (!docs.get(`trainees/${tid}`)) throw new StoreError(`unknown Trainee ${tid}`);
       checkActive(docs, tid, false);
       const checked = checkQuestions(questions);
-      checkSafeQuestions(docs, tid, checked);
+      checkDisplaySafe(checked, leaksFor(docs, tid));
       const { id, card } = writeChangeRecord(docs, tid, { type: 'nextTalk', entry: null, trainee: tid, questions: checked, by: 'agent', at: isoWithOffset(now()), retracted: false });
       return { change: id, card };
     },
@@ -746,6 +781,7 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
           return ref;
         });
         const from = statusMove(docs.get(`trainees/${tid}`).data, to, reason);
+        checkDisplaySafe([reason], leaksFor(docs, tid));
         return writeChange(docs, tid, { type: 'status', from, to, by: 'commander', reason: reason.trim(), evidence: ids, at, retracted: false });
       }
       if (kind === 'rejoin') {
@@ -759,6 +795,7 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
       if (date > today()) throw new StoreError(`${date} is in the future; record leaving on the day it happened`);
       if (!LEAVE_HOW.includes(how)) throw new StoreError(`how a Trainee left is one of ${LEAVE_HOW.join(', ')}, got "${how}"`);
       if (typeof reason !== 'string' || !reason.trim()) throw new StoreError('leaving needs a reason (display-safe: no sensitive detail)');
+      checkDisplaySafe([reason], leaksFor(docs, tid));
       return writeChange(docs, tid, { type: 'left', date, how, reason: reason.trim(), by: 'commander', at, retracted: false });
     },
 
@@ -904,7 +941,8 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
             ...moves.map((m) => ({ op: 'create', path: m.to, data: m.data })),
             { op: 'set', path: `trainees/${tid}`, data: next, ifVersion: card.version },
           ]);
-          return { id: evidenceId, now: toPublic ? 'public' : 'sensitive', moved: moves.map((m) => m.to.split('/').at(-1)) };
+          const repeats = toPublic ? [] : cardRepeats(next, leaksFor(docs, tid));
+          return { id: evidenceId, now: toPublic ? 'public' : 'sensitive', moved: moves.map((m) => m.to.split('/').at(-1)), ...(repeats.length ? { repeats } : {}) };
         } catch (e) {
           if (!lostRace(e)) throw e;
         }
@@ -943,15 +981,7 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
     // Finish every Entry, Retraction and hard delete an earlier session left at `writing`.
     // Returns the Entry ids.
     resumePending() {
-      const docs = open();
-      const stuck = (key) => docs.list('entries').filter((e) => e.data[key] === 'writing').map((e) => e.id);
-      const writing = stuck('status');
-      for (const id of writing) finishEntry(docs, id);
-      const retracting = stuck('retraction');
-      for (const id of retracting) finishWithdrawal(docs, id, RETRACT);
-      const deleting = stuck('deletion');
-      for (const id of deleting) finishWithdrawal(docs, id, DELETE);
-      return { finished: [...new Set([...writing, ...retracting, ...deleting])] };
+      return { finished: finishPending(open()) };
     },
 
     // Setup of a new Cycle, after createCycle: copies the Commander's scope from the Cycle it
@@ -1018,13 +1048,15 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
     },
 
     // Setup of a new Cycle, after copyCommanderScope: the previous Cycle goes into the pointer's
-    // `archived` (if not there yet) and is marked `archived: true`, read-only from then on.
-    // Archiving again is harmless. Returns its meta/cycle.
+    // `archived` (if not there yet), anything an earlier session left half-written there is
+    // finished (nothing can write to it later), and it is marked `archived: true`, read-only
+    // from then on. Archiving again is harmless. Returns its meta/cycle.
     archiveCycle(url) {
       const pointer = readPointer();
       if (url === pointer.current) throw new StoreError('the current Cycle cannot be archived; archive the previous one once the new Cycle is the current Cycle');
       const docs = cycleAt(url, 'archive');
       if (!pointer.archived.includes(url)) writeJson(pointerPath, { ...pointer, archived: [...pointer.archived, url] });
+      finishPending(docs);
       const cycle = docs.get('meta/cycle').data;
       if (cycle.archived === true) return cycle;
       return pinned(docs, 'meta/cycle', (c) => ({ ...c, archived: true, archivedAt: isoWithOffset(now()) }));
@@ -1284,7 +1316,6 @@ const CYCLE_CHANGES = {
   restoreSkill: (docs, { skill }) => setArchived(docs, skill, null),
 };
 
-// The Talk target and thresholds after `change`, refusing values that make no sense.
 // A Playbook item taken from an Entry: that Entry is live, holds the text word-for-word, and the
 // text repeats none of its sensitive parts (the Playbook outlives the Cycle and feeds Advice).
 function checkSource(docs, item) {
@@ -1304,6 +1335,7 @@ function checkSource(docs, item) {
 // The Commander's Playbook item ids, `p-<rand4>`.
 const OWN_ID = /^p-[a-z0-9]+$/;
 
+// The Talk target and thresholds after `change`, refusing values that make no sense.
 function talkSettings(current, change = {}) {
   const unknown = Object.keys(change).find((k) => !(k in DEFAULT_TALK));
   if (unknown) throw new StoreError(`unknown Talk setting "${unknown}" (target, yellow, red)`);
@@ -1511,21 +1543,40 @@ function checkQuestions(questions) {
 }
 
 // Whether a text repeats a sensitive record already stored for the Trainee: a run of three of
-// its words that none of the Trainee's public Evidence has.
-function repeatsStoredSensitive(docs, tid) {
+// its words that none of the Trainee's public Evidence has (`shown`: public excerpts about to be
+// written with it count too).
+function repeatsStoredSensitive(docs, tid, shown = []) {
   const live = (xs) => xs.filter((x) => x.retracted === false);
   const excerpts = live(sensitiveOf(docs, tid)).filter((x) => x.record === 'evidence').map((x) => x.excerpt);
-  const shown = live(flat(docs.list(`trainees/${tid}/evidence`))).map((e) => e.excerpt).join('\n');
-  return repeatsSensitive(shown, excerpts, []);
+  const publicText = [...live(flat(docs.list(`trainees/${tid}/evidence`))).map((e) => e.excerpt), ...shown].join('\n');
+  return repeatsSensitive(publicText, excerpts, []);
 }
 
-// Next-Talk questions for the card are display-safe: refused when one repeats a sensitive
-// record of that Trainee (`also`: a check for this Entry's own sensitive parts).
-function checkSafeQuestions(docs, tid, questions, also = () => false) {
-  const stored = repeatsStoredSensitive(docs, tid);
-  for (const q of questions) {
-    if (also(q) || stored(q)) throw new StoreError(`"${q}" repeats a sensitive part; write it display-safe ("מצב אישי" at most)`);
+// Every text the store writes for display (on the card, or in a record the dashboard reads:
+// reasons, Snapshots, the agent's items, Talk topics, next-Talk questions) is display-safe:
+// refused when it repeats a sensitive record of that Trainee, stored or (`also`) one of the
+// sensitive parts of the Entry it comes with. Paraphrase is the writer's to avoid.
+function checkDisplaySafe(texts, repeats) {
+  for (const t of texts) {
+    if (t && repeats(t)) throw new StoreError(`"${t}" repeats a sensitive part; write it display-safe ("מצב אישי" at most) and cite the sensitive part by id`);
   }
+}
+const leaksFor = (docs, tid, { also = () => false, shown = [] } = {}) => {
+  const stored = repeatsStoredSensitive(docs, tid, shown);
+  return (t) => also(t) || stored(t);
+};
+
+// The texts the card shows that `leaks` catches, as [{what, text}] (what: snapshot, nextTalk,
+// status, left, item): after an Evidence is marked sensitive, what still repeats it.
+function cardRepeats(card, leaks) {
+  const texts = [
+    ['snapshot', card.snapshot?.text],
+    ...(card.nextTalk?.questions ?? []).map((q) => ['nextTalk', q]),
+    ['status', card.status?.reason],
+    ['left', card.left?.reason],
+    ...card.items.filter((i) => i.by === 'agent').map((i) => ['item', i.text]),
+  ];
+  return texts.filter(([, t]) => t && leaks(t)).map(([what, text]) => ({ what, text }));
 }
 
 // Checks a Status move on this card; returns the Status it moves from.
@@ -1579,8 +1630,8 @@ function stillOpen(followups, evidence) {
 // improve/keep item shows as MARK.
 function deriveCard({ changes, evidence, followups = [], items = [], assessments = [], sensitive = [] }, prev = {}) {
   const live = (xs) => xs.filter((x) => x.retracted === false);
-  const named = live(changes).filter((c) => c.name).sort(byAt).at(-1);
-  const leaving = live(changes).filter((c) => c.type === 'left' || c.type === 'rejoined').sort(byAt).at(-1);
+  const named = live(changes).filter((c) => c.name).sort(byWritten).at(-1);
+  const leaving = live(changes).filter((c) => c.type === 'left' || c.type === 'rejoined').sort(byWritten).at(-1);
   const left = leaving?.type === 'left' ? { date: leaving.date, how: leaving.how, reason: leaving.reason } : null;
   const latest = (type) => live(changes).filter((c) => c.type === type).sort(byWritten).at(-1);
   const status = latest('status');
@@ -1631,7 +1682,7 @@ function skillsOf(assessments, evidence) {
 
 const byAt = (a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
 // By when it was written, then id (`…-10` after `…-9`).
-const byWritten = (a, b) => byAt(a, b) || a.id.localeCompare(b.id, 'en', { numeric: true });
+const byWritten = (a, b) => byAt(a, b) || String(a.id).localeCompare(String(b.id), 'en', { numeric: true });
 // By the day it happened, then when it was written, then id (`…-10` after `…-9`).
 const byDay = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 const byDayThenId = (a, b) => byDay(a, b) || a.id.localeCompare(b.id, 'en', { numeric: true });
@@ -1667,9 +1718,13 @@ function upsert(docs, docPath, data, current = docs.get(docPath)) {
     : { op: 'create', path: docPath, data }]);
 }
 
+// The directory of a local store by its address; null for an address of another backend.
+const localRoot = (url) => (url?.startsWith(LOCAL) ? url.slice(LOCAL.length) : null);
+
 function rootOf(url) {
-  if (!url.startsWith(LOCAL)) throw new StoreError(`unsupported backend for ${url}`);
-  return url.slice(LOCAL.length);
+  const root = localRoot(url);
+  if (!root) throw new StoreError(`unsupported backend for ${url}`);
+  return root;
 }
 
 function readJson(file) {

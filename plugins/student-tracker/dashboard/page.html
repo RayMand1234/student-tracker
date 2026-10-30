@@ -246,9 +246,9 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', 
 const redact = (s) => esc(s).split(esc(MARK)).join(`<span class="redact">${esc(MARK)}</span>`);
 const localToday = () => new Date().toLocaleDateString('sv-SE');
 // An archived Cycle is shown as it was on the day it was archived.
-const archivedOn = () => (state.meta.cycle?.archived ? (state.meta.cycle.archivedAt ?? '').slice(0, 10) || null : null);
+const archivedOn = () => archiveOf(state.meta.cycle)?.day ?? null;
 const pageToday = () => archivedOn() ?? localToday();
-const archivedBanner = () => (state.meta.cycle?.archived
+const archivedBanner = () => (archiveOf(state.meta.cycle)
   ? `<p class="archived" role="note"><b>מחזור בארכיון</b><span>לקריאה בלבד${archivedOn() ? ` · כפי שהיה ב-${ddmm(archivedOn())}` : ''}. עדכונים חדשים נרשמים במחזור הנוכחי.</span></p>`
   : '');
 const ddmm = (d) => esc(`${String(d).slice(8, 10)}/${String(d).slice(5, 7)}`);

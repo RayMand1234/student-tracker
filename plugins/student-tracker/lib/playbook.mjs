@@ -13,11 +13,30 @@ export const GENERAL = 'general';
 export const BANDS = { low: [1, 2], mid: [3], high: [4, 5] };
 const ITEM_KEYS = ['id', 'origin', 'kind', 'skills', 'band', 'text'];
 
+// {id: Skill} for every Skill of a framework ({groups: [{skills: [{id}]}]}).
+const skillsOf = (framework) => Object.fromEntries((framework?.groups ?? []).flatMap((g) => g.skills.map((s) => [s.id, s])));
+
+// What is wrong with one item's kind, text, Skill tags and band (a band of null or undefined is
+// none), as one line each; [] when nothing is. `known`: the framework's Skills by id.
+function itemProblems({ kind, text, skills, band }, known) {
+  const out = [];
+  if (!PLAYBOOK_KINDS.includes(kind)) out.push(`kind is one of ${PLAYBOOK_KINDS.join(', ')}, got "${kind}"`);
+  if (typeof text !== 'string' || !text.trim()) out.push('needs its text');
+  const tags = Array.isArray(skills) ? skills : [];
+  if (!tags.length) out.push('tagged to at least one Skill id, or ["general"]');
+  if (tags.includes(GENERAL) && tags.length > 1) out.push('"general" stands alone, not with Skills');
+  if (new Set(tags).size !== tags.length) out.push('a Skill tagged twice');
+  for (const s of tags) if (s !== GENERAL && !known[s]) out.push(`unknown Skill "${s}"; use a Skill id from meta/skills`);
+  if (band != null && !BANDS[band]) out.push(`band is one of ${Object.keys(BANDS).join(', ')}, or none, got "${band}"`);
+  if (band != null && tags.includes(GENERAL)) out.push('a general item has no band (it has no Rating to fit)');
+  return out;
+}
+
 // Every problem with a base Playbook against a Skill framework ({groups: [{skills: [{id}]}]}),
 // as one line each; [] when it is consistent. Ids are `b-<number>`, never repeated and never
 // one of `retired` (ids of items taken out, so an id is never reused for another text).
 export function checkPlaybook(playbook, framework) {
-  const known = new Set((framework?.groups ?? []).flatMap((g) => g.skills.map((s) => s.id)));
+  const known = skillsOf(framework);
   const retired = new Set(playbook?.retired ?? []);
   const seen = new Set();
   const out = [];
@@ -31,15 +50,8 @@ export function checkPlaybook(playbook, framework) {
     else if (retired.has(it.id)) out.push(`${it.id}: retired, never reused`);
     seen.add(it.id);
     if (it.origin !== 'base') out.push(`${at}: a shipped item's origin is base, got "${it.origin}"`);
-    if (!PLAYBOOK_KINDS.includes(it.kind)) out.push(`${at}: kind is one of ${PLAYBOOK_KINDS.join(', ')}, got "${it.kind}"`);
-    if (typeof it.text !== 'string' || !it.text.trim()) out.push(`${at}: needs its text`);
-    const tags = Array.isArray(it.skills) ? it.skills : [];
-    if (!tags.length) out.push(`${at}: tagged to at least one Skill id, or ["general"]`);
-    if (tags.includes(GENERAL) && tags.length > 1) out.push(`${at}: "general" stands alone, not with Skills`);
-    if (new Set(tags).size !== tags.length) out.push(`${at}: a Skill tagged twice`);
-    for (const s of tags) if (s !== GENERAL && !known.has(s)) out.push(`${at}: unknown Skill "${s}"`);
-    if (it.band !== undefined && !BANDS[it.band]) out.push(`${at}: band is one of ${Object.keys(BANDS).join(', ')}, got "${it.band}"`);
-    if (it.band !== undefined && tags.includes(GENERAL)) out.push(`${at}: a general item has no band (it has no Rating to fit)`);
+    if (it.band === null) out.push(`${at}: a shipped item with no band leaves band out`);
+    out.push(...itemProblems(it, known).map((p) => `${at}: ${p}`));
   }
   return out;
 }
@@ -66,7 +78,7 @@ const shape = ({ id, origin, kind, skills, band, text }) => ({ id, origin, kind,
 // Rating (an unrated Skill: untagged items only); `general` items come apart.
 export function pickPlaybook({ base, own = [], hidden = [], framework, card, today, rate, focus = [] }) {
   const skills = (framework?.groups ?? []).flatMap((g) => g.skills);
-  const named = Object.fromEntries(skills.map((s) => [s.id, s]));
+  const named = skillsOf(framework);
   for (const s of focus) if (!named[s]) throw new StoreError(`unknown Skill "${s}"; use a Skill id from meta/skills`);
   const off = new Set(hidden);
   const live = [
@@ -115,18 +127,11 @@ export function ownItem(given, framework, current = null) {
   const band = pick('band', null) ?? null;
   const text = pick('text');
   const source = pick('source', null) ?? null;
-  if (!PLAYBOOK_KINDS.includes(kind)) throw new StoreError(`kind is one of ${PLAYBOOK_KINDS.join(', ')}, got "${kind}"`);
-  if (typeof text !== 'string' || !text.trim()) throw new StoreError('a Playbook item needs its text, word-for-word');
-  if (!Array.isArray(skills) || !skills.length) throw new StoreError('a Playbook item is tagged to at least one Skill id, or ["general"]');
-  if (skills.includes(GENERAL) && skills.length > 1) throw new StoreError('"general" stands alone, not with Skills');
-  if (new Set(skills).size !== skills.length) throw new StoreError('a Skill is tagged twice');
-  const known = Object.fromEntries((framework?.groups ?? []).flatMap((g) => g.skills.map((s) => [s.id, s])));
+  const known = skillsOf(framework);
+  const [problem] = itemProblems({ kind, text, skills, band }, known);
+  if (problem) throw new StoreError(`a Playbook item: ${problem}`);
   for (const s of skills) {
-    if (s === GENERAL) continue;
-    if (!known[s]) throw new StoreError(`unknown Skill "${s}"; use a Skill id from meta/skills`);
-    if (known[s].archived && !current?.skills.includes(s)) throw new StoreError(`${s} is archived; it takes no new Playbook items`);
+    if (known[s]?.archived && !current?.skills.includes(s)) throw new StoreError(`${s} is archived; it takes no new Playbook items`);
   }
-  if (band !== null && !BANDS[band]) throw new StoreError(`band is one of ${Object.keys(BANDS).join(', ')}, or none, got "${band}"`);
-  if (band !== null && skills.includes(GENERAL)) throw new StoreError('a general item has no band (it has no Rating to fit)');
   return { origin: 'commander', kind, skills, band, text: text.trim(), source };
 }

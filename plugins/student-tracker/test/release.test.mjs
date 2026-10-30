@@ -52,6 +52,6 @@ test('setup mentions the Artifact tools only in its preflight and publish steps'
   const hits = lines.filter((l) => /ArtifactData|Artifact tool|ToolSearch/.test(l));
   assert.ok(hits.length > 0);
   for (const l of hits) {
-    assert.match(l, /can create artifacts|Publish the dashboard page|action: "unpin"/, `outside preflight/publish: ${l.slice(0, 80)}`);
+    assert.match(l, /can create artifacts|Publish the dashboard page/, `outside preflight/publish: ${l.slice(0, 80)}`);
   }
 });

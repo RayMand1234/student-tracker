@@ -36,6 +36,7 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `updateSettings(change)` | `update-settings`, payload on stdin: any of `name:`, `role:`, `target:`, `yellow:`, `red:` lines (`role:` with nothing after it clears the role) |
 | `updateCycle(change)` | `update-cycle`, payload on stdin: one change (below) |
 | `openDashboard` | none: the local backend has no page; tell the Commander the dashboard exists only on a real Cycle |
+| `unpinDashboard(url)` | none: no page, nothing to unpin (setup asks only on the artifact backend) |
 | `createCycle(...)` | `create-cycle`, payload on stdin: `commander:`, `cycle:`, `trainee:` lines, and optionally `role:`, `start:`, `target:`, `yellow:`, `red:`, and `previous: <current Cycle address>` for a new Cycle after it |
 | `finishSetup()` | `finish-setup` |
 | `copyCommanderScope(fromUrl)` | `copy-commander-scope <previous Cycle address>` |

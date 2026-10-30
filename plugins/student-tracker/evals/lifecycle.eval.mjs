@@ -61,17 +61,18 @@ test('a new Cycle from setup: settings shown to keep, nothing created before the
     return reply;
   };
 
-  assert.match(turn('/student-tracker:setup'), /מחזור חדש/);
-  const question = turn('מחזור חדש');
-  assert.match(question, /ממשיך עם/);
-  assert.match(question, /מפ"צ/, 'the previous role is shown to keep');
-  assert.match(question, /7/, 'and the Talk target');
-
-  const summary = turn('הכתומים. החניכים: מאיה ואור.');
-  assert.match(summary, /לאשר\?/);
-  assert.match(summary, /הצהובים/, 'says what happens to the previous Cycle');
-  assert.deepEqual(pointer().archived, [], 'nothing changes before the yes');
-  assert.equal(ctx.store.connect().cycle, 'הצהובים');
+  const unchanged = (when) => {
+    assert.deepEqual(pointer().archived, [], `nothing changes ${when}`);
+    assert.equal(ctx.store.connect().cycle, 'הצהובים');
+    assert.equal(stores().length, 1, `no new store ${when}`);
+  };
+  turn('/student-tracker:setup');
+  unchanged('on the offer');
+  turn('מחזור חדש');
+  unchanged('on the question');
+  // The new Cycle's name only: role and Talk values must come over from the previous Cycle.
+  turn('הכתומים. החניכים: מאיה ואור.');
+  unchanged('before the yes');
 
   turn('כן');
   carriedOver(ctx);
@@ -86,8 +87,7 @@ test('a new Cycle interrupted after it was created, before the copy and the arch
 
   const summary = claude(ctx.cwd, '/student-tracker:setup', session);
   console.log(`summary:\n${summary}`);
-  assert.match(summary, /לאשר\?/);
-  assert.match(summary, /הכתומים/);
+  assert.equal(stores().length, 2, 'no third store');
   assert.equal(archivedStore(ctx.url).readCycle().cycle.archived, false, 'not archived before the yes');
 
   console.log(`done:\n${claude(ctx.cwd, 'כן', { ...session, resume: true })}`);
@@ -111,7 +111,6 @@ test('the previous Cycle is read in chat; an update aimed at it is refused and n
 
   const refused = claude(ctx.cwd, 'תרשום לדני מהמחזור הקודם שהוא הגיש היום את הפרויקט בזמן', { ...session, resume: true });
   console.log(`write:\n${refused}`);
-  assert.match(refused, /בארכיון/);
   assert.equal(old.readTrainee(dani).entries.length, 1, 'nothing written to the archived Cycle');
   assert.equal(ctx.store.readTeam().length, 1, 'no Dani added to the new Cycle');
   assert.equal(ctx.store.readTrainee(ctx.store.readTeam()[0].id).entries.length, 0, 'and nothing recorded there');

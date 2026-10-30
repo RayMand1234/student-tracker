@@ -146,6 +146,29 @@ test('"זה רגיש" moves a whole public Evidence and its Follow-ups into the 
   assert.deepEqual(store.readTrainee(id['דני']).evidence.map((e) => [e.id, e.excerpt]), [[eid, text]]);
 });
 
+test('"זה רגיש" names the card texts that now repeat what became sensitive, so they can be rewritten', () => {
+  const { store, id } = team();
+  const dani = id['דני'];
+  const text = 'דיברתי עם דני, הוא סיפר שיש לו חובות כבדים בבנק.';
+  const { evidence: [eid] } = store.recordEntry({
+    text,
+    evidence: [{ trainee: dani, kind: 'talk', date: '2026-10-29', excerpt: text }],
+    changes: [
+      { trainee: dani, type: 'snapshot', text: 'יש לו חובות כבדים בבנק' },
+      { trainee: dani, type: 'nextTalk', questions: ['מה תעשה עם חובות כבדים בבנק?', 'מה עם הפרויקט?'] },
+    ],
+  });
+  const { repeats } = store.flipSensitive(eid, { category: 'finances' });
+  assert.deepEqual(repeats, [
+    { what: 'snapshot', text: 'יש לו חובות כבדים בבנק' },
+    { what: 'nextTalk', text: 'מה תעשה עם חובות כבדים בבנק?' },
+  ]);
+  // Fresh questions go in; the old ones would be refused now.
+  assert.throws(() => store.recordNextTalk(dani, ['מה תעשה עם חובות כבדים בבנק?', 'מה עם הפרויקט?']), /repeats a sensitive part/);
+  store.recordNextTalk(dani, ['איך אתה מרגיש השבוע?', 'מה עם הפרויקט?']);
+  assert.equal('repeats' in store.flipSensitive(eid), false, 'moving out repeats nothing');
+});
+
 test('flipSensitive takes an Evidence id; a Follow-up moves with its Evidence and an unknown id is refused', () => {
   const { store, id } = team();
   const { followups: [fid] } = store.recordEntry({
@@ -183,4 +206,41 @@ test('a clarification may correct a sensitive Evidence, citing it by id', () => 
     evidence: [{ trainee: id['נועה'], kind: 'clarification', date: '2026-10-30', excerpt: MARK, clarifies: sid, sensitive: [{ category: 'family', excerpt: fix }] }],
   });
   assert.equal(store.readTrainee(id['נועה']).evidence.find((e) => e.kind === 'clarification').clarifies, sid);
+});
+
+// A sensitive detail stored by an earlier Entry never reaches a text written later for the
+// dashboard, whoever writes it and whichever operation stores it.
+test('a detail stored as sensitive earlier is refused in every later display text; display-safe words still go in', () => {
+  const { store, id } = team();
+  const noa = id['נועה'];
+  store.recordEntry({ text: TEXT, evidence: [talk(noa)] });
+  const leak = 'מתקשה כי אמא שלה בבית חולים';
+  const later = 'נועה הגישה את התרגיל בזמן.';
+  const entry = (extra, ev = {}) => ({ text: later, evidence: [{ trainee: noa, kind: 'note', date: '2026-10-30', excerpt: later, ...ev }], ...extra });
+  const before = pageView(store, noa);
+  const refused = (write) => assert.throws(write, /repeats a sensitive part/);
+
+  refused(() => store.recordEntry(entry({ changes: [{ trainee: noa, type: 'snapshot', text: leak }] })));
+  refused(() => store.recordEntry(entry({ changes: [{ trainee: noa, type: 'status', to: 'watch', reason: leak, evidence: ['#1'] }] })));
+  refused(() => store.recordEntry(entry({ items: [{ trainee: noa, kind: 'improve', text: leak, by: 'agent', from: '#1' }] })));
+  refused(() => store.recordEntry(entry({ assessments: [{ trainee: noa, skill: 'learn.self-awareness', score: 3, author: 'agent', reason: leak, evidence: ['#1'] }] })));
+  refused(() => store.recordEntry(entry({}, { kind: 'talk', topics: ['אמא שלה בבית חולים'] })));
+  const [eid] = store.readTrainee(noa).evidence.map((e) => e.id);
+  refused(() => store.recordAssessments(noa, [{ skill: 'learn.self-awareness', score: 3, author: 'agent', reason: leak, evidence: [eid] }]));
+  refused(() => store.updateTrainee(noa, { status: { to: 'watch', reason: leak } }));
+  refused(() => store.updateTrainee(noa, { leave: { date: '2026-10-30', how: 'other', reason: leak } }));
+  assert.equal(pageView(store, noa), before, 'nothing written');
+
+  // Display-safe words go in, and so do words the Commander wrote in a public part of this Entry.
+  store.recordEntry(entry({ changes: [{ trainee: noa, type: 'snapshot', text: 'מגישה בזמן; מצב אישי מורכב.' }] }));
+  const open = 'נועה אמרה בקבוצה שאמא שלה בבית חולים, וכולם עזרו לה.';
+  store.recordEntry({
+    text: open,
+    evidence: [{ trainee: noa, kind: 'note', date: '2026-10-30', excerpt: open }],
+    changes: [{ trainee: noa, type: 'snapshot', text: 'שיתפה בקבוצה שאמא שלה בבית חולים' }],
+  });
+  const snapshots = store.readTrainee(noa).changes.filter((c) => c.type === 'snapshot').map((c) => c.text).sort();
+  assert.deepEqual(snapshots, ['מגישה בזמן; מצב אישי מורכב.', 'שיתפה בקבוצה שאמא שלה בבית חולים'].sort());
+  // Another Trainee's sensitive record is not this Trainee's to keep out.
+  store.updateTrainee(id['דני'], { status: { to: 'watch', reason: 'אמא שלה בבית חולים, לא שלו' } });
 });

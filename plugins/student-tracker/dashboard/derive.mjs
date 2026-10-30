@@ -52,7 +52,6 @@ export function daysSince(date, today) {
 // Main page: one circle per active Trainee, reddest first (no Talk yet first of all, then most
 // days, then by name); Trainees who left only by name.
 export function talkCircles(cards, talk, today) {
-  const isActive = (c) => c.active !== false && !c.left;
   const circles = cards.filter(isActive).map((c) => {
     const days = daysSince(c.lastTalk, today);
     return { id: c.id, name: c.name, days, evalStage: c.evalStage ?? null, color: talkColor(days, talk) };
@@ -94,7 +93,8 @@ function ratingAt(list, day) {
   return pick ? { date: pick[0], score: pick[1], author: pick[2] } : null;
 }
 
-function shiftDate(day, days) {
+// `day` (YYYY-MM-DD) moved by `days` calendar days.
+export function shiftDate(day, days) {
   const d = new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10) + days));
   return d.toISOString().slice(0, 10);
 }
@@ -104,6 +104,13 @@ function shiftDate(day, days) {
 export const MARK = '[פרט אישי — בתיק]';
 
 export const STATUS_LABELS = { good: 'במסלול', watch: 'במעקב', concern: 'דורש טיפול' };
+
+// An archived Cycle (`meta/cycle`) as {day: the day it was archived, or null if unknown}: its
+// page is read-only and shown as it was that day. null for a live Cycle.
+export function archiveOf(cycle) {
+  if (cycle?.archived !== true) return null;
+  return { day: (cycle.archivedAt ?? '').slice(0, 10) || null };
+}
 
 // The Talk settings a Cycle starts with, until the Commander changes them.
 export const DEFAULT_TALK = { target: 10, yellow: 10, red: 14 };
@@ -326,7 +333,8 @@ const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 const NAV_GROUPS = [['concern', 'דורשים טיפול'], ['watch', 'במעקב'], ['good', 'במסלול'], ['none', 'ללא סטטוס']];
 
-const isActive = (c) => c.active !== false && !c.left;
+// A Trainee who has not left.
+export const isActive = (c) => c.active !== false && !c.left;
 const mean = (v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
 
 // The mean Rating over `ids` as of the end of `day`, or null when none is rated by then.

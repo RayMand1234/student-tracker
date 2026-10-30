@@ -205,6 +205,26 @@ test('a weakness shared by one more Trainee is news again; a Talk ends its alert
   assert.deepEqual(names(seen[1].trainees), ['דני', 'אביגיל', 'אור', 'עידו']);
 });
 
+test('the alert memory forgets a weakness once it is no longer shared, so it does not grow for good', () => {
+  const { store, id, nextDay } = sampleTeam();
+  const root = store.connect().url.slice('local:'.length);
+  const memory = () => Object.keys(JSON.parse(fs.readFileSync(path.join(root, 'meta/alerts.json'), 'utf8')).data.shown);
+  while (store.takeAlert().alert);
+  assert.ok(memory().some((k) => k.startsWith('weakness:learn.organization:')));
+
+  // Ido leaves: only two share it now. The next alert written drops it from the memory.
+  store.updateTrainee(id['עידו'], { leave: { date: '2026-10-30', how: 'transfer', reason: 'עבר לקורס אחר' } });
+  nextDay();
+  assert.ok(store.takeAlert().alert);
+  assert.ok(!memory().some((k) => k.startsWith('weakness:learn.organization:')));
+
+  // Back again, the same three share it: news again.
+  store.updateTrainee(id['עידו'], { rejoin: {} });
+  const seen = [];
+  for (let a = store.takeAlert(); a.alert; a = store.takeAlert()) seen.push(a.alert);
+  assert.ok(seen.some((a) => a.kind === 'weakness' && a.skill === 'learn.organization'));
+});
+
 test('the alert memory keeps no word of a pattern, and a pattern about an unknown Trainee is refused', () => {
   const { store, id } = sampleTeam();
   const root = store.connect().url.slice('local:'.length);

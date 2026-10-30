@@ -119,14 +119,14 @@ A clear yes ("כן", "מאשר", "יאללה") → step 6. A reply that changes 
 ## 6. Create
 
 **Artifact backend**, first:
-1. Publish the dashboard page with the Artifact tool: `file_path` = `${CLAUDE_PLUGIN_ROOT}/dashboard/index.html` (read it first, as the tool requires), `title` = "מעקב חניכים · <Cycle>", `description` = "דף המעקב של המחזור <Cycle>: מתי הייתה השיחה האחרונה עם כל חניך.", `icon` = "people", `capabilities` = `{"db": {}, "user": {}}`, `pin: true`. If the tool refuses that path, copy the file into your scratchpad dir and publish the copy. Skip this when finishing an interrupted setup.
+1. Publish the dashboard page with the Artifact tool, as a new page every time: a path already published in this conversation would go back to that page's address and overwrite it (the previous Cycle's, on a new Cycle). So copy `${CLAUDE_PLUGIN_ROOT}/dashboard/index.html` to a path of its own in your scratchpad dir, named for this Cycle and never used before (`<scratchpad>/student-tracker-<Cycle slug>-<YYYYMMDD-HHMM>/index.html`), read the copy (the tool requires it), and publish it without `url`: `file_path` = the copy, `title` = "מעקב חניכים · <Cycle>", `description` = "דף המעקב של המחזור <Cycle>: מתי הייתה השיחה האחרונה עם כל חניך.", `icon` = "people", `capabilities` = `{"db": {}, "user": {}}`, `pin: true`. The address it returns must differ from every address in the pointer; if it doesn't, stop and tell the Commander. Skip this when finishing an interrupted setup.
 2. Write the pointer right away, before seeding: set `current` to the page's address in `${CLAUDE_PLUGIN_DATA}/cycles.json` with the Write tool, keeping any `archived` list already there (`{"current": "<address>", "archived": []}` when there was no pointer). A new Cycle: in the same write, append the previous Cycle's address to `archived`, so it is never lost if setup stops here.
 
 Then, on either backend, in this order:
 1. `createCycle` with the Commander's name, role, Talk values and the start date when given, the Cycle and the Trainees; on a new Cycle also `previous` = the previous Cycle's address. (The local backend writes the pointer itself.)
 2. Each Course preset change with `updateCycle`, in the order listed; then each extra Skill (`addSkill`); then each Project team (`setTeam`, members by the ids `createCycle` returned).
 3. The Trainee info, if any: one `recordEntry` by log.md (read it, and the sensitive-details rules in it, before cutting).
-4. A new Cycle: `copyCommanderScope` from the previous Cycle's address, then `archiveCycle` of that address. Both are safe to run again on a resume.
+4. A new Cycle: `copyCommanderScope` from the previous Cycle's address, then `archiveCycle` of that address (it also finishes anything an earlier session left half-written there, before it turns read-only). Both are safe to run again on a resume.
 5. `finishSetup`. Only after everything above went in.
 6. Artifact backend: check once that `readTeam` shows one card per Trainee.
 
@@ -142,4 +142,4 @@ One short Hebrew message:
 - A new Cycle: one line on what carried over (settings, <n> Playbook items, <m> hides) and that <previous> is archived, read-only, and can still be asked about ("מה היה עם דני במחזור הקודם?").
 - One line: to get plugin updates automatically, turn on auto-update under `/plugin` → Marketplaces.
 
-A new Cycle on the artifact backend: end the hand-off with one question, asked once and never again: "להוריד את <previous> מהסרגל של claude.ai? הוא נשאר בארכיון, ואפשר לשאול עליו בצ'אט." Only a clear yes → Artifact tool `action: "unpin"` with the previous Cycle's address, and say it's done in one line. Anything else → leave it pinned and say nothing more about it. (The local backend has no page: no question.)
+A new Cycle on the artifact backend: end the hand-off with one question, asked once and never again: "להוריד את <previous> מהסרגל של claude.ai? הוא נשאר בארכיון, ואפשר לשאול עליו בצ'אט." Only a clear yes → `unpinDashboard` with the previous Cycle's address, and say it's done in one line. Anything else → leave it pinned and say nothing more about it. (The local backend has no page: no question.)

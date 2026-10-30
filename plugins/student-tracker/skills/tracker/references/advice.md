@@ -45,6 +45,8 @@ The card keeps two or three questions the Commander could ask the Trainee in the
 - **With every Entry**, for each Trainee it has Evidence about: a `nextTalk` change in the `recordEntry` call, next to the Snapshot ([state.md](state.md)).
 - **With a re-rate** or an accepted proposal: `nextTalk` in the `recordAssessments` call.
 - **With a brief** ([brief.md](brief.md)): refreshed and shown as its "שאלות פתיחה", stored on their own with `recordNextTalk`.
+- **After marking something sensitive**, when `flipSensitive` lists the questions in `repeats` ([sensitive.md](sensitive.md)): fresh ones with `recordNextTalk`.
+- Not with the Commander's own Status change, a roster change or any other flip: those don't change what the Trainee is working on, and the next Entry or brief refreshes the questions.
 
 Writing them:
 

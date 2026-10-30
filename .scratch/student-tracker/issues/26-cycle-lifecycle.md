@@ -39,3 +39,32 @@ Not done / to raise:
 - The model sometimes writes "מההצהובים" (doubles the ה) when it prefixes מ- to a Cycle name; the template says "ממשיך מ-<previous>".
 
 Tests: 237 unit tests (15 new in `test/cycle-lifecycle.test.mjs`: the new store and pointer move, settings prefill and override, refusal without `previous`, resume after an interruption, copy contents and idempotence, added Skills travelling, copy/archive refusals, the whole path, reading an archived Cycle, every write refused on it, a pointer naming an archived Cycle, lost-pointer adopt; 1 new CLI test; 1 dashboard-page check). Eval `evals/lifecycle.eval.mjs` 3/3 (8 `claude` calls): the full new-Cycle conversation (prefill shown, nothing changes before the yes, then carried over and archived); a setup interrupted after `createCycle` and before copy/archive is finished on the next run without a third store; "מה היה עם דני במחזור הקודם?" answers from the archived Cycle, and an update aimed at it is refused with nothing written anywhere.
+
+**2026-10-31 — Review fixes** (final code review of `integration/v1`, tickets 21–27, plus the ticket 28 smoke-test findings). Branch `review-fixes-v1` off `integration/v1`.
+
+Fixed:
+
+- **Sensitive text reaching the dashboard (spec review #1).** One display-safety check in the store (`checkDisplaySafe` / `leaksFor`) now covers every display text it writes: Snapshot, Status, stage and retirement reasons, the agent's items, Assessment reasons, Talk topics, next-Talk questions (`recordEntry`, `recordAssessments`, `recordNextTalk`), and the Commander's Status and leave reasons (`updateTrainee`). It refuses a text that repeats this Entry's sensitive parts or a live sensitive Evidence already stored for that Trainee (3-word runs, as before); words the Trainee's public excerpts already show, this Entry's included, are fine. storage.md has a "Display-safe texts" rule; storage-artifact.md a "Display-safe check" section the operations point to.
+- **After "זה רגיש" (spec review #2, the cheap part).** `flipSensitive` into sensitive returns `repeats: [{what, text}]` for card texts that now repeat it (Snapshot, each next-Talk question, Status / leave reason, agent items). sensitive.md: fresh questions with `recordNextTalk`; anything else is replaced by the next update and the reply says so. Both mappings.
+- **nextTalk freshness (spec review #3).** Kept as ticket 23 decided; advice.md now says the questions are not rewritten on a Commander Status change, a roster change or a flip (except a flip that `repeats` them).
+- **Half-written Entry in the previous Cycle (spec review #4).** `archiveCycle` finishes pending Entries, Retractions and hard deletes there (`finishPending`, shared with `resumePending`) before marking it archived. storage.md, storage-artifact.md, setup step 6.4.
+- **Refused-writes test (spec review #5)** now pins `recordNextTalk`, `takeAlert` and `copyCommanderScope`.
+- **meta/alerts pruning.** On each write it keeps weakness keys only while that Skill is still a shared weakness (and other keys for today). A weakness that goes away and comes back is news again.
+- **Standards, hard:** setup's unpin is the operation `unpinDashboard(url)` (storage.md; artifact: `action: "unpin"`; local: none), and release.test.mjs no longer allows `action: "unpin"` in setup. brief/advice/lifecycle evals now assert stored state plus the required markers ("(הצעה)", "לביטול: 'בטל'", ⚠), with no section headings, order, counts or phrasing. Kept: the brief's stored questions and open Follow-up appear word-for-word, and the recall answer names something from the archived record. The archived dashboard check now tests `archiveOf(cycle)` in derive.mjs, not page source. The talkSettings comment is back above `talkSettings`. (playbook.md's base-file path was already fixed by ticket 29.)
+- **Doc drift:** storage-artifact `createCycle` checks `previous`; storage.md Ids line covers the agent's `c-` nextTalk changes; `readStatus(cycle?)`.
+- **Smells taken (all local):** MARK and DEFAULT_TALK come from derive.mjs; one `localRoot(url)` helper; one `changeId` helper; `recordAssessments` keeps two id lists; derive exports `isActive` / `shiftDate` and team.mjs uses them; `talkLevel` returns `'fine'` explicitly; Playbook item checks are shared (`itemProblems`) by `checkPlaybook` and `ownItem`.
+- **Smoke test (ticket 28):** (1) setup publishes each Cycle from a fresh per-Cycle copy of index.html with no `url`, so a new Cycle never overwrites the previous page. (2) Retraction / hard delete step 2 is six `query … where entry == eid` per Trainee, not 6 × children gets. (3) `connect` (both backends) rebuilds the pointer's `archived` from the `meta/cycle.previous` chain, oldest first, so earlier Cycles are readable after a lost pointer. Small ones: flipSensitive finds the Trainee by trying each of the Entry's `trainees`; the `+0200` → `+02:00` offset; `out_dir` never under `~/.claude`; the full card shape in `createCycle` step 3; `copyCommanderScope` skips `"general"`; local `name` / `left` ties break by `at`, then id, as the mapping says.
+
+Agent-decided (veto any):
+
+- The stored-records check is per Trainee: another Trainee's sensitive record doesn't block a text. The current Entry's parts count for every Trainee in it, as before.
+- `repeats` reports card fields only. Older records (an earlier Snapshot or Status change, Assessment reasons) are immutable and not re-checked. They stay readable to the page's timeline until their Entry is retracted.
+- Weakness-key pruning is per Skill, not per set. A Skill still shared keeps all its set keys, so membership flicker doesn't re-alert.
+
+Left, and why:
+
+- Paraphrase of a sensitive detail can't be caught by the store (spec review #2). The prompt rules stay the guard.
+- Skipped smells: one framework→Skill index helper (about 10 call sites over store/team/playbook/derive); derive.mjs's repeated project / group / unknown-Skill code (dashboard refactor); a single trend representation (`readPlaybook` returns `'↑'`/`'↓'`, a documented output). Each is broad for little gain.
+- Smoke item 7: archived pages are read-only by agent discipline only on the artifact backend; the owner can't be stopped by db rules. Item 10 (unpinned batches seen atomic): the doc stays conservative.
+
+Tests: 277 unit (271 on the tip + 6 new: display-safety across writers, flip `repeats`, archive finishes a half-written Entry, archived chain rebuilt on connect, alert memory pruning, `archiveOf`). Evals: see the commit/report.

@@ -1,9 +1,12 @@
 // Briefs, team status and proactive alerts (ticket 25): the shortcut skills hand off to tracker,
-// the brief refreshes and stores the dashboard's next-Talk questions, team status lists who needs
-// a Talk, and an overdue Talk rides once a day on another reply. Real model calls: `npm run eval`.
+// the brief refreshes and stores the dashboard's next-Talk questions, team status stores nothing,
+// and an overdue Talk rides once a day on another reply. Asserts on stored state, and on the
+// reply only for the required markers ("(הצעה)", "לביטול: 'בטל'", the alert's ⚠) and for what
+// the store says it showed. Real model calls: `npm run eval`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { useEvalPointer, freshTestStore, workspace, claude, newSession, day } from './harness.mjs';
+import { useEvalPointer, freshTestStore, workspace, claude, newSession, day, DATA } from './harness.mjs';
+import { openStore } from '../lib/store.mjs';
 
 useEvalPointer();
 
@@ -43,17 +46,17 @@ function setUp() {
   return { store, id, cwd: workspace() };
 }
 
+// The next alert due, as a later reply would take it.
+const freshTakeAlert = () => openStore({ dataDir: DATA }).takeAlert().alert;
 const entries = (store, tid) => store.readTrainee(tid, { retracted: true }).entries.length;
 
-test('/student-tracker:brief gives the brief in order and stores the opening questions the dashboard shows', () => {
+test('/student-tracker:brief stores the opening questions the dashboard shows, and records nothing else', () => {
   const { store, id, cwd } = setUp();
   const noa = id['נועה'];
   const before = entries(store, noa);
   const reply = claude(cwd, '/student-tracker:brief נועה');
   console.log(`brief:\n${reply}`);
-  const at = (s) => reply.indexOf(s);
-  for (const s of ['מה השתנה', 'לבדוק', 'מיקוד (הצעה)', 'שאלות פתיחה']) assert.ok(at(s) !== -1, `has "${s}"`);
-  assert.ok(at('מה השתנה') < at('לבדוק') && at('לבדוק') < at('מיקוד (הצעה)') && at('מיקוד (הצעה)') < at('שאלות פתיחה'), 'sections in order');
+  assert.match(reply, /\(הצעה\)/, 'its focus points are marked suggestions');
   assert.ok(reply.includes(FOLLOW_UP), 'the open Follow-up word-for-word');
   const { card } = store.readTrainee(noa);
   const questions = card.nextTalk.questions;
@@ -61,30 +64,28 @@ test('/student-tracker:brief gives the brief in order and stores the opening que
   for (const q of questions) assert.ok(reply.includes(q), `the dashboard's question is in the brief: ${q}`);
   for (const q of questions) assert.doesNotMatch(q, /אמא|מאושפזת|בית חולים/, 'display-safe');
   assert.equal(entries(store, noa), before, 'a brief records no Entry');
-  assert.doesNotMatch(reply, /⚠/, 'no alert line on a brief');
-  assert.doesNotMatch(reply, /\*\*|^#/m, 'plain lines, as the sample');
+  assert.equal(store.takeAlert().alert?.name, 'אור', 'a brief shows no alert: Or\'s is still due');
 });
 
-test('"מה המצב עם דני?" is a brief on Dani, not team status', () => {
+test('"מה המצב עם דני?" is a brief on Dani, not team status: his opening questions are stored', () => {
   const { store, id, cwd } = setUp();
   const reply = claude(cwd, 'מה המצב עם דני?');
   console.log(`dani:\n${reply}`);
-  assert.match(reply, /שאלות פתיחה/);
-  assert.doesNotMatch(reply, /צריכים שיחה/);
-  assert.equal(store.readTrainee(id['דני']).card.nextTalk?.questions.length > 1, true, 'its questions stored');
+  const questions = store.readTrainee(id['דני']).card.nextTalk?.questions ?? [];
+  assert.ok(questions.length >= 2, 'a brief stored his questions (team status stores none)');
+  for (const q of questions) assert.ok(reply.includes(q), `shown as stored: ${q}`);
+  assert.deepEqual(store.readTrainee(id['נועה']).card.nextTalk.questions, OLD_QUESTIONS, 'nobody else\'s');
 });
 
-test('/student-tracker:status lists who needs a Talk with its colour and one team action', () => {
-  const { store, cwd } = setUp();
+test('/student-tracker:status stores nothing, keeps sensitive details out, and gives its team action as a suggestion', () => {
+  const { store, id, cwd } = setUp();
+  const everything = () => JSON.stringify([store.readCycle(), ...Object.values(id).map((t) => store.readTrainee(t, { retracted: true }))]);
+  const before = everything();
   const reply = claude(cwd, '/student-tracker:status');
   console.log(`status:\n${reply}`);
-  assert.match(reply, /שבוע 8/);
-  const need = reply.slice(reply.indexOf('צריכים שיחה'));
-  assert.ok(reply.includes('צריכים שיחה'), 'has the list');
-  assert.match(need.split('\n\n')[0], /אור.*22.*\(אדום\)/);
-  assert.doesNotMatch(need.split('\n\n')[0], /נועה|דני/, 'only who is overdue');
-  assert.match(reply, /פעולה לצוות \(הצעה\)/, 'always one team action');
-  assert.doesNotMatch(reply, /\*\*|^#/m, 'plain lines, as the sample');
+  assert.match(reply, /\(הצעה\)/, 'the team action is a suggestion');
+  assert.doesNotMatch(reply, /אמא|מאושפזת|בית חולים/, 'no sensitive detail in team status');
+  assert.equal(everything(), before, 'a read: nothing stored');
   // Team status does not count as showing the alert: the first reply after it still carries it.
   assert.equal(store.takeAlert().alert?.name, 'אור');
 });
@@ -103,4 +104,5 @@ test('an overdue Talk rides on another reply, before the Retraction line, once a
   const second = claude(cwd, 'נועה הגישה את התרגיל בזמן', { ...session, resume: true });
   console.log(`second:\n${second}`);
   assert.doesNotMatch(second, /⚠[^\n]*אור/, 'not again today');
+  assert.notEqual(freshTakeAlert()?.name, 'אור', 'the store marked it shown today');
 });

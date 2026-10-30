@@ -176,6 +176,25 @@ test('archiving marks the old Cycle archived and keeps it in the pointer\'s arch
   assert.throws(() => store.archiveCycle(next), /current Cycle/);
 });
 
+test('an Entry left half-written in the previous Cycle is finished when it is archived, not frozen half-done', () => {
+  const { store, options, url, dani } = previousCycle();
+  const text = 'דיברתי עם דני ועם נועה על הפרויקט.';
+  const noa = store.readTeam().find((t) => t.name === 'נועה').id;
+  const crashing = openStore({ ...options, interrupt: (point) => { if (point === 'chunk-written') throw new Error('crash'); } });
+  assert.throws(() => crashing.recordEntry({
+    text,
+    evidence: [
+      { trainee: dani, kind: 'talk', date: '2026-10-30', excerpt: text },
+      { trainee: noa, kind: 'talk', date: '2026-10-30', excerpt: text },
+    ],
+  }), /crash/);
+  newCycle(store, url);
+
+  const old = openStore({ ...options, cycle: url });
+  assert.deepEqual(old.readTeam().map((t) => t.lastTalk).sort(), ['2026-10-30', '2026-10-30'], 'both chunks written');
+  assert.equal(old.readTrainee(noa).entries.find((e) => e.text === text).status, 'done');
+});
+
 test('the whole path: the new Cycle is current and done, the old one archived, the Commander\'s scope carried over', () => {
   const { dataDir, store, url, tip } = previousCycle();
   const { url: next } = newCycle(store, url);
@@ -220,6 +239,9 @@ test('every write to an archived Cycle is refused, naming the current Cycle, and
     () => old.resumePending(),
     () => old.rebuildCard(dani),
     () => old.finishSetup(),
+    () => old.recordNextTalk(dani, ['איך הולך?', 'מה עם הפרויקט?']),
+    () => old.takeAlert(),
+    () => old.copyCommanderScope(url),
   ];
   for (const w of writes) assert.throws(w, /המחזור הצהובים בארכיון — אפשר רק לקרוא ממנו\. עדכונים נרשמים במחזור הנוכחי, הכתומים\./);
   assert.equal(JSON.stringify([old.readCycle(), old.readTeam(), old.readTrainee(dani)]), before);
@@ -240,4 +262,23 @@ test('with the pointer lost, connect never adopts an archived Cycle', () => {
   const { url: next } = newCycle(store, url);
   fs.writeFileSync(path.join(dataDir, 'cycles.json'), JSON.stringify({ current: null, archived: [] }));
   assert.equal(store.connect().url, next);
+});
+
+test('with the pointer lost, connect finds the earlier Cycles again through the ones each follows, so they stay readable', () => {
+  const { dataDir, store, options, url, dani } = previousCycle();
+  const { url: second } = newCycle(store, url);
+  const third = store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הירוקים' }, previous: second }).url;
+  store.copyCommanderScope(second);
+  store.archiveCycle(second);
+  store.finishSetup();
+
+  fs.writeFileSync(path.join(dataDir, 'cycles.json'), JSON.stringify({ current: null, archived: [] }));
+  assert.equal(store.connect().url, third);
+  assert.deepEqual(pointerOf(dataDir), { current: third, archived: [url, second] }, 'oldest first, as setup adds them');
+  assert.equal(openStore({ ...options, cycle: url }).readTrainee(dani).card.lastTalk, '2026-10-29');
+
+  // A pointer whose archived list was emptied by hand is mended the same way.
+  fs.writeFileSync(path.join(dataDir, 'cycles.json'), JSON.stringify({ current: third, archived: [] }));
+  store.connect();
+  assert.deepEqual(pointerOf(dataDir).archived, [url, second]);
 });
