@@ -11,6 +11,7 @@ const MARK = '[פרט אישי — בתיק]';
 function team(options) {
   const store = freshTestStore(options);
   store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים', start: day(-8) }, trainees: ['נועה', 'דני', 'מאיה'] });
+  store.finishSetup();
   const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
   // Everything the dashboard page may read: the cards, the Cycle, and each Trainee's public records.
   const pageView = () => JSON.stringify(store.readTeam().map((card) => {

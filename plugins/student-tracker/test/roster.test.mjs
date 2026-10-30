@@ -233,6 +233,27 @@ test('addProject adds a Project under a Subject; setWeek replaces one week of th
   assert.throws(() => store.updateCycle({ setWeek: { week: 7, subjects: ['oop'], projects: ['zoo'] } }), /unknown project "zoo"/);
 });
 
+test('removeProject takes a Project, by name or alias, out of the catalog and the Schedule; one with a team stays', () => {
+  const { store, id } = setUp();
+  const preset = store.updateCycle({ removeProject: { project: 'מז' } });
+  assert.equal(preset.projects.some((p) => p.id === 'mz'), false);
+  assert.equal(preset.schedule.some((w) => w.projects?.includes('mz')), false);
+  assert.ok(preset.schedule.every((w) => !w.projects || w.projects.length), 'a week left with no Project drops the list');
+  assert.throws(() => store.updateCycle({ removeProject: { project: 'MZ' } }), /no Project "MZ"/);
+
+  store.updateCycle({ setTeam: { project: 'padens', name: 'בנק א', members: [id['נועה']] } });
+  assert.throws(() => store.updateCycle({ removeProject: { project: 'Padens' } }), /team "בנק א"/);
+});
+
+test('removeWeek drops one week of the Schedule, so a shorter course ends earlier', () => {
+  const { store } = setUp();
+  const preset = store.updateCycle({ removeWeek: { week: 21 } });
+  assert.equal(preset.schedule.length, 20);
+  assert.equal(preset.schedule.at(-1).week, 20);
+  assert.throws(() => store.updateCycle({ removeWeek: { week: 21 } }), /no week 21/);
+  assert.throws(() => store.updateCycle({ removeWeek: { week: 5 } }), /only the last week/);
+});
+
 test('a Project team is stored in teams, and a project observation of a member links to it', () => {
   const { store, id } = setUp(['נועה', 'דני', 'מאיה']);
   const team = store.updateCycle({ setTeam: { project: 'padens', name: 'בנק א', members: [id['נועה'], id['דני']] } });

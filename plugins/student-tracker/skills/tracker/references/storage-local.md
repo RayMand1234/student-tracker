@@ -27,7 +27,8 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `updateSettings(change)` | `update-settings`, payload on stdin: any of `name:`, `role:`, `target:`, `yellow:`, `red:` lines (`role:` with nothing after it clears the role) |
 | `updateCycle(change)` | `update-cycle`, payload on stdin: one change (below) |
 | `openDashboard` | none: the local backend has no page; tell the Commander the dashboard exists only on a real Cycle |
-| `createCycle(...)` | `create-cycle`, payload on stdin: `commander:`, `cycle:`, `trainee:` lines |
+| `createCycle(...)` | `create-cycle`, payload on stdin: `commander:`, `cycle:`, `trainee:` lines, and optionally `role:`, `start:`, `target:`, `yellow:`, `red:` |
+| `finishSetup()` | `finish-setup` |
 
 Payloads are plain text in a quoted heredoc, never JSON (the shell safety check refuses `{"` in a command). For `recordEntry`:
 
@@ -167,7 +168,9 @@ For `updateCycle`, after the Commander confirmed, one change per call. The first
 | `edit-test: <current name or alias>` | `name:`, `number:`, `alias:` | `editTest` |
 | `remove-test: <name or alias>` | — | `removeTest` |
 | `add-project: <name>` | `subject:`, `alias:` | `addProject` |
+| `remove-project: <id, name or alias>` | — | `removeProject` |
 | `week: <n>` | `subjects: <id>, <id>`, `projects: <id>, …` | `setWeek` |
+| `remove-week: <last week>` | — | `removeWeek` |
 | `add-skill: <name>` | `group: <Stage or group id>` | `addSkill` |
 | `archive-skill: <Skill id>` / `restore-skill: <Skill id>` | — | `archiveSkill` / `restoreSkill` |
 | `team: <team name>` | `project: <Project id>`, `member: <tid>`, `id: <team id>` (to replace that team) | `setTeam` |
@@ -190,16 +193,20 @@ member: t-ef34gh
 CHANGE
 ```
 
-For `createCycle`, one `key: value` per line (`trainee:` once per Trainee; `start: YYYY-MM-DD` only if the Commander gave a start date):
+For `createCycle`, one `key: value` per line (`trainee:` once per Trainee; `role:`, `start: YYYY-MM-DD` and the Talk days `target:`, `yellow:`, `red:` only when the Commander gave them):
 
 ```
 student-tracker-store --data "<plugin data dir>" create-cycle <<'CYCLE'
 commander: רז
+role: מפ"צ
 cycle: הצהובים
+target: 7
 trainee: נועה
 trainee: דני
 CYCLE
 ```
+
+`connect` with no `current` in the pointer looks for the stores under `<plugin data dir>/local/` (as the title lookup does on the artifact backend); several are refused with their names, to put to the Commander.
 
 The command runs the whole write or Retraction protocol itself, including version conflicts (it rebuilds the card); a refusal still means nothing of that step was written.
 

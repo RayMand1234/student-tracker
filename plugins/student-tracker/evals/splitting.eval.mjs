@@ -10,6 +10,7 @@ useEvalPointer();
 function team({ trainees = ['נועה', 'דני', 'מאיה'], week = 2 } = {}) {
   const store = freshTestStore();
   store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים', start: day(-7 * (week - 1) - 1) }, trainees });
+  store.finishSetup();
   const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
   // Every Entry on the team, read through each Trainee.
   const entries = () => {

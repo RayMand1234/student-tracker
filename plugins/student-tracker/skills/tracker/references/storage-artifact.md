@@ -99,17 +99,21 @@ Check every Assessment refusal in storage.md (every ref a stored Evidence id of 
 
 Runs after setup has published the page and written the pointer.
 
-0. Two Trainees whose display names clash (two display names clash when they are the same ignoring case and spacing, or when one is a bare first name the other starts with ("נועה" and "נועה כ.")) → refuse ("ask for a distinguishing label for both") and write nothing.
-1. `get` `meta/cycle`. `setup: "done"` → refuse ("כבר קיים מעקב למחזור <name>"). Missing → create `{name, start, setup: "in-progress", schema: 1, archived: false, at}`. `in-progress` → an earlier seed was interrupted; carry on.
-2. `get` each of these, then one `batch` creating only the ones that are missing (an existing one is left as it is; a create on an existing document would stop the batch part-way):
+0. Check first, writing nothing: `start` (default today) is `YYYY-MM-DD`; the Talk values pass `updateSettings`' checks. Two Trainees whose display names clash (two display names clash when they are the same ignoring case and spacing, or when one is a bare first name the other starts with ("נועה" and "נועה כ.")) → refuse ("ask for a distinguishing label for both") and write nothing.
+1. `get` `meta/cycle`. `setup: "done"` → refuse ("כבר קיים מעקב למחזור <name>"). Missing → create `{name, start, setup: "in-progress", schema: 1, archived: false, at}`. `in-progress` → an earlier setup was interrupted: `update` it `{name, start}` with its version (`start` as stored unless given again).
+2. `get` each of these, then one `batch` creating only the ones that are missing (an existing one is left as it is, so the Skills and preset changes an interrupted setup already made stay; a create on an existing document would stop the batch part-way):
    - `meta/skills`: `file_path` = the Skill framework file named in setup (or its content as `data`)
    - `meta/preset`: `file_path` = the Course preset file named in setup (or its content as `data`)
-   - `commander/settings`: `{name, role: null, talk: {target: 10, yellow: 10, red: 14}, at}`
+   - `commander/settings`: `{name, role, talk: {target, yellow, red}, at}`, with `role: null` and Talk 10 / 10 / 14 where the Commander gave none. When it exists (a resumed setup), instead `set` it with its version: `name` as given, `role` and each Talk value as given, else as stored.
    - `commander/hides`: `{hidden: []}`
 3. `list` `trainees`; skip names that already have a card. For each new name pick `t-<rand6>` and create, in batches of at most 24 Trainees:
    - `trainees/<tid>/changes/added`: `{type: "added", name, by: "commander", at, retracted: false}`
    - `trainees/<tid>`: the card, with that name and `lastTalk: null`
-4. `update` `meta/cycle` `{setup: "done"}` with its version.
+The Cycle stays `in-progress`: setup's other changes follow, then `finishSetup`.
+
+### `finishSetup()` (setup only)
+
+`get` `meta/cycle` (missing → refuse "עוד לא הוקם מעקב — הרץ `/student-tracker:setup`"); already `done` → return it. Otherwise `update` `meta/cycle` `{setup: "done"}` with its version; on a conflict start over.
 
 ### `updateTrainee(tid?, change)`
 
@@ -129,7 +133,7 @@ Only after the Commander confirmed. `get` `commander/settings` (version `v`). Me
 
 Only after the Commander confirmed. Check every refusal storage.md lists for that change first.
 
-- **Preset changes** (`addTest`, `editTest`, `removeTest`, `addProject`, `setWeek`): `get` `meta/preset` (version `v`), build the new `tests`, `projects` or `schedule` as storage.md says, and `update` `meta/preset` with only that field and `if_version: v`; on a conflict start over. Names compare ignoring case and spacing. A slug = the name in lowercase with runs of anything but a–z/0–9 as "-" (trimmed); Test id `<subject>.<slug>` (`<subject>.t-<rand4>` if empty), Project id `<slug>` (`p-<rand4>` if empty); add `-<rand2>` while the id is taken. `editTest` with a new name appends the old name to `aliases`; `aliases` never holds the Test's own name. `setWeek` drops that week's entry, adds `{week, subjects, projects?}` (no `projects` key when empty) and sorts by week.
+- **Preset changes** (`addTest`, `editTest`, `removeTest`, `addProject`, `removeProject`, `setWeek`, `removeWeek`): `get` `meta/preset` (version `v`), build the new `tests`, `projects` or `schedule` as storage.md says, and `update` `meta/preset` with only that field and `if_version: v`; on a conflict start over. Names compare ignoring case and spacing. A slug = the name in lowercase with runs of anything but a–z/0–9 as "-" (trimmed); Test id `<subject>.<slug>` (`<subject>.t-<rand4>` if empty), Project id `<slug>` (`p-<rand4>` if empty); add `-<rand2>` while the id is taken. `editTest` with a new name appends the old name to `aliases`; `aliases` never holds the Test's own name. `setWeek` drops that week's entry, adds `{week, subjects, projects?}` (no `projects` key when empty) and sorts by week. `removeProject`: `list` `teams` first and refuse if one has that `project`; then drop it from `projects` and from each week's `projects` (dropping the key when it empties), in one `update` `{projects, schedule}`. `removeWeek` drops that week's entry; it must be the highest week in `schedule`.
 - **Skill changes** (`addSkill`, `archiveSkill`, `restoreSkill`): `get` `meta/skills` (version `v`), change that group's `skills` (append `{id: <group>.c-<rand4> not already used anywhere, name, added: Now}`; or set `archived: true, archivedAt: Now`; or drop both), and `update` `meta/skills` `{groups}` with `if_version: v`; on a conflict start over. Return `{skill, skills}`.
 - **`setTeam`**: `list` `teams`; with an `id`, `get` `teams/<id>` (version `v`). Data `{project, name, members (no repeats), at: Now}`. New: create `teams/tm-<rand4>` (`set`, no `if_version`; taken → pick another). Replacing: `set` `teams/<id>` with `if_version: v`. Return it with its `id`. Records already written keep the `team` they got.
 

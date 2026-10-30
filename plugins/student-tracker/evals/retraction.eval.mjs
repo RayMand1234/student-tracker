@@ -15,6 +15,7 @@ function team(trainees = ['נועה', 'דני', 'מאיה']) {
   const start = Date.now() - 3_600_000;
   const store = freshTestStore({ now: () => new Date(start + 1000 * tick++) });
   store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים', start: day(-30) }, trainees });
+  store.finishSetup();
   const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
   const log = (name, date, text, more = {}) => store.recordEntry({
     text,

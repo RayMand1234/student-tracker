@@ -13,11 +13,13 @@ function freshStore() {
 }
 
 function setUp(store, trainees = ['נועה', 'דני']) {
-  return store.createCycle({
+  const created = store.createCycle({
     commander: { name: 'רז' },
     cycle: { name: 'הצהובים' },
     trainees,
   });
+  store.finishSetup();
+  return created;
 }
 
 test('connect before setup tells the Commander to run setup', () => {
@@ -42,6 +44,69 @@ test('a created Cycle is found by connect and read back by readCycle', () => {
   assert.equal(commander.settings.name, 'רז');
   assert.deepEqual(commander.settings.talk, { target: 10, yellow: 10, red: 14 });
   assert.ok(skills.groups.some((g) => g.skills.some((s) => s.id === 'impl.debugging')));
+});
+
+test('with the pointer lost, connect finds the one Cycle on this machine and saves it again', () => {
+  const { dataDir, store } = freshStore();
+  const { url } = setUp(store);
+  const pointer = path.join(dataDir, 'cycles.json');
+  fs.writeFileSync(pointer, JSON.stringify({ backend: 'local', current: null, archived: [] }));
+
+  assert.deepEqual(store.connect(), { backend: 'local', url, cycle: 'הצהובים', setup: 'done' });
+  assert.equal(JSON.parse(fs.readFileSync(pointer, 'utf8')).current, url);
+  assert.equal(JSON.parse(fs.readFileSync(pointer, 'utf8')).backend, 'local');
+});
+
+test('with the pointer lost, connect skips archived Cycles and asks which one when several are left', () => {
+  const { dataDir, store } = freshStore();
+  const pointer = path.join(dataDir, 'cycles.json');
+  const lose = (archived = []) => fs.writeFileSync(pointer, JSON.stringify({ backend: 'local', current: null, archived }));
+  const { url: first } = setUp(store);
+  lose();
+  store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הכחולים' } });
+  lose();
+  assert.throws(() => store.connect(), /several Cycles.*(הצהובים.*הכחולים|הכחולים.*הצהובים)/);
+
+  lose([first]);
+  assert.equal(store.connect().cycle, 'הכחולים');
+});
+
+test('a seeded Cycle stays in progress until setup has seeded everything and finishes it', () => {
+  const { store } = freshStore();
+  store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' }, trainees: ['נועה'] });
+  assert.equal(store.connect().setup, 'in-progress');
+
+  assert.equal(store.finishSetup().setup, 'done');
+  assert.equal(store.connect().setup, 'done');
+  assert.equal(store.finishSetup().setup, 'done', 'finishing twice is harmless, so a resumed setup can redo it');
+});
+
+test('setup keeps the role, start date and Talk values the Commander gave, the rest defaulted', () => {
+  const { store } = freshStore();
+  store.createCycle({
+    commander: { name: 'רז', role: 'מפקד צוות', talk: { target: 7, red: 12 } },
+    cycle: { name: 'הצהובים', start: '2026-10-25' },
+  });
+  const { cycle, commander } = store.readCycle();
+  assert.equal(cycle.start, '2026-10-25');
+  assert.equal(commander.settings.role, 'מפקד צוות');
+  assert.deepEqual(commander.settings.talk, { target: 7, yellow: 10, red: 12 });
+});
+
+test('setup refuses Talk values or a start date that make no sense, writing nothing', () => {
+  const { store } = freshStore();
+  const create = (commander, cycle = {}) => () => store.createCycle({ commander: { name: 'רז', ...commander }, cycle: { name: 'הצהובים', ...cycle } });
+  assert.throws(create({ talk: { yellow: 14, red: 14 } }), /yellow threshold \(14\) must come before red/);
+  assert.throws(create({ talk: { target: 12 } }), /cannot be past the yellow threshold/);
+  assert.throws(create({ talk: { target: 0 } }), /whole number of days/);
+  assert.throws(create({ talk: { blue: 3 } }), /unknown Talk setting "blue"/);
+  assert.throws(create({}, { start: '25/10/2026' }), /YYYY-MM-DD/);
+  assert.throws(() => store.connect(), /עוד לא הוקם מעקב/);
+});
+
+test('finishing setup before any Cycle was seeded is refused', () => {
+  const { store } = freshStore();
+  assert.throws(() => store.finishSetup(), /עוד לא הוקם מעקב/);
 });
 
 test('setup seeds one card per Trainee, keyed by a t-<rand6> id, never the name', () => {
@@ -168,6 +233,30 @@ test('re-running an interrupted setup resumes into the same store without duplic
   assert.equal(again.url, url);
   assert.equal(store.readCycle().cycle.setup, 'done');
   assert.deepEqual(store.readTeam().map((t) => t.name).sort(), ['דני', 'מאיה', 'נועה']);
+});
+
+test('resuming an interrupted setup keeps what it already seeded: added Skills, preset changes, start date, settings', () => {
+  const { store } = freshStore();
+  store.createCycle({ commander: { name: 'רז', role: 'מפ"צ', talk: { target: 7 } }, cycle: { name: 'הצהובים', start: '2026-10-25' }, trainees: ['נועה'] });
+  const { skill } = store.updateCycle({ addSkill: { group: 'impl', name: 'ניהול זמן' } });
+  store.updateCycle({ removeTest: { test: 'Atom' } });
+
+  store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' }, trainees: ['נועה', 'דני'] });
+
+  const { cycle, skills, preset, commander } = store.readCycle();
+  assert.ok(skills.groups.some((g) => g.skills.some((k) => k.id === skill.id)), 'the added Skill survives');
+  assert.equal(preset.tests.some((t) => t.name === 'Atom'), false);
+  assert.equal(cycle.start, '2026-10-25');
+  assert.equal(commander.settings.role, 'מפ"צ');
+  assert.equal(commander.settings.talk.target, 7);
+});
+
+test('a changed answer at the re-shown summary is applied on resume', () => {
+  const { store } = freshStore();
+  store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' } });
+  store.createCycle({ commander: { name: 'רז כהן', talk: { target: 8 } }, cycle: { name: 'הצהובים', start: '2026-10-20' } });
+  const { cycle, commander } = store.readCycle();
+  assert.deepEqual([commander.settings.name, commander.settings.talk.target, cycle.start], ['רז כהן', 8, '2026-10-20']);
 });
 
 test('an Entry with no Evidence is refused', () => {
