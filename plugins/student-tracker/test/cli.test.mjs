@@ -400,3 +400,46 @@ evidence: ${r.evidence[1]}
   assert.deepEqual([change.from, change.to, change.reason, change.evidence], ['concern', 'watch', 'אישור הצעה: משתפרת', [r.evidence[1]]]);
   assert.equal(t.card.items.length, 1, 'the retired item left the card');
 });
+
+test('next-Talk questions are a block of one question per line, in record-entry and record-assessments; read-playbook picks items', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  const text = 'דיברתי עם נועה, היא נתקעה על באג שעה ולא שאלה.';
+  const logged = run(['--data', data, 'record-entry'], { cwd, input: `--- entry
+${text}
+--- evidence ${noa.id} talk 2026-10-30
+${text}
+--- assessment ${noa.id} impl.debugging 2 agent
++evidence: #1
+נתקעה שעה בלי לבודד
+--- next-talk ${noa.id}
+מה ניסית לפני ששאלת?
+איך תדעי מתי לבקש עזרה?
+` });
+  assert.equal(logged.code, 0, logged.err);
+  const { evidence } = JSON.parse(logged.out);
+  let card = JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out).card;
+  assert.deepEqual(card.nextTalk.questions, ['מה ניסית לפני ששאלת?', 'איך תדעי מתי לבקש עזרה?']);
+
+  const rerated = run(['--data', data, 'record-assessments'], { cwd, input: `--- assessment ${noa.id} impl.debugging 3 commander
++evidence: ${evidence[0]}
+בדיקה מחדש
+--- next-talk ${noa.id}
+מה עזר לך הפעם?
+
+על מה נעבוד עכשיו?
+` });
+  assert.equal(rerated.code, 0, rerated.err);
+  // (Both writes may fall in the same second here, so check the record, not which one the card shows.)
+  const [change] = JSON.parse(rerated.out).changes;
+  const { changes } = JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out);
+  assert.deepEqual(changes.find((c) => c.id === change).questions, ['מה עזר לך הפעם?', 'על מה נעבוד עכשיו?']);
+
+  const picked = run(['--data', data, 'read-playbook', noa.id, 'impl.debugging', 'inter.communication'], { cwd });
+  assert.equal(picked.code, 0, picked.err);
+  const { targets, general } = JSON.parse(picked.out);
+  assert.deepEqual(targets.map((t) => [t.skill, t.rating]), [['impl.debugging', 3], ['inter.communication', null]]);
+  assert.ok(targets[0].items.every((i) => i.band === null || i.band === 'mid'));
+  assert.ok(general.length > 0);
+  assert.equal(JSON.parse(run(['--data', data, 'read-playbook', noa.id], { cwd }).out).targets[0].skill, 'impl.debugging');
+});

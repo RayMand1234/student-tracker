@@ -5,6 +5,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { openDocs, StoreError, VersionConflict, AlreadyExists, MAX_BATCH_WRITES, MAX_BATCH_BYTES } from './docs.mjs';
+import { basePlaybook, pickPlaybook } from './playbook.mjs';
+import { rating } from '../dashboard/derive.mjs';
 
 export { StoreError, VersionConflict };
 
@@ -348,6 +350,25 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       };
     },
 
+    // The Playbook items Advice draws on for one Trainee: base items (shipped with the plugin)
+    // merged with the Commander's own and their hides, per target Skill. A read: stores nothing.
+    readPlaybook(tid, { skills = [] } = {}) {
+      const docs = open();
+      const card = docs.get(`trainees/${tid}`);
+      if (!card) throw new StoreError(`unknown Trainee ${tid}`);
+      const framework = docs.get('meta/skills')?.data;
+      return pickPlaybook({
+        base: basePlaybook(framework),
+        own: flat(docs.list('playbook')),
+        hidden: docs.get('commander/hides')?.data?.hidden ?? [],
+        framework,
+        card: card.data,
+        today: today(),
+        rate: rating,
+        focus: skills,
+      });
+    },
+
     // Entry written as `writing` with its whole plan → one chunk per Trainee → `done`.
     // Child ids are deterministic, so finishing it again never duplicates a record.
     // `insist`: the Commander asked to record about a Trainee who left.
@@ -522,6 +543,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         for (const t of [r.data.reason, r.data.by === 'agent' ? r.data.text : null]) {
           if (t && repeated(t)) throw new StoreError(`"${t}" repeats a sensitive part; write it display-safe ("מצב אישי" at most) and cite the sensitive part by id`);
         }
+        if (r.data.type === 'nextTalk') checkSafeQuestions(docs, r.trainee, r.data.questions, repeated);
       }
       const all = [...children, ...parts, ...opened, ...judged, ...listed, ...stated];
       const trainees = [...new Set(all.map((c) => c.trainee))];
@@ -555,7 +577,8 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
 
     // Assessments of one Trainee outside an Entry (a re-rate, an accepted proposal), dated today,
     // in one version-pinned batch with the card.
-    recordAssessments(tid, assessments = [], { insist = false } = {}) {
+    // `nextTalk`: fresh next-Talk questions to go with it, as a change record.
+    recordAssessments(tid, assessments = [], { insist = false, nextTalk } = {}) {
       const docs = open();
       if (!assessments.length) throw new StoreError('give at least one Assessment');
       checkActive(docs, tid, insist);
@@ -570,6 +593,13 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         taken.add(id);
         return { path: `trainees/${tid}/assessments/${id}`, data: { entry: null, ...a, date: today(), at, retracted: false } };
       });
+      if (nextTalk !== undefined) {
+        const questions = checkQuestions(nextTalk);
+        checkSafeQuestions(docs, tid, questions);
+        let id;
+        do id = `${stampOf('c', d)}-${rand(2)}`; while (docs.get(`trainees/${tid}/changes/${id}`));
+        records.push({ path: `trainees/${tid}/changes/${id}`, data: { type: 'nextTalk', entry: null, trainee: tid, questions, by: 'agent', at, retracted: false } });
+      }
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const card = docs.get(`trainees/${tid}`);
         try {
@@ -577,7 +607,8 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
             ...records.map((r) => ({ op: 'create', path: r.path, data: r.data })),
             { op: 'set', path: `trainees/${tid}`, data: derive(docs, tid, records), ifVersion: card.version },
           ]);
-          return { assessments: records.map((r) => r.path.split('/').at(-1)) };
+          const idsIn = (sub) => records.filter((r) => r.path.includes(`/${sub}/`)).map((r) => r.path.split('/').at(-1));
+          return { assessments: idsIn('assessments'), ...(nextTalk !== undefined ? { changes: idsIn('changes') } : {}) };
         } catch (e) {
           if (!(e instanceof VersionConflict)) throw e;
         }
@@ -1145,7 +1176,7 @@ function checkAssessments(docs, assessments, cite) {
 
 const STATUSES = ['good', 'watch', 'concern'];
 const EVAL_STAGES = ['רף מקס', 'רף רמד', 'רף מפקד היחידה', 'הדחה'];
-const STATE_TYPES = ['status', 'stage', 'snapshot', 'retired'];
+const STATE_TYPES = ['status', 'stage', 'snapshot', 'retired', 'nextTalk'];
 const ITEM_KINDS = ['improve', 'keep'];
 const ITEM_AUTHORS = ['agent', 'commander'];
 
@@ -1192,6 +1223,11 @@ function checkChanges(docs, changes, cite, touched) {
       if (typeof reason !== 'string' || !reason.trim()) throw new StoreError('retiring an item needs a reason');
       return { trainee, type, item, by, reason: reason.trim(), evidence: cited(trainee, evidence).map((e) => e.id) };
     }
+    if (type === 'nextTalk') {
+      const { questions, ...rest } = c;
+      if (Object.keys(rest).length) throw new StoreError('next-Talk questions take only trainee and questions');
+      return { trainee, type, questions: checkQuestions(questions), by: 'agent' };
+    }
     if (type === 'snapshot') {
       const { text, ...rest } = c;
       if (Object.keys(rest).length) throw new StoreError('a Snapshot takes only trainee and text');
@@ -1213,6 +1249,35 @@ function checkChanges(docs, changes, cite, touched) {
     }
     throw new StoreError(`a Trainee-state change is one of ${STATE_TYPES.join(', ')}, got "${type}"`);
   });
+}
+
+// The next-Talk questions (`nextTalk`): two or three, each its own, trimmed.
+function checkQuestions(questions) {
+  if (!Array.isArray(questions) || questions.length < 2 || questions.length > 3) {
+    throw new StoreError(`next-Talk questions are two or three, got ${Array.isArray(questions) ? questions.length : 'none'}`);
+  }
+  const out = questions.map((q) => (typeof q === 'string' ? q.trim() : ''));
+  if (out.some((q) => !q)) throw new StoreError('a next-Talk question is empty');
+  if (new Set(out).size !== out.length) throw new StoreError('a next-Talk question is given twice');
+  return out;
+}
+
+// Whether a text repeats a sensitive record already stored for the Trainee: a run of three of
+// its words that none of the Trainee's public Evidence has.
+function repeatsStoredSensitive(docs, tid) {
+  const live = (xs) => xs.filter((x) => x.retracted === false);
+  const excerpts = live(sensitiveOf(docs, tid)).filter((x) => x.record === 'evidence').map((x) => x.excerpt);
+  const shown = live(flat(docs.list(`trainees/${tid}/evidence`))).map((e) => e.excerpt).join('\n');
+  return repeatsSensitive(shown, excerpts, []);
+}
+
+// Next-Talk questions for the card are display-safe: refused when one repeats a sensitive
+// record of that Trainee (`also`: a check for this Entry's own sensitive parts).
+function checkSafeQuestions(docs, tid, questions, also = () => false) {
+  const stored = repeatsStoredSensitive(docs, tid);
+  for (const q of questions) {
+    if (also(q) || stored(q)) throw new StoreError(`"${q}" repeats a sensitive part; write it display-safe ("מצב אישי" at most)`);
+  }
 }
 
 // Checks a Status move on this card; returns the Status it moves from.
@@ -1262,8 +1327,7 @@ function stillOpen(followups, evidence) {
   return followups.filter((f) => f.retracted === false && !closed.has(f.id));
 }
 
-// The card is derived from the Trainee's records alone. The next-Talk questions, which no record
-// holds, carry over from the previous card. It is display-safe: a sensitive Follow-up or
+// The card is derived from the Trainee's records alone. It is display-safe: a sensitive Follow-up or
 // improve/keep item shows as MARK.
 function deriveCard({ changes, evidence, followups = [], items = [], assessments = [], sensitive = [] }, prev = {}) {
   const live = (xs) => xs.filter((x) => x.retracted === false);
@@ -1275,6 +1339,7 @@ function deriveCard({ changes, evidence, followups = [], items = [], assessments
   const retired = new Set(live(changes).filter((c) => c.type === 'retired').map((c) => c.item));
   const maskedItems = sensitive.filter((s) => s.record === 'item').map((i) => ({ ...i, text: MARK }));
   const snapshot = latest('snapshot');
+  const nextTalk = latest('nextTalk');
   const masked = sensitive.filter((s) => s.record === 'followup').map((f) => ({ ...f, text: MARK }));
   const allEvidence = [...evidence, ...sensitive.filter((s) => s.record === 'evidence')];
   // The date of a Talk is not sensitive, even when the whole Talk is.
@@ -1293,7 +1358,7 @@ function deriveCard({ changes, evidence, followups = [], items = [], assessments
     followups: stillOpen([...followups, ...masked], allEvidence)
       .sort((a, b) => (a.date + a.id < b.date + b.id ? -1 : 1))
       .map(({ id, text, date }) => ({ id, text, date })),
-    nextTalk: prev?.nextTalk ?? null,
+    nextTalk: nextTalk ? { questions: nextTalk.questions, at: nextTalk.at } : null,
     skills: skillsOf(assessments, allEvidence),
   };
 }

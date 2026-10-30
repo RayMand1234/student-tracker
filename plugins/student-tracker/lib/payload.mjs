@@ -51,6 +51,7 @@ export function parseCycle(input) {
 // --- stage <tid>  + "+to: <stage | none>" + "+evidence:" + optional reason
 // --- snapshot <tid>  + text
 // --- retire <tid> <item id> <agent|commander>  + "+evidence:" + reason
+// --- next-talk <tid>  + one next-Talk question per line (two or three)
 export function parseEntry(input) {
   const lines = input.split('\n');
   if (lines.at(-1) === '') lines.pop();
@@ -124,7 +125,7 @@ export function parseEntry(input) {
   };
 }
 
-const STATE_HEADER = /^--- (item|status|stage|snapshot|retire)( |$)/;
+const STATE_HEADER = /^--- (item|status|stage|snapshot|retire|next-talk)( |$)/;
 // What each state block header holds after its name, and where its body goes.
 const STATE_BLOCKS = {
   item: { list: 'items', head: ['trainee', 'kind', 'by'], body: 'text' },
@@ -132,6 +133,7 @@ const STATE_BLOCKS = {
   stage: { list: 'changes', type: 'stage', head: ['trainee'], body: 'reason' },
   snapshot: { list: 'changes', type: 'snapshot', head: ['trainee'], body: 'text' },
   retire: { list: 'changes', type: 'retired', head: ['trainee', 'item', 'by'], body: 'reason' },
+  'next-talk': { list: 'changes', type: 'nextTalk', head: ['trainee'], body: 'questions' },
 };
 
 function stateBlock(line, body) {
@@ -145,6 +147,7 @@ function stateBlock(line, body) {
 
 // A stage `+to: none` leaves the evaluation process; its reason is optional (none when blank).
 function stateOf({ spec, fields, body }) {
+  if (spec.body === 'questions') return { ...fields, questions: body.map((l) => l.trim()).filter(Boolean) };
   const out = { ...fields, [spec.body]: body.join('\n').trim() };
   if (spec.type === 'stage') {
     if (out.to === 'none') out.to = null;
@@ -158,11 +161,17 @@ export function parseAssessments(input) {
   const blocks = [];
   let body = null;
   let fieldsOpen = false;
+  let nextTalk = null;
   for (const line of input.split('\n')) {
     if (line.startsWith('--- assessment ')) {
       body = [];
       fieldsOpen = true;
       blocks.push(assessmentBlock(line, body));
+    } else if (line.startsWith('--- next-talk')) {
+      if (nextTalk) throw new StoreError('one "--- next-talk" block at most');
+      body = [];
+      fieldsOpen = false;
+      nextTalk = stateBlock(line, body);
     } else if (!body) {
       if (line.trim()) throw new StoreError('payload must start with a "--- assessment" line');
     } else if (fieldsOpen && /^\+\w+:/.test(line)) {
@@ -174,9 +183,14 @@ export function parseAssessments(input) {
     }
   }
   const assessments = blocks.map(assessmentOf);
-  const tids = [...new Set(assessments.map((a) => a.trainee))];
-  if (tids.length !== 1) throw new StoreError('record-assessments takes the Assessments of one Trainee');
-  return { trainee: tids[0], assessments: assessments.map(({ trainee, ...a }) => a) };
+  const questions = nextTalk && stateOf(nextTalk);
+  const tids = [...new Set([...assessments, ...(questions ? [questions] : [])].map((a) => a.trainee))];
+  if (tids.length !== 1) throw new StoreError('record-assessments takes the Assessments (and next-Talk questions) of one Trainee');
+  return {
+    trainee: tids[0],
+    assessments: assessments.map(({ trainee, ...a }) => a),
+    ...(questions ? { nextTalk: questions.questions } : {}),
+  };
 }
 
 function assessmentBlock(line, body) {

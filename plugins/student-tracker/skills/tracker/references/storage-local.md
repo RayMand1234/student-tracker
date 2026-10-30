@@ -16,8 +16,9 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `readCycle` | `read-cycle` |
 | `readTeam` | `read-team` |
 | `readTrainee(tid, since, retracted)` | `read-trainee <tid> --since YYYY-MM-DD` (omit `--since` for everything; add `--retracted` to include retracted records and Entries) |
+| `readPlaybook(tid, skills?)` | `read-playbook <tid> [<skill id> …]` (no Skill ids: the Trainee's own targets) |
 | `recordEntry(...)` | `record-entry`, payload on stdin (below); add `--insist` when the Commander insisted on a Trainee who left |
-| `recordAssessments(tid, ...)` | `record-assessments`, payload on stdin: `--- assessment` blocks (below) of that one Trainee, citing stored Evidence ids; `--insist` as above |
+| `recordAssessments(tid, ..., nextTalk?)` | `record-assessments`, payload on stdin: `--- assessment` blocks (below) of that one Trainee, citing stored Evidence ids, then optionally one `--- next-talk <tid>` block; `--insist` as above |
 | `retractEntry(eid?)` | `retract-entry <entry id>` (omit the id for the last Entry) |
 | `hardDelete(eid)` | `hard-delete <entry id>` |
 | `resumePending()` | `resume-pending` |
@@ -42,7 +43,8 @@ Payloads are plain text in a quoted heredoc, never JSON (the shell safety check 
   - `--- status <tid> <good|watch|concern>`, `+evidence: <refs>`, then the reason;
   - `--- stage <tid>`, `+to: <stage>` (`+to: none` leaves the process), `+evidence: <refs>` (the Commander's `evaluation-event` Evidence of this Entry), then the reason if any;
   - `--- snapshot <tid>`, then the Snapshot text;
-  - `--- retire <tid> <item id> <agent|commander>`, `+evidence: <refs>`, then the reason.
+  - `--- retire <tid> <item id> <agent|commander>`, `+evidence: <refs>`, then the reason;
+  - `--- next-talk <tid>`, then the next-Talk questions, one per line (two or three).
 
 A Talk with a sensitive sentence (the public excerpt shows the marker where the sentence was):
 
@@ -115,6 +117,9 @@ student-tracker-store --data "<plugin data dir>" record-entry <<'ENTRY'
 לא הגיש שבוע שני ברצף
 --- snapshot t-ef34gh
 מבין את החומר אבל לא מגיש; ההגשות הן המוקד עכשיו.
+--- next-talk t-ef34gh
+מה עוצר אותך מלהגיש בזמן?
+מה יעזור לך להגיש את התרגיל הבא?
 ENTRY
 ```
 
@@ -139,6 +144,9 @@ student-tracker-store --data "<plugin data dir>" record-assessments <<'RATE'
 --- assessment t-ab12cd impl.debugging 2 commander
 +evidence: e-20261030-0915-x7-1
 אישור הצעה: נתקעת על כל באג ומחכה לעזרה
+--- next-talk t-ab12cd
+מה ניסית לפני שביקשת עזרה בבאג האחרון?
+איך תדעי שהגיע הזמן לבקש עזרה?
 RATE
 ```
 

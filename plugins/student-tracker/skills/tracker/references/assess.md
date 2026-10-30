@@ -45,7 +45,7 @@ Example, today 30/10, `a` = `[["2026-09-20", 2, "agent"], ["2026-10-10", 4, "com
 A Commander-set Rating is one that comes from a Commander Assessment. When the Skill's Rating is Commander-set and the Evidence speaks to it, still write your agent Assessment: it is kept but doesn't count.
 
 - Same score → the line says it stays (below).
-- A different score → the line is a proposal, "(הצעה) מציע לעדכן …", ending with the question "לעדכן?". If the Commander accepts ("כן", "תעדכן", "מאשר"), `recordAssessments` for that Trainee: one `commander` Assessment with the proposed score, the same Evidence your proposal cited, reason "אישור הצעה: <your reason>". Reply with its line; if they decline, record nothing.
+- A different score → the line is a proposal, "(הצעה) מציע לעדכן …", ending with the question "לעדכן?". If the Commander accepts ("כן", "תעדכן", "מאשר"), `recordAssessments` for that Trainee: one `commander` Assessment with the proposed score, the same Evidence your proposal cited, reason "אישור הצעה: <your reason>", and fresh next-Talk questions ([advice.md](advice.md)). Reply with its line; if they decline, record nothing.
 
 ## Self-assessment (רמ"ת)
 
@@ -61,7 +61,7 @@ A `clarification` that corrects an Evidence cited by any of the Trainee's Assess
 
 1. `readTrainee(tid)` with no `since`: the whole history.
 2. For every Skill some Evidence speaks to (those on the card and any the Evidence touches that has none yet), judge holistically as above.
-3. Write only where your judgment differs from the current Rating, or the Skill is unrated: one `recordAssessments` call with all of them, each citing its Evidence. Against a Commander-set Rating, the difference is a proposal.
+3. Write only where your judgment differs from the current Rating, or the Skill is unrated: one `recordAssessments` call with all of them, each citing its Evidence, plus fresh next-Talk questions ([advice.md](advice.md)). Against a Commander-set Rating, the difference is a proposal.
 4. Reply: one line per Assessment written (below), then "ללא שינוי: <Skill names>" for the rest. Nothing written → "עברתי על כל המיומנויות — אין שינוי."
 
 ## Lines in the reply

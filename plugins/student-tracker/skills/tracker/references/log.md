@@ -33,8 +33,8 @@ After the Commander answers, record the original message as the Entry (word-for-
 5. **Sensitive details.** Cut them out (below).
 6. **Follow-ups.** Open and close them (below).
 7. **Assess.** Write Assessments on the Skills the Evidence speaks to, by [assess.md](assess.md): the Commander's own Assessments ("הדיבאג של נועה זה 4"), self-assessment forms and corrections included.
-8. **Trainee state.** By [state.md](state.md): the improve/keep items the message gives (and any of yours), items it retires, a Status change if one is due, a stage change the Commander confirmed, and a fresh Snapshot for each Trainee it is about.
-9. **Record.** One `recordEntry` call with the full text, all its Evidence, its Assessments, items and changes. On a refusal, fix what it names and call again; ask the Commander only when the fix needs their word.
+8. **Trainee state.** By [state.md](state.md): the improve/keep items the message gives (and any of yours), items it retires, a Status change if one is due, a stage change the Commander confirmed, and a fresh Snapshot for each Trainee it is about. By [advice.md](advice.md): fresh next-Talk questions for each Trainee it is about.
+9. **Record.** One `recordEntry` call with the full text, all its Evidence, its Assessments, items and changes (next-Talk questions included). On a refusal, fix what it names and call again; ask the Commander only when the fix needs their word.
 10. **Reply** (format below). Don't repeat the Commander's message back.
 11. **A recurring theme with no Skill.** If this Evidence is about a way of working that no Skill in `readCycle` → `skills` names (time management, asking for help, presenting…), and the same theme shows up in 3 or more Evidence (this one included) in that Trainee's records (`readTrainee`, 6 weeks back) or across Trainees you read in this conversation, add the proposal line from [roster.md](roster.md) to the reply. A Skill only covers a theme when it names that ability itself: one you would stretch to fit ("ניהול זמן" under "סדר וארגון") does not, though you may still assess it. Never add the Skill before a yes.
 

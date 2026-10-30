@@ -10,14 +10,17 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
   read-cycle
   read-team
   read-trainee <tid> [--since YYYY-MM-DD] [--retracted]
+  read-playbook <tid> [<skill id> …]   (the Playbook items for Advice; no Skill: the Trainee's targets)
   record-entry [--insist] < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>",
                             "+key: value" field lines, excerpt; "--- followup" + text after its Evidence;
                             "--- sensitive <category>" + "+kind:"/"+closes:" lines + sentence after its Evidence;
                             "--- assessment <tid> <skill id> <score> <author>" + "+evidence: #<n>, <id>" + reason;
                             "--- item <tid> improve|keep <by>" + "+from:" + text; "--- status <tid> <to>",
-                            "--- stage <tid>" + "+to:", "--- snapshot <tid>", "--- retire <tid> <item> <by>"
+                            "--- stage <tid>" + "+to:", "--- snapshot <tid>", "--- retire <tid> <item> <by>",
+                            "--- next-talk <tid>" + one question per line
   record-assessments [--insist]
-                          < "--- assessment" blocks of one Trainee, citing stored Evidence ids
+                          < "--- assessment" blocks of one Trainee, citing stored Evidence ids,
+                            optional "--- next-talk <tid>" + one question per line
                           (--insist: the Commander asked to record about a Trainee who left)
   flip-sensitive <evidence id> [--category <category>]
   retract-entry [<entry id>]   (the last Entry when none is named)
@@ -63,9 +66,10 @@ export async function main(argv) {
       'read-team': () => store.readTeam(),
       'read-trainee': () => store.readTrainee(rest[0], { since, retracted }),
       'record-entry': () => store.recordEntry({ ...parseEntry(stdin()), insist }),
+      'read-playbook': () => store.readPlaybook(rest[0], { skills: rest.slice(1) }),
       'record-assessments': () => {
-        const { trainee, assessments } = parseAssessments(stdin());
-        return store.recordAssessments(trainee, assessments, { insist });
+        const { trainee, assessments, nextTalk } = parseAssessments(stdin());
+        return store.recordAssessments(trainee, assessments, { insist, nextTalk });
       },
       'update-trainee': () => store.updateTrainee(rest[0] ?? null, parseTraineeChange(stdin())),
       'update-settings': () => store.updateSettings(parseSettings(stdin())),
