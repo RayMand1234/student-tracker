@@ -156,11 +156,11 @@ test('setup over a finished Cycle is refused', () => {
 });
 
 test('re-running an interrupted setup resumes into the same store without duplicating Trainees', () => {
-  const { store, dataDir } = freshStore();
-  const { url } = setUp(store);
-  const cycleFile = path.join(url.slice('local:'.length), 'meta/cycle.json');
-  const cycle = JSON.parse(fs.readFileSync(cycleFile, 'utf8'));
-  fs.writeFileSync(cycleFile, JSON.stringify({ ...cycle, setup: 'in-progress' }));
+  const { dataDir } = freshStore();
+  const crashing = openStore({ dataDir, now: () => NOW, interrupt: (point) => { if (point === 'seeded') throw new Error('crash'); } });
+  assert.throws(() => setUp(crashing), /crash/);
+  const store = openStore({ dataDir, now: () => NOW });
+  const { url } = store.connect();
   assert.equal(store.connect().setup, 'in-progress');
 
   const again = setUp(store, ['נועה', 'דני', 'מאיה']);
@@ -168,7 +168,6 @@ test('re-running an interrupted setup resumes into the same store without duplic
   assert.equal(again.url, url);
   assert.equal(store.readCycle().cycle.setup, 'done');
   assert.deepEqual(store.readTeam().map((t) => t.name).sort(), ['דני', 'מאיה', 'נועה']);
-  assert.equal(openStore({ dataDir }).connect().url, url);
 });
 
 test('an Entry with no Evidence is refused', () => {

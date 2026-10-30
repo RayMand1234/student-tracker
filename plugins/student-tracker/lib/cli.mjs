@@ -8,7 +8,9 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
   read-cycle
   read-team
   read-trainee <tid> [--since YYYY-MM-DD]
-  record-entry            < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>" + excerpt`;
+  record-entry            < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>" + excerpt
+  resume-pending
+  rebuild-card <tid>`;
 
 export async function main(argv) {
   const args = [...argv];
@@ -33,6 +35,8 @@ export async function main(argv) {
       'read-team': () => store.readTeam(),
       'read-trainee': () => store.readTrainee(rest[0], { since }),
       'record-entry': () => store.recordEntry(parseEntry(stdin())),
+      'resume-pending': () => store.resumePending(),
+      'rebuild-card': () => store.rebuildCard(rest[0]),
     };
     if (!ops[op]) {
       process.stderr.write(`${USAGE}\n`);

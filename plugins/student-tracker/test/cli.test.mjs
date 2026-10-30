@@ -81,3 +81,13 @@ test('STUDENT_TRACKER_DATA selects a test store and leaves the plugin data dir a
   assert.equal(JSON.parse(run(['--data', data, 'connect'], { cwd, env }).out).cycle, 'הצהובים');
   assert.equal(run(['--data', data, 'connect'], { cwd }).code, 1);
 });
+
+test('resume-pending and rebuild-card are callable from the CLI', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+
+  assert.deepEqual(JSON.parse(run(['--data', data, 'resume-pending'], { cwd }).out), { finished: [] });
+  const card = JSON.parse(run(['--data', data, 'rebuild-card', noa.id], { cwd }).out);
+  assert.equal(card.name, 'נועה כ.');
+  assert.equal(run(['--data', data, 'rebuild-card', 't-nope00'], { cwd }).code, 1);
+});

@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { openStore } from '../lib/store.mjs';
+import { openDocs } from '../lib/docs.mjs';
 
 const PLUGIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TALK = 'דיברתי היום עם נועה, היא סיפרה שהיא נהנית מהפרויקט אבל נתקעת הרבה בדיבאג. סיכמנו שתשב עם דני על זה.';
@@ -81,4 +82,43 @@ test('setup + one Talk message: Entry kept whole, one Talk Evidence for Noa, las
     assert.equal(other.evidence.filter((e) => e.kind === 'talk').length, 0, `${name} had no Talk`);
     assert.equal(other.card.lastTalk, null);
   }
+});
+
+test('an Entry left half-written is finished by the next message, and cards rebuild to the same state', () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'st-eval-'));
+  const testData = fs.mkdtempSync(path.join(os.tmpdir(), 'st-eval-data-'));
+  const store = openStore({ dataDir: testData });
+  store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' }, trainees: ['נועה', 'דני', 'מאיה'] });
+  const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
+
+  // A session that died after Noa's chunk, before Dani's.
+  const stuckText = 'דיברתי היום עם נועה. אחר כך ישבתי עם דני.';
+  let chunks = 0;
+  const dying = openStore({ dataDir: testData, interrupt: (p) => { if (p === 'chunk-written' && ++chunks === 1) throw new Error('session died'); } });
+  assert.throws(() => dying.recordEntry({
+    text: stuckText,
+    evidence: [
+      { trainee: id['נועה'], kind: 'talk', date: today(), excerpt: 'דיברתי היום עם נועה.' },
+      { trainee: id['דני'], kind: 'talk', date: today(), excerpt: 'אחר כך ישבתי עם דני.' },
+    ],
+  }), /session died/);
+  assert.equal(store.readTrainee(id['דני']).evidence.length, 0);
+
+  const reply = claude(cwd, testData, 'דיברתי היום עם מאיה על הפרויקט');
+  console.log(`reply:\n${reply}`);
+  assert.doesNotMatch(reply, /דני|נועה/, 'finishing the old Entry is silent');
+
+  for (const name of ['נועה', 'דני', 'מאיה']) {
+    const t = store.readTrainee(id[name]);
+    assert.equal(t.evidence.filter((e) => e.kind === 'talk').length, 1, `${name}: exactly one Talk`);
+    assert.equal(t.card.lastTalk, today(), `${name}: last Talk date`);
+    assert.ok(t.entries.every((e) => e.status === 'done'), `${name}: no Entry left writing`);
+  }
+
+  // Corrupt a card the agent wrote, rebuild it from the records, compare.
+  const before = store.readTrainee(id['מאיה']).card;
+  const docs = openDocs(store.connect().url.slice('local:'.length));
+  const card = docs.get(`trainees/${id['מאיה']}`);
+  docs.batch([{ op: 'set', path: `trainees/${id['מאיה']}`, data: { ...card.data, lastTalk: null, name: 'x' }, ifVersion: card.version }]);
+  assert.deepEqual(store.rebuildCard(id['מאיה']), before);
 });

@@ -39,6 +39,14 @@ Trainee card: `name`, `active`, `left`, `status`, `evalStage`, `lastTalk`, `snap
 
 Every write refuses, writing nothing, when its input is invalid, and says why. Records are never edited: a change is a new record or a flag flip.
 
+Write rules every backend keeps: creating a document whose id exists is refused, so a retry can't duplicate; a write to an existing document pins the version last read and is refused if it moved; a batch is 1–50 writes, ≤1 MiB, each document once. A batch with a pinned write is all-or-nothing; a batch without one applies in order and may stop part-way.
+
+**Entry write protocol.** `recordEntry` (and later `retractEntry`) runs in steps any session can finish:
+1. Write the Entry with `status: writing`, its touched Trainees and the full plan of records it will cut.
+2. One chunk per Trainee: that Trainee's new records plus their card, in one version-pinned batch. If the card moved meanwhile, write the records alone and `rebuildCard`.
+3. Mark the Entry `done` and drop the plan.
+Child ids are `<entryId>-<n>`, fixed in step 1, so redoing a chunk never duplicates a record.
+
 ### Reading
 
 - **`connect`** → `{backend, url, cycle, setup}`. Finds the current Cycle through the pointer. Fails with "עוד לא הוקם מעקב — הרץ `/student-tracker:setup`" when there is none.
@@ -50,7 +58,7 @@ Every write refuses, writing nothing, when its input is invalid, and says why. R
 
 - **`recordEntry({text, evidence: [...]})`** → `{entry, evidence: [ids]}`. Keeps `text` word-for-word as an Entry and writes each Evidence (`trainee`, `kind`, `date`, `excerpt`, kind-specific fields such as Talk `topics`) under its Trainee, then updates the touched cards (a Talk moves `lastTalk` forward, never back). Refuses when there is no Evidence, an excerpt is not copied word-for-word from `text`, a Trainee id is unknown, a kind is unknown, or a date is not `YYYY-MM-DD`.
   Kinds: `talk`, `test`, `code-review`, `project-observation`, `self-assessment`, `improve-keep`, `goal`, `background`, `evaluation-event`, `note`, `clarification`.
-  Later: Assessments, Follow-ups and improve/keep items in the same call; one atomic chunk per Trainee, the Entry marked `writing` → `done`.
+  Runs the Entry write protocol above. Refuses an Entry that gives one Trainee more records than fit in one chunk (49 plus the card). Later: Assessments, Follow-ups and improve/keep items in the same call.
 - **`retractEntry(eid?)`** → `{entry, trainees}`. Retracts the named Entry, or the last one: sets `retracted: {at}` on the Entry and `retracted: true` on every record cut from it, then rebuilds the touched cards. Nothing is deleted or edited. Not built yet.
 - **`updateTrainee(tid?, change)`** → the new card. Adds a Trainee, or records a Status change, an evaluation-process stage change, or a Trainee leaving (date, reason), each as a `changes` record plus the card update. Only after the Commander confirms. Not built yet.
 - **`updateSettings(change)`** → the new `commander/settings`. Commander name, role, Talk target and yellow/red thresholds. Only after the Commander confirms. Not built yet.
@@ -58,7 +66,7 @@ Every write refuses, writing nothing, when its input is invalid, and says why. R
 
 ### Setup
 
-- **`createCycle({commander, cycle, trainees})`** → `{url, trainees: [{id, name}]}`. Used only by setup. Writes the pointer first, then seeds `meta/cycle` (`setup: in-progress`), `meta/skills`, `commander/settings` (default Talk target 10, yellow 10, red 14), `commander/hides` and one card per Trainee, then sets `setup: done`. Called again after an interrupted seed, it finishes the same store and keeps the Trainees already there. Refuses when the current Cycle's setup is done, and when two Trainees share a display name.
+- **`createCycle({commander, cycle, trainees})`** → `{url, trainees: [{id, name}]}`. Used only by setup. Writes the pointer first, then seeds `meta/cycle` (`setup: in-progress`), `meta/skills`, `commander/settings` (default Talk target 10, yellow 10, red 14), `commander/hides` and, per Trainee, an `added` change record plus its card (so the card can be rebuilt from records), then sets `setup: done`. Called again after an interrupted seed, it finishes the same store and keeps the Trainees already there. Refuses when the current Cycle's setup is done, and when two Trainees share a display name.
 
 ### Playbook and sensitive
 
@@ -69,7 +77,7 @@ Every write refuses, writing nothing, when its input is invalid, and says why. R
 
 ### Maintenance
 
-- **`rebuildCard(tid)`** → the card. Recomputes a Trainee card from that Trainee's non-retracted records alone. Not built yet.
-- **`resumePending()`** → the Entries it finished. Completes any Entry or Retraction still marked `writing`. Runs at the start of every `tracker` run once built. Not built yet.
+- **`rebuildCard(tid)`** → the card. Recomputes a Trainee card from that Trainee's non-retracted records alone (the Snapshot and next-Talk questions, which no record holds, carry over). Used after a version conflict and whenever a card looks wrong.
+- **`resumePending()`** → `{finished: [entry ids]}`. Completes any Entry still marked `writing`, chunk by chunk, skipping chunks already written. Runs at the start of every `tracker` run.
 - **`copyCommanderScope(fromUrl)`** → what was copied. Copies `commander/*` and `playbook/*` from a previous Cycle's store into the current one. Not built yet.
 - **`hardDelete(target)`** → what was removed. Permanently deletes an Entry and everything cut from it, only on the Commander's explicit request. Not built yet.

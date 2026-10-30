@@ -17,6 +17,8 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `readTeam` | `read-team` |
 | `readTrainee(tid, since)` | `read-trainee <tid> --since YYYY-MM-DD` (omit `--since` for everything) |
 | `recordEntry(...)` | `record-entry`, payload on stdin (below) |
+| `resumePending()` | `resume-pending` |
+| `rebuildCard(tid)` | `rebuild-card <tid>` |
 | `createCycle(...)` | `create-cycle`, payload on stdin: `commander:`, `cycle:`, `trainee:` lines |
 
 Payloads are plain text in a quoted heredoc, never JSON (the shell safety check refuses `{"` in a command). For `recordEntry`: a `--- entry` line, the Commander's message exactly as written, then for each Evidence a `--- evidence <tid> <kind> <YYYY-MM-DD>` line (optionally `topics=a,b`) followed by its excerpt exactly as written:
@@ -30,4 +32,6 @@ student-tracker-store --data "<plugin data dir>" record-entry <<'ENTRY'
 ENTRY
 ```
 
-Files: `<store root>/<collection path>/<doc id>.json`, e.g. `trainees/t-ab12cd/evidence/e-20261030-0915-x7-1.json`.
+The command runs the whole write protocol itself, including version conflicts (it rebuilds the card); a refusal still means nothing of that step was written.
+
+Files: `<store root>/<collection path>/<doc id>.json` holding `{version, data}`, e.g. `trainees/t-ab12cd/evidence/e-20261030-0915-x7-1.json`.
