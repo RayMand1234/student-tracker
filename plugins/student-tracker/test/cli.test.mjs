@@ -471,3 +471,30 @@ test('the brief stores its questions with record-next-talk; read-status and take
   }
   assert.deepEqual(alerts, ['דני', 'נועה כ.', 'מגיעה באיחור']);
 });
+
+test('save-playbook-item takes "+key: value" lines and the text; retire, hide and unhide take an id', () => {
+  const { data, cwd } = fresh();
+  run(['--data', data, 'create-cycle'], { cwd, input: SETUP });
+  const text = 'לבקש ממנה להסביר לי את הקוד בקול,\nלפני שאני מסתכל עליו.';
+  const saved = run(['--data', data, 'save-playbook-item'], { cwd, input: `+kind: tip
++skills: impl.debugging, inter.communication
++band: low
+${text}
+` });
+  assert.equal(saved.code, 0, saved.err);
+  const item = JSON.parse(saved.out);
+  assert.deepEqual([item.kind, item.skills, item.band, item.text, item.source], ['tip', ['impl.debugging', 'inter.communication'], 'low', text, null]);
+
+  const edited = run(['--data', data, 'save-playbook-item', item.id], { cwd, input: '+band: none\n' });
+  assert.equal(edited.code, 0, edited.err);
+  assert.deepEqual([JSON.parse(edited.out).band, JSON.parse(edited.out).text], [null, text]);
+
+  const bad = run(['--data', data, 'save-playbook-item'], { cwd, input: '+kind: tip\n+level: low\nטקסט\n' });
+  assert.equal(bad.code, 1);
+  assert.match(bad.err, /level/);
+
+  assert.equal(run(['--data', data, 'retire-playbook-item', item.id], { cwd }).code, 0);
+  assert.equal(JSON.parse(run(['--data', data, 'read-cycle'], { cwd }).out).playbook[0].retired.at.slice(0, 4), new Date().getFullYear().toString());
+  assert.deepEqual(JSON.parse(run(['--data', data, 'hide-playbook-item', 'b-189'], { cwd }).out), { hidden: ['b-189'] });
+  assert.deepEqual(JSON.parse(run(['--data', data, 'unhide-playbook-item', 'b-189'], { cwd }).out), { hidden: [] });
+});

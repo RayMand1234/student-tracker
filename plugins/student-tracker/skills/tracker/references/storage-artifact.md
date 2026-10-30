@@ -188,6 +188,23 @@ Return `{entry, trainees, deleted: <the Entry's children>}`.
 
 Artifact tool `action: "open"` with the page's address.
 
+### `savePlaybookItem(item)`
+
+Only after the Commander confirmed. `get` `meta/skills` and check the item as storage.md says (a `source`: `get` `entries/<source>`, refuse it missing, with `deletion`, or with `retracted` not `false`; its `text` must contain the item's text; `query` `sensitive` where `entry == source` and refuse a text that repeats a sensitive part).
+
+- **New** (no `id`): create `playbook/p-<rand4>` (`set`, no `if_version`; taken → pick another) with `{origin: "commander", kind, skills, band (or null), text, source (or null), at: Now, retired: false}`.
+- **Edit** (`id`): refuse a `b-…` id; `get` `playbook/<id>` (missing → refuse; `retired` not `false` → refuse), version `v`. Merge the given fields over it, check the result, and `set` it with `edited: Now` and `if_version: v`; on a conflict start over.
+
+Return the stored item with its `id`.
+
+### `retirePlaybookItem(id)`
+
+Only after the Commander confirmed. Refuse a `b-…` id. `get` `playbook/<id>` (missing → refuse; already retired → refuse), then `update` it `{retired: {at: Now}}` with its version; on a conflict start over. Return the item with its `id`.
+
+### `hidePlaybookItem(baseId, hidden)`
+
+Only after the Commander confirmed. Refuse a `p-…` id. Hiding: refuse an id not among `items` in `${CLAUDE_PLUGIN_ROOT}/data/playbook.json`. `get` `commander/hides` (version `v`); if `hidden` already holds the id (hiding) or lacks it (un-hiding), return it unchanged. Otherwise `update` it `{hidden: <with the id added, or taken out>}` with `if_version: v`; on a conflict start over. Return `{hidden}`.
+
 ### Not built yet
 
-`savePlaybookItem`, `retirePlaybookItem`, `hidePlaybookItem`, `copyCommanderScope`.
+`copyCommanderScope`.

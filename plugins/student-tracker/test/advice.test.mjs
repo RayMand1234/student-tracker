@@ -7,13 +7,20 @@ import os from 'node:os';
 import path from 'node:path';
 import { openStore } from '../lib/store.mjs';
 import { openDocs } from '../lib/docs.mjs';
+import { checkPlaybook } from '../lib/playbook.mjs';
 
 const NOW = new Date('2026-10-30T09:15:00');
+// A small fixed Playbook, so these tests pin the pick rule, not the shipped content.
+const SEED = JSON.parse(fs.readFileSync(new URL('./fixtures/playbook-seed.json', import.meta.url), 'utf8'));
+const seedBase = (framework) => {
+  assert.deepEqual(checkPlaybook(SEED, framework), []);
+  return SEED.items;
+};
 
 function setUp() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'st-advice-'));
   let tick = 0;
-  const store = openStore({ dataDir, now: () => new Date(NOW.getTime() + 1000 * tick++) });
+  const store = openStore({ dataDir, now: () => new Date(NOW.getTime() + 1000 * tick++), base: seedBase });
   store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' }, trainees: ['נועה', 'דני'] });
   const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
   // The Commander's own items and hides are written by ticket 24's operations; seed them directly.

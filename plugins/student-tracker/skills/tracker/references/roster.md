@@ -28,7 +28,7 @@ When the message also carries an update about a Trainee ("דני עזב היום
 | A Test added, renamed, renumbered, given an alias, or removed from the course | The Test and the change: "להוסיף ל-FOV את הכינוי 'פוב2'?", "להוריד את Atom מהקטלוג של המחזור?" | `updateCycle`: `addTest`, `editTest`, `removeTest` |
 | A Project added or removed, or a week of the Schedule changed or dropped | "להוסיף פרויקט Chess (OOP)?", "להוריד את MZ מהמחזור?", "שבוע 6: OOP ו-DB (במקום OOP ו-DB + Interpreter)?", "הקורס 20 שבועות: להוריד את שבוע 21?" | `addProject`, `removeProject`, `setWeek`, `removeWeek` |
 | A Project team ("בפאדנס נועה, דני ומאיה בצוות אחד") | The team: "צוות פאדנס 'נועה, דני ומאיה': נועה, דני, מאיה. לשמור?" Name it as the Commander did, else by its members. A Trainee already in another team of that Project: say so and offer to move them (replace that team without them, then this one). | `setTeam` (with `id` to change an existing team) |
-| A new Skill for a Stage or the Interpersonal group | "להוסיף את המיומנות 'ניהול זמן' לשלב מימוש בקוד?" Ask which Stage when it isn't clear. | `updateCycle` with `addSkill` |
+| A new Skill for a Stage or the Interpersonal group | "להוסיף את המיומנות 'ניהול זמן' לשלב מימוש בקוד?" Ask which Stage when it isn't clear. | `updateCycle` with `addSkill`, then offer draft Playbook items for it ([playbook.md](playbook.md)) |
 | A Skill that doesn't fit ("תוריד את חיפוש באינטרנט") | "להעביר לארכיון את 'חיפוש באינטרנט'? ההערכות שלה נשמרות, ולא ייכתבו חדשות." Never offer to delete. | `archiveSkill`; bringing one back: `restoreSkill` |
 
 The course's Subjects, Tests, Projects and Schedule are this Cycle's own copy (`readCycle` → `preset`); a change never touches the shipped default or another Cycle. Name Skills, Stages, Subjects and Projects by their Hebrew names in replies, never by id.
@@ -47,4 +47,4 @@ When logging (by [log.md](log.md)), the Evidence may describe a way of working t
 
 `(הצעה) "<theme>" חוזר ב-<N> תיעודים ואין לו מיומנות — להוסיף מיומנות "<name>" ל<Stage or group name>? (כן / לא)`
 
-A yes is the confirmation: `addSkill`, then "עודכן: …". Offer each theme once per conversation, and never add a Skill without a yes.
+A yes is the confirmation: `addSkill`, then "עודכן: …" and the draft Playbook items ([playbook.md](playbook.md)). Offer each theme once per conversation, and never add a Skill without a yes.

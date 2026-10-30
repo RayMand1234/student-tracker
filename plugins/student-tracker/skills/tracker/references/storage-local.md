@@ -26,6 +26,9 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `hardDelete(eid)` | `hard-delete <entry id>` |
 | `resumePending()` | `resume-pending` |
 | `rebuildCard(tid)` | `rebuild-card <tid>` |
+| `savePlaybookItem(item)` | `save-playbook-item [<item id>]`, payload on stdin (below); with an id, an edit: only the lines that change |
+| `retirePlaybookItem(id)` | `retire-playbook-item <item id>` |
+| `hidePlaybookItem(baseId, hidden)` | `hide-playbook-item <base item id>` (hidden: true) / `unhide-playbook-item <base item id>` (false) |
 | `flipSensitive(id, category?)` | `flip-sensitive <evidence id> --category <category>` (omit `--category` when moving out of sensitive) |
 | `updateTrainee(tid?, change)` | `update-trainee [<tid>]`, payload on stdin: one change (below) |
 | `updateSettings(change)` | `update-settings`, payload on stdin: any of `name:`, `role:`, `target:`, `yellow:`, `red:` lines (`role:` with nothing after it clears the role) |
@@ -212,6 +215,22 @@ project: padens
 member: t-ab12cd
 member: t-ef34gh
 CHANGE
+```
+
+For `savePlaybookItem`, after the Commander confirmed: `+kind: sign | tip | exercise | talk-question`, `+skills: <Skill id>, …` (or `+skills: general`), optionally `+band: low | mid | high` (`+band: none` clears it on an edit) and `+source: <Entry id>`, then the text exactly as the Commander wrote it (any number of lines; leave it out on an edit that keeps it):
+
+```
+student-tracker-store --data "<plugin data dir>" save-playbook-item <<'ITEM'
++kind: tip
++skills: impl.debugging
+לבקש להסביר לי את הקוד בקול לפני שאני מסתכל
+ITEM
+```
+
+```
+student-tracker-store --data "<plugin data dir>" save-playbook-item p-x7k2 <<'ITEM'
++band: low
+ITEM
 ```
 
 For `createCycle`, one `key: value` per line (`trainee:` once per Trainee; `role:`, `start: YYYY-MM-DD` and the Talk days `target:`, `yellow:`, `red:` only when the Commander gave them):

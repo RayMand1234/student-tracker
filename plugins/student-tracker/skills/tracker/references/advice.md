@@ -33,7 +33,10 @@ The heading line names each target Skill with its Rating, and its arrow only whe
 - **As an improve item** ("כן, תוסיף את השנייה לשיפור"): their message is the Entry, by [log.md](log.md): one `improve-keep` Evidence about the Trainee with the whole message as its excerpt, and an `improve` item `by: agent` taken from it (`from: #1`), its text the suggestion in a few display-safe words. When their message carries its own wording ("תוסיף לה לשיפור: לכתוב מה ניסתה לפני ששואלת"), the item is theirs, word-for-word, as [state.md](state.md) says.
 - **As a Follow-up** ("תוסיף לשיחה הבאה לבדוק שהיא כותבת לוג"): a Follow-up is the Commander's words, so their message is the Entry and the Follow-up its words, by [log.md](log.md). When they only point at a suggestion ("כן, את הראשונה לשיחה הבאה"), ask once: `מה לרשום לשיחה הבאה? (במילים שלך, למשל: "<the suggestion, short>")` and record their answer the same way.
 - The same holds for a next-Talk question they adopt from the dashboard.
+- "אל תציע לי את זה יותר" on a suggestion: hide its base item, or retire their own, by [playbook.md](playbook.md) (confirmed first).
 - Anything else, or no answer: nothing is recorded.
+
+A target Skill the Commander added with no items: offer draft items for it by [playbook.md](playbook.md), after the suggestions.
 
 ## Next-Talk questions (`nextTalk`)
 

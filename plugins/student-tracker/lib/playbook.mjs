@@ -98,3 +98,35 @@ export function pickPlaybook({ base, own = [], hidden = [], framework, card, tod
     general: live.filter((i) => i.skills.includes(GENERAL)),
   };
 }
+
+// The fields of a Commander item the Commander gives (the rest the store fills in).
+const OWN_KEYS = ['kind', 'skills', 'band', 'text', 'source'];
+
+// A Commander item as it will be stored, from `given` over `current` (an edit) or nothing (a new
+// one), checked against the Cycle's Skill framework: a known kind, the text word-for-word and not
+// empty, Skill ids of this Cycle (not archived) or ["general"] alone, an optional band (none on a
+// general item; `band: null` clears it). Throws a StoreError on the first problem.
+export function ownItem(given, framework, current = null) {
+  const extra = Object.keys(given ?? {}).filter((k) => !OWN_KEYS.includes(k));
+  if (extra.length) throw new StoreError(`unknown field ${extra.join(', ')} (a Playbook item has ${OWN_KEYS.join(', ')})`);
+  const pick = (k, fallback) => (given[k] !== undefined ? given[k] : current ? current[k] : fallback);
+  const kind = pick('kind');
+  const skills = pick('skills', []);
+  const band = pick('band', null) ?? null;
+  const text = pick('text');
+  const source = pick('source', null) ?? null;
+  if (!PLAYBOOK_KINDS.includes(kind)) throw new StoreError(`kind is one of ${PLAYBOOK_KINDS.join(', ')}, got "${kind}"`);
+  if (typeof text !== 'string' || !text.trim()) throw new StoreError('a Playbook item needs its text, word-for-word');
+  if (!Array.isArray(skills) || !skills.length) throw new StoreError('a Playbook item is tagged to at least one Skill id, or ["general"]');
+  if (skills.includes(GENERAL) && skills.length > 1) throw new StoreError('"general" stands alone, not with Skills');
+  if (new Set(skills).size !== skills.length) throw new StoreError('a Skill is tagged twice');
+  const known = Object.fromEntries((framework?.groups ?? []).flatMap((g) => g.skills.map((s) => [s.id, s])));
+  for (const s of skills) {
+    if (s === GENERAL) continue;
+    if (!known[s]) throw new StoreError(`unknown Skill "${s}"; use a Skill id from meta/skills`);
+    if (known[s].archived && !current?.skills.includes(s)) throw new StoreError(`${s} is archived; it takes no new Playbook items`);
+  }
+  if (band !== null && !BANDS[band]) throw new StoreError(`band is one of ${Object.keys(BANDS).join(', ')}, or none, got "${band}"`);
+  if (band !== null && skills.includes(GENERAL)) throw new StoreError('a general item has no band (it has no Rating to fit)');
+  return { origin: 'commander', kind, skills, band, text: text.trim(), source };
+}
