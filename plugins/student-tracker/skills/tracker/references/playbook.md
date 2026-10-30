@@ -50,7 +50,7 @@ Find it in `readCycle` → `playbook` (live ones: `retired` is `false`), by Skil
 
 ## Hiding or un-hiding a base item
 
-Base items are in `${CLAUDE_PLUGIN_ROOT}/data/playbook.json` (`items`; read it with the Read tool), or an item `readPlaybook` gave you in this conversation (`origin: base`). The hidden ids are `readCycle` → `commander.hides.hidden`.
+Base items are in `data/playbook.json` under the plugin root (`items`; read it with the Read tool), or an item `readPlaybook` gave you in this conversation (`origin: base`). The hidden ids are `readCycle` → `commander.hides.hidden`.
 
 - **Hide** ("אל תציע לי יותר את…", "זה לא מתאים לי", after Advice "את השנייה אל תציע שוב"): `להסתיר מהפלייבוק את "<text>"? אפשר להחזיר בכל זמן. (כן / לא)` → `hidePlaybookItem(id, hidden: true)`.
 - **Un-hide** ("תחזיר את הטיפ על…"): find it among the hidden ids → `להחזיר לפלייבוק את "<text>"? (כן / לא)` → `hidePlaybookItem(id, hidden: false)`.

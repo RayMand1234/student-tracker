@@ -1,2 +1,20 @@
+# OS and editors
 .DS_Store
+.vscode/
+.idea/
+
+# Node
 node_modules/
+
+# Claude Code: local settings and agent worktrees
+.claude/settings.local.json
+.claude/worktrees/
+
+# Local tracker state: pointer files and local-backend stores (never commit a real Cycle)
+cycles.json
+/local/
+plugins/student-tracker/local/
+
+# Dashboard previews and screenshots made while developing
+/preview*.html
+/*.png

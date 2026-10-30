@@ -65,7 +65,7 @@ The card is derived from the Trainee's records and always has this shape:
 
 ### `readPlaybook(tid, skills?)`
 
-A read: write nothing. Read `${CLAUDE_PLUGIN_ROOT}/data/playbook.json` (the base items, `items`) with the Read tool; `get` `trainees/<tid>` (refuse an unknown Trainee), `meta/skills` (refuse a Skill id it doesn't hold) and `commander/hides`; `list` `playbook`. Then pick as storage.md says, Ratings by the Rating rule (as of today) from the card's `skills`.
+A read: write nothing. Read `data/playbook.json` under the plugin root (the base items, `items`) with the Read tool; `get` `trainees/<tid>` (refuse an unknown Trainee), `meta/skills` (refuse a Skill id it doesn't hold) and `commander/hides`; `list` `playbook`. Then pick as storage.md says, Ratings by the Rating rule (as of today) from the card's `skills`.
 
 ### `readStatus`
 
@@ -205,7 +205,7 @@ Only after the Commander confirmed. Refuse a `b-…` id. `get` `playbook/<id>` (
 
 ### `hidePlaybookItem(baseId, hidden)`
 
-Only after the Commander confirmed. Refuse a `p-…` id. Hiding: refuse an id not among `items` in `${CLAUDE_PLUGIN_ROOT}/data/playbook.json`. `get` `commander/hides` (version `v`); if `hidden` already holds the id (hiding) or lacks it (un-hiding), return it unchanged. Otherwise `update` it `{hidden: <with the id added, or taken out>}` with `if_version: v`; on a conflict start over. Return `{hidden}`.
+Only after the Commander confirmed. Refuse a `p-…` id. Hiding: refuse an id not among `items` in `data/playbook.json` under the plugin root. `get` `commander/hides` (version `v`); if `hidden` already holds the id (hiding) or lacks it (un-hiding), return it unchanged. Otherwise `update` it `{hidden: <with the id added, or taken out>}` with `if_version: v`; on a conflict start over. Return `{hidden}`.
 
 ### `copyCommanderScope(fromUrl)` (setup of a new Cycle)
 

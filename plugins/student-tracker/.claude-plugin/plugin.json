@@ -1,5 +1,7 @@
 {
   "name": "student-tracker",
   "description": "Log Talks and observations about your Trainees in Hebrew chat; the agent keeps the record.",
-  "author": { "name": "raymandelvei" }
+  "author": { "name": "raymandelvei" },
+  "homepage": "https://github.com/RayMand1234/student-tracker",
+  "repository": "https://github.com/RayMand1234/student-tracker"
 }
