@@ -149,20 +149,94 @@ function fieldValue(key, value) {
   return value;
 }
 
-// add-test: <name> / subject: <id> / number: <n> / alias: <alias> (repeat)
-export function parseCycleChange(input) {
-  const test = { aliases: [] };
-  const set = {
-    'add-test': (v) => (test.name = v),
-    subject: (v) => (test.subject = v),
-    number: (v) => (test.number = v),
-    alias: (v) => test.aliases.push(v),
-  };
-  for (const line of input.split('\n').map((l) => l.trim()).filter(Boolean)) {
-    const m = line.match(/^([\w-]+):\s*(.+)$/);
-    if (!m || !set[m[1]]) throw new StoreError(`unexpected line "${line}" (keys: ${Object.keys(set).join(', ')})`);
-    set[m[1]](m[2].trim());
+// "key: value" lines (a bare "key" line has value ''), blank lines skipped.
+function keyLines(input) {
+  return input.split('\n').map((l) => l.trim()).filter(Boolean).map((line) => {
+    const m = line.match(/^([\w-]+)(?::\s*(.*))?$/);
+    if (!m) throw new StoreError(`unexpected line "${line}"; lines are "key: value"`);
+    return [m[1], (m[2] ?? '').trim(), line];
+  });
+}
+
+// One change per payload: the first line names it and holds its main value; the lines after it
+// fill its fields. `changes` = {header key: {build(value) → change, fields: {key: (change, value) → void}}}.
+function parseOne(input, changes) {
+  const [first, ...rest] = keyLines(input);
+  if (!first || !changes[first[0]]) throw new StoreError(`the first line names the change: one of ${Object.keys(changes).join(', ')}`);
+  const spec = changes[first[0]];
+  const out = spec.build(first[1]);
+  for (const [key, value, line] of rest) {
+    if (changes[key] && !spec.fields[key]) throw new StoreError(`one change per call: "${line}" starts another`);
+    if (!spec.fields[key]) throw new StoreError(`unexpected line "${line}" (keys: ${Object.keys(spec.fields).join(', ') || 'none'})`);
+    spec.fields[key](out, value);
   }
-  if (!test.name) throw new StoreError('payload needs an "add-test:" line');
-  return { addTest: test };
+  return out;
+}
+
+const list = (v) => v.split(',').map((x) => x.trim()).filter(Boolean);
+
+// add: <name> | rename: <name> | leave: YYYY-MM-DD + how: + reason: | rejoin
+export function parseTraineeChange(input) {
+  return parseOne(input, {
+    add: { build: (name) => ({ add: { name } }), fields: {} },
+    rename: { build: (name) => ({ rename: { name } }), fields: {} },
+    leave: {
+      build: (date) => ({ leave: { date } }),
+      fields: { how: (c, v) => (c.leave.how = v), reason: (c, v) => (c.leave.reason = v) },
+    },
+    rejoin: { build: () => ({ rejoin: {} }), fields: {} },
+  });
+}
+
+// name: / role: (empty clears it) / target: / yellow: / red: (days)
+export function parseSettings(input) {
+  const out = {};
+  const talk = (k) => (v) => ((out.talk ??= {})[k] = Number(v));
+  const set = {
+    name: (v) => (out.name = v),
+    role: (v) => (out.role = v || null),
+    target: talk('target'),
+    yellow: talk('yellow'),
+    red: talk('red'),
+  };
+  for (const [key, value, line] of keyLines(input)) {
+    if (!set[key]) throw new StoreError(`unexpected line "${line}" (keys: ${Object.keys(set).join(', ')})`);
+    set[key](value);
+  }
+  return out;
+}
+
+// One Cycle change, named by its first line (see storage-local.md).
+export function parseCycleChange(input) {
+  const aliases = (key) => (c, v) => (c[key].aliases ??= []).push(v);
+  return parseOne(input, {
+    'add-test': {
+      build: (name) => ({ addTest: { name, aliases: [] } }),
+      fields: { subject: (c, v) => (c.addTest.subject = v), number: (c, v) => (c.addTest.number = v), alias: aliases('addTest') },
+    },
+    'edit-test': {
+      build: (test) => ({ editTest: { test } }),
+      fields: { name: (c, v) => (c.editTest.name = v), number: (c, v) => (c.editTest.number = v), alias: aliases('editTest') },
+    },
+    'remove-test': { build: (test) => ({ removeTest: { test } }), fields: {} },
+    'add-project': {
+      build: (name) => ({ addProject: { name, aliases: [] } }),
+      fields: { subject: (c, v) => (c.addProject.subject = v), alias: aliases('addProject') },
+    },
+    week: {
+      build: (week) => ({ setWeek: { week: Number(week), subjects: [] } }),
+      fields: { subjects: (c, v) => (c.setWeek.subjects = list(v)), projects: (c, v) => (c.setWeek.projects = list(v)) },
+    },
+    'add-skill': { build: (name) => ({ addSkill: { name } }), fields: { group: (c, v) => (c.addSkill.group = v) } },
+    'archive-skill': { build: (skill) => ({ archiveSkill: { skill } }), fields: {} },
+    'restore-skill': { build: (skill) => ({ restoreSkill: { skill } }), fields: {} },
+    team: {
+      build: (name) => ({ setTeam: { name, members: [] } }),
+      fields: {
+        id: (c, v) => (c.setTeam.id = v),
+        project: (c, v) => (c.setTeam.project = v),
+        member: (c, v) => c.setTeam.members.push(v),
+      },
+    },
+  });
 }

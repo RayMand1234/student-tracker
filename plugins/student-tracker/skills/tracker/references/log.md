@@ -12,8 +12,9 @@ The Commander wrote something about one or more Trainees. Keep it, cut it into E
 
 Ask one short Hebrew question and record **nothing** (not even the parts you understood) when:
 
-- **A name matches no Trainee** on the team ("דיברתי עם יואב" when there is no יואב). Never create a Trainee; adding one is a roster change for later.
+- **A name matches no Trainee** on the team ("דיברתי עם יואב" when there is no יואב). Never create a Trainee on your own; you may offer to add one, which is a confirmed roster change ([roster.md](roster.md)).
 - **A first name is shared** by two Trainees ("נועה" when there are "נועה כ." and "נועה ל."): ask which one.
+- **The Trainee left** (their card has `active: false`): say when they left and ask "לרשום בכל זאת?". After a yes, record with `insist`.
 - **The text might be a question rather than an update** ("נועה עברה את פוב?", "דני דיבר איתי?"). Ask whether to record it.
 - **A Test reference stays ambiguous** after the Schedule (below).
 
@@ -33,6 +34,7 @@ After the Commander answers, record the original message as the Entry (word-for-
 7. **Assess.** Write Assessments on the Skills the Evidence speaks to, by [assess.md](assess.md): the Commander's own Assessments ("הדיבאג של נועה זה 4"), self-assessment forms and corrections included.
 8. **Record.** One `recordEntry` call with the full text, all its Evidence and its Assessments. On a refusal, fix what it names and call again; ask the Commander only when the fix needs their word.
 9. **Reply** (format below). Don't repeat the Commander's message back.
+10. **A recurring theme with no Skill.** If this Evidence is about a way of working that no Skill in `readCycle` → `skills` names (time management, asking for help, presenting…), and the same theme shows up in 3 or more Evidence (this one included) in that Trainee's records (`readTrainee`, 6 weeks back) or across Trainees you read in this conversation, add the proposal line from [roster.md](roster.md) to the reply. A Skill only covers a theme when it names that ability itself: one you would stretch to fit ("ניהול זמן" under "סדר וארגון") does not, though you may still assess it. Never add the Skill before a yes.
 
 ## Kinds
 
@@ -41,7 +43,7 @@ After the Commander answers, record the original message as the Entry (word-for-
 | `talk` | A one-on-one conversation the Commander had with the Trainee ("דיברתי עם", "שיחה עם", "ישבתי עם") | `topics`: a few short Hebrew topic words |
 | `test` | A Test (תרץ) result or how it went | `subject`, `test`, `score`, `self`, `unlisted` (below) |
 | `code-review` | A code review (סקד) or going over a Test's review (סורסים) | `test` when it names one (same rules), `subject` |
-| `project-observation` | How the Trainee worked in a Project (Interpreter, Padens, MZ) | `project`: the preset Project id |
+| `project-observation` | How the Trainee worked in a Project (Interpreter, Padens, MZ) | `project`: the preset Project id (the Trainee's Project team is linked by storage) |
 | `self-assessment` | What the Trainee wrote in their self-assessment form (רמ"ת) | — (a per-Test self verdict goes on that Test's `test` Evidence as `self`) |
 | `improve-keep` | Feedback points to improve or keep (שיפור / שימור) | — |
 | `goal` | An aspiration ("מעוניינת בפיקוד") | — |
@@ -95,7 +97,7 @@ The evaluation process (רף מקס …) is not sensitive by default. Course mat
 
 ## Confirmation reply
 
-One line per Trainee saying what was recorded (kind and date, Test and score when given), each followed by its Assessment lines ([assess.md](assess.md)), then any professional-help line, then any question (unknown Test, a proposal's "לעדכן?"), then the Retraction line, last:
+One line per Trainee saying what was recorded (kind and date, Test and score when given), each followed by its Assessment lines ([assess.md](assess.md)), then any professional-help line, then any question (unknown Test, a proposal's "לעדכן?", a new-Skill proposal), then the Retraction line, last:
 
 ```
 נועה — שיחה (30/10). [פרט אישי — בתיק] סומן כרגיש (משפחה) — 'זה לא רגיש' לביטול הסימון. נקודה פתוחה: "סיכמנו שתשב עם דני על זה".

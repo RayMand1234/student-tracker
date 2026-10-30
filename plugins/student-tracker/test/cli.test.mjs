@@ -246,3 +246,67 @@ test('retract-entry withdraws the last Entry or a named one; read-trainee --retr
   assert.equal(JSON.parse(run(['--data', data, 'hard-delete', first], { cwd }).out).entry, first);
   assert.deepEqual(read('--retracted', '--since', '2026-10-01').entries.map((e) => e.id), [second]);
 });
+
+test('update-trainee adds, relabels and marks a Trainee as left, from plain-text lines', () => {
+  const { data, cwd } = fresh();
+  const [noa, dani] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  const added = run(['--data', data, 'update-trainee'], { cwd, input: 'add: נועה ל.\n' });
+  assert.equal(added.code, 0, added.err);
+  assert.match(JSON.parse(added.out).id, /^t-/);
+  assert.equal(run(['--data', data, 'update-trainee', noa.id], { cwd, input: 'rename: נועה כהן\n' }).code, 0);
+  const left = run(['--data', data, 'update-trainee', dani.id], { cwd, input: 'leave: 2026-10-29\nhow: transfer\nreason: עבר לקורס אחר\n' });
+  assert.equal(left.code, 0, left.err);
+  assert.deepEqual(JSON.parse(left.out).left, { date: '2026-10-29', how: 'transfer', reason: 'עבר לקורס אחר' });
+
+  const talk = `--- entry\nדיברתי עם דני\n--- evidence ${dani.id} talk 2026-10-30\nדיברתי עם דני\n`;
+  const refused = run(['--data', data, 'record-entry'], { cwd, input: talk });
+  assert.equal(refused.code, 1);
+  assert.match(refused.err, /left on 2026-10-29/);
+  assert.equal(run(['--data', data, 'record-entry', '--insist'], { cwd, input: talk }).code, 0);
+  assert.equal(run(['--data', data, 'update-trainee', dani.id], { cwd, input: 'rejoin\n' }).code, 0);
+  const team = JSON.parse(run(['--data', data, 'read-team'], { cwd }).out);
+  assert.deepEqual(team.map((t) => [t.name, t.active]).sort(), [['דני', true], ['נועה כהן', true], ['נועה ל.', true]]);
+});
+
+test('update-settings changes name, role and Talk thresholds', () => {
+  const { data, cwd } = fresh();
+  run(['--data', data, 'create-cycle'], { cwd, input: SETUP });
+  const r = run(['--data', data, 'update-settings'], { cwd, input: 'role: מפ"צ\ntarget: 7\nyellow: 9\nred: 12\n' });
+  assert.equal(r.code, 0, r.err);
+  const { settings } = JSON.parse(run(['--data', data, 'read-cycle'], { cwd }).out).commander;
+  assert.deepEqual([settings.name, settings.role, settings.talk], ['רז', 'מפ"צ', { target: 7, yellow: 9, red: 12 }]);
+  const bad = run(['--data', data, 'update-settings'], { cwd, input: 'target: שבוע\n' });
+  assert.equal(bad.code, 1);
+  assert.match(bad.err, /whole number of days/);
+});
+
+test('update-cycle edits the preset, Skills and Project teams, one change per call', () => {
+  const { data, cwd } = fresh();
+  const [noa, dani] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  const ok = (input) => {
+    const r = run(['--data', data, 'update-cycle'], { cwd, input });
+    assert.equal(r.code, 0, r.err);
+    return JSON.parse(r.out);
+  };
+  ok('edit-test: פוב\nname: FOV2\nnumber: 6\nalias: פוב2\n');
+  ok('remove-test: Atom\n');
+  ok('add-project: Chess\nsubject: oop\nalias: שחמט\n');
+  ok('week: 6\nsubjects: oop, db\nprojects: chess\n');
+  const { skill } = ok('add-skill: ניהול זמן\ngroup: impl\n');
+  ok('archive-skill: impl.web-search\n');
+  ok('restore-skill: impl.web-search\n');
+  const team = ok(`team: בנק א\nproject: padens\nmember: ${noa.id}\nmember: ${dani.id}\n`);
+  ok(`team: בנק א\nid: ${team.id}\nproject: padens\nmember: ${noa.id}\n`);
+
+  const cycle = JSON.parse(run(['--data', data, 'read-cycle'], { cwd }).out);
+  const fov = cycle.preset.tests.find((t) => t.id === 'tabi.fov');
+  assert.deepEqual([fov.name, fov.number], ['FOV2', '6']);
+  assert.equal(cycle.preset.tests.some((t) => t.name === 'Atom'), false);
+  assert.deepEqual(cycle.preset.schedule.find((w) => w.week === 6), { week: 6, subjects: ['oop', 'db'], projects: ['chess'] });
+  assert.ok(cycle.skills.groups.find((g) => g.id === 'impl').skills.some((s) => s.id === skill.id));
+  assert.deepEqual(cycle.teams.map((t) => t.members), [[noa.id]]);
+
+  const two = run(['--data', data, 'update-cycle'], { cwd, input: 'remove-test: Flame\nadd-skill: x\n' });
+  assert.equal(two.code, 1);
+  assert.match(two.err, /one change per call/);
+});

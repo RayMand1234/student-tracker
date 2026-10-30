@@ -20,7 +20,7 @@ const KIND_FIELDS = {
   talk: { topics: [] },
   test: { ...TEST_FIELDS, score: null, self: null },
   'code-review': TEST_FIELDS,
-  'project-observation': { project: null },
+  'project-observation': { project: null }, // + `team`, filled from teams
   'self-assessment': {},
   'improve-keep': {},
   goal: {},
@@ -175,6 +175,28 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     return entry.id;
   }
 
+  // One `changes` record of a Trainee plus their rebuilt card, in one version-pinned batch.
+  function writeChange(docs, tid, change) {
+    const d = now();
+    let id;
+    do id = `${stampOf('c', d)}-${rand(2)}`; while (docs.get(`trainees/${tid}/changes/${id}`));
+    const record = { path: `trainees/${tid}/changes/${id}`, data: change };
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const card = docs.get(`trainees/${tid}`);
+      const next = derive(docs, tid, [{ ...record, data: { ...change, trainee: tid } }]);
+      try {
+        docs.batch([
+          { op: 'create', path: record.path, data: change },
+          { op: 'set', path: `trainees/${tid}`, data: next, ifVersion: card.version },
+        ]);
+        return { id: tid, ...next };
+      } catch (e) {
+        if (!(e instanceof VersionConflict)) throw e;
+      }
+    }
+    throw new StoreError(`card ${tid} kept changing; try again`);
+  }
+
   // A pinned write on an Entry, retried while other sessions move it. `write(entry)` gives the
   // write ({op, data}) or null when there is nothing left to do.
   function writeEntry(docs, id, write) {
@@ -205,8 +227,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       if (!commander?.name) throw new StoreError('commander.name is required');
       if (!cycle?.name) throw new StoreError('cycle.name is required');
       const names = trainees.map((t) => (typeof t === 'string' ? t : t.name));
-      const dup = names.find((n, i) => names.indexOf(n) !== i);
-      if (dup) throw new StoreError(`duplicate Trainee name "${dup}" — ask for a distinguishing label`);
+      names.forEach((n, i) => names.slice(i + 1).forEach((m) => checkNames(n, m)));
 
       const pointer = readPointer();
       const existing = pointer.current?.startsWith(LOCAL) ? pointer.current.slice(LOCAL.length) : null;
@@ -269,6 +290,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
           hides: docs.get('commander/hides')?.data ?? { hidden: [] },
         },
         playbook: flat(docs.list('playbook')),
+        teams: flat(docs.list('teams')),
       };
     },
 
@@ -298,11 +320,13 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
 
     // Entry written as `writing` with its whole plan → one chunk per Trainee → `done`.
     // Child ids are deterministic, so finishing it again never duplicates a record.
-    recordEntry({ text, evidence = [], assessments = [] }) {
+    // `insist`: the Commander asked to record about a Trainee who left.
+    recordEntry({ text, evidence = [], assessments = [], insist = false }) {
       const docs = open();
       if (!text) throw new StoreError('Entry text is required');
       if (!evidence.length) throw new StoreError('an Entry needs at least one Evidence');
       const preset = docs.get('meta/preset')?.data;
+      const teams = flat(docs.list('teams'));
       const fieldsOf = [];
       const closing = new Set();
       // Checked against the card, as the artifact backend does; the card is kept in step with the sources.
@@ -322,12 +346,13 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       const sensitiveSpans = evidence.flatMap((ev) => (ev.sensitive ?? []).flatMap((s) => spansOf(text, s.excerpt)));
       for (const { followups = [], sensitive = [], ...ev } of evidence) {
         if (!docs.get(`trainees/${ev.trainee}`)) throw new StoreError(`unknown Trainee ${ev.trainee}`);
+        checkActive(docs, ev.trainee, insist);
         if (!KINDS.includes(ev.kind)) throw new StoreError(`unknown kind "${ev.kind}" (one of ${KINDS.join(', ')})`);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(ev.date ?? '')) throw new StoreError(`date must be YYYY-MM-DD, got "${ev.date}"`);
+        checkDate(ev.date);
         if (!wordForWord(text, ev.excerpt)) {
           throw new StoreError(`excerpt must be copied word-for-word from the Entry: "${ev.excerpt}"`);
         }
-        const fields = kindFields(ev, preset);
+        const fields = kindFields(ev, preset, teams);
         if (ev.kind === 'clarification' && !evidenceOf(docs, ev.trainee, fields.clarifies)) {
           throw new StoreError(`a clarification needs clarifies = the id of the ${ev.trainee} Evidence it corrects`);
         }
@@ -455,9 +480,10 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
 
     // Assessments of one Trainee outside an Entry (a re-rate, an accepted proposal), dated today,
     // in one version-pinned batch with the card.
-    recordAssessments(tid, assessments = []) {
+    recordAssessments(tid, assessments = [], { insist = false } = {}) {
       const docs = open();
       if (!assessments.length) throw new StoreError('give at least one Assessment');
+      checkActive(docs, tid, insist);
       const checked = checkAssessments(docs, assessments.map((a) => ({ ...a, trainee: tid })), (ref) => evidenceOf(docs, tid, ref));
       const d = now();
       const at = isoWithOffset(d);
@@ -484,28 +510,84 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       throw new StoreError(`card ${tid} kept changing; try again`);
     },
 
-    // Only after the Commander confirms. This version handles one change: adding a Test.
-    updateCycle({ addTest, ...rest } = {}) {
-      if (!addTest || Object.keys(rest).length) throw new StoreError('updateCycle supports only addTest in this version');
+    // A roster change, written as a `changes` record with the card in one pinned batch. Only after
+    // the Commander confirms. `add` takes no tid and creates the Trainee.
+    updateTrainee(tid, change = {}) {
       const docs = open();
-      const current = docs.get('meta/preset');
-      if (!current) throw new StoreError('this Cycle has no preset copy');
-      const preset = current.data;
-      const { name, subject, number = null, aliases = [] } = addTest;
-      if (!name) throw new StoreError('addTest needs a name');
-      if (!preset.subjects.some((s) => s.id === subject)) {
-        throw new StoreError(`unknown Subject "${subject}" (one of ${preset.subjects.map((s) => s.id).join(', ')})`);
+      const kinds = Object.keys(change);
+      if (kinds.length !== 1 || !TRAINEE_CHANGES.includes(kinds[0])) {
+        throw new StoreError(`a Trainee change is one of ${TRAINEE_CHANGES.join(', ')}`);
       }
-      for (const n of [name, ...aliases]) {
-        const taken = findTest(preset, n);
-        if (taken) throw new StoreError(`"${n}" is already the Test "${taken.name}"`);
+      const [kind] = kinds;
+      const value = change[kind] ?? {};
+      if (kind === 'add' && tid) throw new StoreError('adding takes no Trainee id');
+      if (kind !== 'add' && !docs.get(`trainees/${tid}`)) throw new StoreError(`unknown Trainee ${tid}`);
+      const at = isoWithOffset(now());
+
+      if (kind === 'add' || kind === 'rename') {
+        const name = freeName(docs, value.name, tid);
+        if (kind === 'add') {
+          let id;
+          do id = `t-${rand(6)}`; while (docs.get(`trainees/${id}`));
+          const added = { type: 'added', name, by: 'commander', at, retracted: false };
+          const card = deriveCard({ changes: [added], evidence: [] });
+          docs.batch([
+            { op: 'create', path: `trainees/${id}/changes/added`, data: added },
+            { op: 'create', path: `trainees/${id}`, data: card },
+          ]);
+          return { id, ...card };
+        }
+        return writeChange(docs, tid, { type: 'renamed', name, by: 'commander', at, retracted: false });
       }
-      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `t-${rand(4)}`;
-      let id = `${subject}.${slug}`;
-      while (preset.tests.some((t) => t.id === id)) id = `${subject}.${slug}-${rand(2)}`;
-      const tests = [...preset.tests, { id, subject, number, name, aliases }];
-      docs.batch([{ op: 'update', path: 'meta/preset', data: { tests }, ifVersion: current.version }]);
-      return { ...preset, tests };
+      const { left } = docs.get(`trainees/${tid}`).data;
+      if (kind === 'rejoin') {
+        if (!left) throw new StoreError(`${tid} has not left`);
+        return writeChange(docs, tid, { type: 'rejoined', by: 'commander', at, retracted: false });
+      }
+      if (left) throw new StoreError(`${tid} already left on ${left.date}`);
+      const { date, how, reason, ...rest } = value;
+      if (Object.keys(rest).length) throw new StoreError('leaving takes only date, how and reason');
+      checkDate(date);
+      if (date > today()) throw new StoreError(`${date} is in the future; record leaving on the day it happened`);
+      if (!LEAVE_HOW.includes(how)) throw new StoreError(`how a Trainee left is one of ${LEAVE_HOW.join(', ')}, got "${how}"`);
+      if (typeof reason !== 'string' || !reason.trim()) throw new StoreError('leaving needs a reason (display-safe: no sensitive detail)');
+      return writeChange(docs, tid, { type: 'left', date, how, reason: reason.trim(), by: 'commander', at, retracted: false });
+    },
+
+    // Commander name, role, Talk target and thresholds. Only after the Commander confirms.
+    updateSettings(change = {}) {
+      const { name, role, talk, ...rest } = change;
+      const unknown = Object.keys(rest)[0];
+      if (unknown) throw new StoreError(`unknown setting "${unknown}" (name, role, talk)`);
+      if (!Object.keys(change).length) throw new StoreError('nothing to change');
+      if (name !== undefined && (typeof name !== 'string' || !name.trim())) throw new StoreError('the Commander name cannot be empty');
+      if (role !== undefined && role !== null && typeof role !== 'string') throw new StoreError('role is text, or null to clear it');
+      const badTalk = Object.keys(talk ?? {}).find((k) => !(k in DEFAULT_TALK));
+      if (badTalk) throw new StoreError(`unknown Talk setting "${badTalk}" (target, yellow, red)`);
+      return pinned(open(), 'commander/settings', (current) => {
+        const next = { ...current.talk, ...talk };
+        for (const k of Object.keys(DEFAULT_TALK)) {
+          if (!Number.isInteger(next[k]) || next[k] < 1) throw new StoreError(`Talk ${k} is a whole number of days, at least 1; got ${JSON.stringify(next[k])}`);
+        }
+        if (next.yellow >= next.red) throw new StoreError(`the yellow threshold (${next.yellow}) must come before red (${next.red})`);
+        if (next.target > next.yellow) throw new StoreError(`the Talk target (${next.target}) cannot be past the yellow threshold (${next.yellow})`);
+        return {
+          ...current,
+          ...(name !== undefined ? { name: name.trim() } : {}),
+          ...(role !== undefined ? { role: role?.trim() || null } : {}),
+          talk: next,
+          at: isoWithOffset(now()),
+        };
+      });
+    },
+
+    // One change to this Cycle (its preset copy, Skill framework or Project teams), pinned to the
+    // version read. Only after the Commander confirms. Returns the changed document.
+    updateCycle(change = {}) {
+      const kinds = Object.keys(change);
+      const apply = CYCLE_CHANGES[kinds[0]];
+      if (kinds.length !== 1 || !apply) throw new StoreError(`a Cycle change is one of ${Object.keys(CYCLE_CHANGES).join(', ')}`);
+      return apply(open(), change[kinds[0]] ?? {}, { rand, at: isoWithOffset(now()) });
     },
 
     // Moves one Evidence, with the Follow-ups it opened, between the sensitive collection and the
@@ -617,7 +699,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
 
 // Checks an Evidence's kind-specific fields against its kind and the Cycle's preset; returns
 // them with every field of the kind present (absent ones at their default).
-function kindFields(ev, preset) {
+function kindFields(ev, preset, teams = []) {
   const { trainee, kind, date, excerpt, ...fields } = ev;
   const allowed = { ...KIND_FIELDS[kind], closes: [] };
   for (const key of Object.keys(fields)) {
@@ -628,16 +710,28 @@ function kindFields(ev, preset) {
     throw new StoreError(`score must be a number, as the Commander gave it; leave it out when not given`);
   }
   if ('test' in allowed && out.test) out.subject = testSubject(out, preset);
-  if ('project' in allowed && out.project && !preset?.projects.some((p) => p.id === out.project)) {
-    throw new StoreError(`unknown project "${out.project}" (one of ${preset?.projects.map((p) => p.id).join(', ')})`);
-  }
+  if ('project' in allowed && out.project) checkProject(preset, out.project);
+  // A project observation links to the Trainee's team in that Project, if one is recorded.
+  if ('project' in allowed) out.team = teams.find((t) => t.project === out.project && t.members.includes(trainee))?.id ?? null;
   return out;
 }
 
+// Names compare ignoring case and spacing.
+const sameName = (a, b) => {
+  const norm = (s) => String(s).trim().toLowerCase().replace(/\s+/g, ' ');
+  return norm(a) === norm(b);
+};
+
 // The preset Test known by this name or alias (ignoring case and spacing), if any.
 function findTest(preset, name) {
-  const norm = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
-  return (preset?.tests ?? []).find((t) => [t.name, ...t.aliases].some((a) => norm(a) === norm(name)));
+  return (preset?.tests ?? []).find((t) => [t.name, ...t.aliases].some((a) => sameName(a, name)));
+}
+
+// The preset Test by name or alias, or a refusal.
+function testNamed(preset, name) {
+  const found = findTest(preset, name ?? '');
+  if (!found) throw new StoreError(`no Test "${name}" in this Cycle's preset`);
+  return found;
 }
 
 // Checks an Evidence's `test` against the preset; returns the Subject to store (a listed Test's own).
@@ -711,18 +805,203 @@ function childrenOf(docs, tid, ids) {
   });
 }
 
+// The changes `updateCycle` makes, each (docs, value, {rand, at}) → the changed document.
+const CYCLE_CHANGES = {
+  addTest: (docs, { name, subject, number = null, aliases = [] }, { rand }) => pinned(docs, 'meta/preset', (preset) => {
+    if (!name) throw new StoreError('addTest needs a name');
+    checkSubject(preset, subject);
+    for (const n of [name, ...aliases]) {
+      const taken = findTest(preset, n);
+      if (taken) throw new StoreError(`"${n}" is already the Test "${taken.name}"`);
+    }
+    const slug = slugOf(name) || `t-${rand(4)}`;
+    let id = `${subject}.${slug}`;
+    while (preset.tests.some((t) => t.id === id)) id = `${subject}.${slug}-${rand(2)}`;
+    return { ...preset, tests: [...preset.tests, { id, subject, number, name, aliases }] };
+  }),
+
+  // A rename keeps the old name as an alias, so Evidence recorded under it still resolves.
+  editTest: (docs, { test, name, number, aliases = [], ...rest }) => pinned(docs, 'meta/preset', (preset) => {
+    if (Object.keys(rest).length) throw new StoreError('editTest takes test, name, number and aliases');
+    const current = testNamed(preset, test);
+    if (name === undefined && number === undefined && !aliases.length) throw new StoreError('nothing to change');
+    const renamed = name !== undefined && name !== current.name;
+    for (const n of [...(renamed ? [name] : []), ...aliases]) {
+      const taken = findTest(preset, n);
+      if (taken && taken.id !== current.id) throw new StoreError(`"${n}" is already the Test "${taken.name}"`);
+    }
+    const finalName = renamed ? name : current.name;
+    const next = {
+      ...current,
+      name: finalName,
+      ...(number !== undefined ? { number } : {}),
+      aliases: [...new Set([...current.aliases, ...(renamed ? [current.name] : []), ...aliases])].filter((a) => !sameName(a, finalName)),
+    };
+    return { ...preset, tests: preset.tests.map((t) => (t.id === current.id ? next : t)) };
+  }),
+
+  removeTest: (docs, { test }) => pinned(docs, 'meta/preset', (preset) => {
+    const current = testNamed(preset, test);
+    return { ...preset, tests: preset.tests.filter((t) => t.id !== current.id) };
+  }),
+
+  addProject: (docs, { name, subject, aliases = [] }, { rand }) => pinned(docs, 'meta/preset', (preset) => {
+    if (typeof name !== 'string' || !name.trim()) throw new StoreError('a Project needs a name');
+    checkSubject(preset, subject);
+    for (const n of [name, ...aliases]) {
+      const taken = preset.projects.find((p) => [p.name, ...(p.aliases ?? [])].some((a) => sameName(a, n)));
+      if (taken) throw new StoreError(`"${n}" is already the Project "${taken.name}"`);
+    }
+    const slug = slugOf(name) || `p-${rand(4)}`;
+    let id = slug;
+    while (preset.projects.some((p) => p.id === id)) id = `${slug}-${rand(2)}`;
+    return { ...preset, projects: [...preset.projects, { id, subject, name: name.trim(), aliases }] };
+  }),
+
+  setWeek: (docs, { week, subjects = [], projects }) => pinned(docs, 'meta/preset', (preset) => {
+    if (!Number.isInteger(week) || week < 1) throw new StoreError(`a week is a whole number from 1, got ${JSON.stringify(week)}`);
+    for (const s of subjects) checkSubject(preset, s);
+    for (const p of projects ?? []) checkProject(preset, p);
+    const entry = { week, subjects, ...(projects?.length ? { projects } : {}) };
+    const schedule = [...preset.schedule.filter((w) => w.week !== week), entry].sort((a, b) => a.week - b.week);
+    return { ...preset, schedule };
+  }),
+
+  addSkill: (docs, { group, name }, { rand, at }) => {
+    let skill;
+    const skills = pinned(docs, 'meta/skills', (framework) => {
+      const g = groupOf(framework, group);
+      if (typeof name !== 'string' || !name.trim()) throw new StoreError('a Skill needs a name');
+      const same = g.skills.find((k) => sameName(k.name, name));
+      if (same) throw new StoreError(`there is already a Skill "${same.name}" (${same.id}${same.archived ? ', archived: restore it instead' : ''})`);
+      const ids = new Set(framework.groups.flatMap((x) => x.skills.map((k) => k.id)));
+      let id;
+      do id = `${g.id}.c-${rand(4)}`; while (ids.has(id));
+      skill = { id, name: name.trim(), added: at };
+      return withSkills(framework, g.id, [...g.skills, skill]);
+    });
+    return { skill, skills };
+  },
+
+  // Creates a Project team, or replaces the one named by `id`. A Trainee is in one team per Project.
+  setTeam: (docs, { id, project, name, members = [], ...rest }, { rand, at }) => {
+    if (Object.keys(rest).length) throw new StoreError('setTeam takes id, project, name and members');
+    checkProject(docs.get('meta/preset')?.data, project);
+    if (typeof name !== 'string' || !name.trim()) throw new StoreError('a team needs a name');
+    if (!members.length) throw new StoreError('a team has at least one member');
+    const current = id ? docs.get(`teams/${id}`) : null;
+    if (id && !current) throw new StoreError(`no team ${id}`);
+    for (const tid of members) {
+      const card = docs.get(`trainees/${tid}`);
+      if (!card) throw new StoreError(`unknown Trainee ${tid}`);
+      const other = docs.list('teams').find((t) => t.id !== id && t.data.project === project && t.data.members.includes(tid));
+      if (other) throw new StoreError(`${card.data.name} is already in "${other.data.name}" for ${project}; change that team first`);
+    }
+    const data = { project, name: name.trim(), members: [...new Set(members)], at };
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      let teamId = id;
+      if (!teamId) do teamId = `tm-${rand(4)}`; while (docs.get(`teams/${teamId}`));
+      try {
+        upsert(docs, `teams/${teamId}`, data, id ? docs.get(`teams/${id}`) : null);
+        return { id: teamId, ...data };
+      } catch (e) {
+        if (!lostRace(e)) throw e;
+      }
+    }
+    throw new StoreError('the teams kept changing; try again');
+  },
+
+  archiveSkill: (docs, { skill }, { at }) => setArchived(docs, skill, at),
+  restoreSkill: (docs, { skill }) => setArchived(docs, skill, null),
+};
+
+function checkProject(preset, project) {
+  if (!preset?.projects.some((p) => p.id === project)) {
+    throw new StoreError(`unknown project "${project}" (one of ${preset?.projects.map((p) => p.id).join(', ')})`);
+  }
+}
+
+const slugOf = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+function checkDate(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) throw new StoreError(`date must be YYYY-MM-DD, got "${date}"`);
+}
+
+function checkSubject(preset, subject) {
+  if (!preset.subjects.some((s) => s.id === subject)) {
+    throw new StoreError(`unknown Subject "${subject}" (one of ${preset.subjects.map((s) => s.id).join(', ')})`);
+  }
+}
+
+function groupOf(framework, group) {
+  const g = framework.groups.find((x) => x.id === group);
+  if (!g) throw new StoreError(`unknown Stage or group "${group}" (one of ${framework.groups.map((x) => x.id).join(', ')})`);
+  return g;
+}
+
+const withSkills = (framework, group, skills) => ({
+  ...framework,
+  groups: framework.groups.map((g) => (g.id === group ? { ...g, skills } : g)),
+});
+
+// Archives a Skill (`at` = when) or restores it (`at` = null). Never deleted: its Assessments keep their meaning.
+function setArchived(docs, id, at) {
+  let skill;
+  const skills = pinned(docs, 'meta/skills', (framework) => {
+    const g = framework.groups.find((x) => x.skills.some((k) => k.id === id));
+    if (!g) throw new StoreError(`unknown Skill "${id}"`);
+    const { archived, archivedAt, ...current } = g.skills.find((k) => k.id === id);
+    if (at && archived) throw new StoreError(`${id} is already archived`);
+    if (!at && !archived) throw new StoreError(`${id} is not archived`);
+    skill = at ? { ...current, archived: true, archivedAt: at } : current;
+    return withSkills(framework, g.id, g.skills.map((k) => (k.id === id ? skill : k)));
+  });
+  return { skill, skills };
+}
+
 const AUTHORS = ['agent', 'commander', 'trainee'];
+const TRAINEE_CHANGES = ['add', 'rename', 'leave', 'rejoin'];
+const LEAVE_HOW = ['dismissal', 'transfer', 'other'];
+
+// A Trainee who left takes no new records unless the Commander insists.
+function checkActive(docs, tid, insist) {
+  const card = docs.get(`trainees/${tid}`)?.data;
+  if (card?.left && !insist) {
+    throw new StoreError(`${card.name} left on ${card.left.date}; their records are read-only. Record only if the Commander insists (insist)`);
+  }
+}
+
+// `name` trimmed, if it clashes with no other Trainee's (one who left included); `self` may keep its own.
+function freeName(docs, name, self) {
+  if (typeof name !== 'string' || !name.trim()) throw new StoreError('a Trainee needs a display name');
+  for (const t of docs.list('trainees')) {
+    if (t.id !== self) checkNames(t.data.name, name.trim());
+  }
+  return name.trim();
+}
+
+// Two display names clash when they are the same (ignoring case and spacing), or when one is a
+// bare first name the other starts with: then a bare "נועה" could mean either.
+function checkNames(a, b) {
+  const words = (n) => n.trim().split(/\s+/);
+  if (sameName(a, b)) throw new StoreError(`there is already a Trainee named "${a}"; ask for a short distinguishing label for both (e.g. "נועה כ.")`);
+  const [wa, wb] = [words(a), words(b)];
+  if ((wa.length === 1 || wb.length === 1) && sameName(wa[0], wb[0])) {
+    throw new StoreError(`"${wa.length === 1 ? a : b}" shares the first name of "${wa.length === 1 ? b : a}"; give both a short distinguishing label (e.g. "נועה כ.")`);
+  }
+}
 
 // Checks Assessments against the Skill framework; `cite(ref, tid)` resolves a cited ref to that
 // Trainee's Evidence {id, date, kind}, or null. Returns each with its Evidence ids, dated by the latest.
 function checkAssessments(docs, assessments, cite) {
-  const skills = new Set((docs.get('meta/skills')?.data.groups ?? []).flatMap((g) => g.skills.filter((k) => !k.archived).map((k) => k.id)));
+  const known = new Map((docs.get('meta/skills')?.data.groups ?? []).flatMap((g) => g.skills.map((k) => [k.id, k])));
   const seen = new Set();
   return assessments.map((a) => {
     const { trainee, skill, score, author, reason, evidence = [], ...rest } = a;
     if (Object.keys(rest).length) throw new StoreError(`an Assessment takes only trainee, skill, score, author, reason and evidence`);
     if (!docs.get(`trainees/${trainee}`)) throw new StoreError(`unknown Trainee ${trainee}`);
-    if (!skills.has(skill)) throw new StoreError(`unknown Skill "${skill}"; use a Skill id from meta/skills`);
+    if (!known.has(skill)) throw new StoreError(`unknown Skill "${skill}"; use a Skill id from meta/skills`);
+    if (known.get(skill).archived) throw new StoreError(`${skill} is archived; restore it (restoreSkill, after the Commander confirms) before assessing it`);
     if (!Number.isInteger(score) || score < 1 || score > 5) throw new StoreError(`an Assessment score is a whole number from 1 to 5, got ${JSON.stringify(score)}`);
     if (!AUTHORS.includes(author)) throw new StoreError(`author is one of ${AUTHORS.join(', ')}, got "${author}"`);
     if (typeof reason !== 'string' || !reason.trim()) throw new StoreError('an Assessment needs a reason');
@@ -764,14 +1043,16 @@ function stillOpen(followups, evidence) {
 function deriveCard({ changes, evidence, followups = [], assessments = [], sensitive = [] }, prev = {}) {
   const live = (xs) => xs.filter((x) => x.retracted === false);
   const named = live(changes).filter((c) => c.name).sort(byAt).at(-1);
+  const leaving = live(changes).filter((c) => c.type === 'left' || c.type === 'rejoined').sort(byAt).at(-1);
+  const left = leaving?.type === 'left' ? { date: leaving.date, how: leaving.how, reason: leaving.reason } : null;
   const masked = sensitive.filter((s) => s.record === 'followup').map((f) => ({ ...f, text: MARK }));
   const allEvidence = [...evidence, ...sensitive.filter((s) => s.record === 'evidence')];
   // The date of a Talk is not sensitive, even when the whole Talk is.
   const talks = live(allEvidence).filter((e) => e.kind === 'talk').map((e) => e.date).sort();
   return {
     name: named?.name ?? prev?.name ?? null,
-    active: true,
-    left: null,
+    active: !left,
+    left,
     status: null,
     evalStage: null,
     lastTalk: talks.at(-1) ?? null,
@@ -813,6 +1094,23 @@ const sensitiveOf = (docs, tid) => flat(docs.list('sensitive')).filter((s) => s.
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // Another session got there first; re-read and try again (or accept its work).
 const lostRace = (e) => e instanceof VersionConflict || e instanceof AlreadyExists;
+
+// Replaces one existing document with `next(current data)`, pinned to the version read; on a
+// conflict reads again and redoes it. Returns the stored data.
+function pinned(docs, docPath, next) {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const current = docs.get(docPath);
+    if (!current) throw new StoreError(`${docPath} does not exist`);
+    const data = next(current.data);
+    try {
+      docs.batch([{ op: 'set', path: docPath, data, ifVersion: current.version }]);
+      return data;
+    } catch (e) {
+      if (!(e instanceof VersionConflict)) throw e;
+    }
+  }
+  throw new StoreError(`${docPath} kept changing; try again`);
+}
 
 function upsert(docs, docPath, data, current = docs.get(docPath)) {
   docs.batch([current

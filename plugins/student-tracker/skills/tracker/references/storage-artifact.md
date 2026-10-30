@@ -24,10 +24,11 @@ The Cycle's store is the database of its private claude.ai page, titled "מעק�
 The card is derived from the Trainee's records and always has this shape:
 
 ```
-{name, active: true, left: null, status: null, evalStage: null, lastTalk, snapshot, items: [], followups: [], nextTalk, skills}
+{name, active, left, status: null, evalStage: null, lastTalk, snapshot, items: [], followups: [], nextTalk, skills}
 ```
 
-- `name`: from the latest non-retracted `changes` record that has a `name` (setup writes `changes/added`).
+- `name`: from the latest (by `at`) non-retracted `changes` record that has a `name` (setup writes `changes/added`; a label is a `renamed` record).
+- `left`: the latest non-retracted `changes` record of type `left` or `rejoined`; if it is `left`, `{date, how, reason}` from it, otherwise `null`. `active` = `left` is `null`.
 - `lastTalk`: the latest `date` of the Trainee's non-retracted Evidence of kind `talk`, or `null`. A Talk flipped into `sensitive/` still counts: its date is not sensitive.
 - Never copy a word of a `sensitive/` record onto the card.
 - `followups`: the Trainee's non-retracted Follow-ups, public and sensitive, that no non-retracted Evidence of theirs (sensitive parts included) lists in `closes`, as `{id, text, date}`, oldest `date` first (then by id). A sensitive Follow-up's `text` is "[פרט אישי — בתיק]", never its words.
@@ -49,7 +50,7 @@ The card is derived from the Trainee's records and always has this shape:
 
 ### `readCycle`
 
-`get` `meta/cycle`, `meta/skills`, `meta/preset`, `commander/settings`, `commander/hides`; `list` `playbook`.
+`get` `meta/cycle`, `meta/skills`, `meta/preset`, `commander/settings`, `commander/hides`; `list` `playbook` and `teams`.
 
 ### `readTeam`
 
@@ -65,9 +66,9 @@ The card is derived from the Trainee's records and always has this shape:
 
 ### `recordEntry({text, evidence, assessments})`
 
-Check first, writing nothing if any fails: every refusal listed under `recordEntry` in storage.md (the preset is `meta/preset` from `readCycle`; for `clarifies` `get` that Evidence, in the Trainee's `evidence/` or in `sensitive/`, and refuse it if `retracted` is not `false`; for `closes` the card's `followups`; for a marked excerpt, each piece around "[פרט אישי — בתיק]" is found in `text` after the one before it; no public excerpt piece or Follow-up text reaches into the stretch of `text` a sensitive part's excerpt covers: each must also stand somewhere in `text` outside every sensitive stretch), every Assessment refusal in storage.md (Skill ids from `meta/skills`; a `#<n>` ref must be an Evidence or sensitive part of this Entry for the same Trainee; a stored id is `get` in that Trainee's `evidence/` or in `sensitive/` with `record: "evidence"` and that `trainee`, and `retracted: false`), and at most 49 records per Trainee.
+Check first, writing nothing if any fails: every refusal listed under `recordEntry` in storage.md (a Trainee who left: their card has `left`, and `insist` is not set; the preset is `meta/preset` from `readCycle`; for `clarifies` `get` that Evidence, in the Trainee's `evidence/` or in `sensitive/`, and refuse it if `retracted` is not `false`; for `closes` the card's `followups`; for a marked excerpt, each piece around "[פרט אישי — בתיק]" is found in `text` after the one before it; no public excerpt piece or Follow-up text reaches into the stretch of `text` a sensitive part's excerpt covers: each must also stand somewhere in `text` outside every sensitive stretch), every Assessment refusal in storage.md (Skill ids from `meta/skills`, refusing one marked `archived`; a `#<n>` ref must be an Evidence or sensitive part of this Entry for the same Trainee; a stored id is `get` in that Trainee's `evidence/` or in `sensitive/` with `record: "evidence"` and that `trainee`, and `retracted: false`), and at most 49 records per Trainee.
 
-1. **Plan.** Pick the Entry id. Evidence number `n` (from 1, in message order) becomes `trainees/<tid>/evidence/<eid>-<n>` with data `{entry: eid, trainee, kind, date, excerpt, …every field of its kind (defaults from storage.md), closes, at, retracted: false}`; a listed Test's `subject` is the preset's. Sensitive parts continue the numbering: `sensitive/<eid>-<n>` with `{record: "evidence", entry: eid, trainee, kind (default "note"), category, date: <its Evidence's date>, excerpt, in: <its Evidence's id>, closes, at, retracted: false}`. The Follow-ups come last, each Evidence's own then its sensitive parts': `trainees/<tid>/followups/<eid>-<n>` with `{entry: eid, trainee, text, from: <its Evidence or sensitive part id>, date: <its Evidence's date>, at, retracted: false}`, or `sensitive/<eid>-<n>` with the same plus `record: "followup"` when opened by a sensitive part. The Assessments come last, in the order given: `trainees/<tid>/assessments/<eid>-<n>` with `{entry: eid, trainee, skill, score, author, reason, evidence: [ids, each #<n> as <eid>-<n>], date: <the latest date of the Evidence it cites>, at, retracted: false}`. Group the records by Trainee (a sensitive record goes in its `trainee`'s chunk).
+1. **Plan.** Pick the Entry id. Evidence number `n` (from 1, in message order) becomes `trainees/<tid>/evidence/<eid>-<n>` with data `{entry: eid, trainee, kind, date, excerpt, …every field of its kind (defaults from storage.md), closes, at, retracted: false}`; a listed Test's `subject` is the preset's; a `project-observation` also gets `team`: the id of the `teams` document with that `project` whose `members` hold the Trainee, or `null`. Sensitive parts continue the numbering: `sensitive/<eid>-<n>` with `{record: "evidence", entry: eid, trainee, kind (default "note"), category, date: <its Evidence's date>, excerpt, in: <its Evidence's id>, closes, at, retracted: false}`. The Follow-ups come last, each Evidence's own then its sensitive parts': `trainees/<tid>/followups/<eid>-<n>` with `{entry: eid, trainee, text, from: <its Evidence or sensitive part id>, date: <its Evidence's date>, at, retracted: false}`, or `sensitive/<eid>-<n>` with the same plus `record: "followup"` when opened by a sensitive part. The Assessments come last, in the order given: `trainees/<tid>/assessments/<eid>-<n>` with `{entry: eid, trainee, skill, score, author, reason, evidence: [ids, each #<n> as <eid>-<n>], date: <the latest date of the Evidence it cites>, at, retracted: false}`. Group the records by Trainee (a sensitive record goes in its `trainee`'s chunk).
 2. **Entry.** Create `entries/<eid>`: `{text, at, status: "writing", trainees: [tid…], children: [<eid>-<n>…], retracted: false, pending: [{trainee, records: [{collection, doc_id, data}…]}…]}`. If the id is taken, pick another `rand2`. Keep the returned version.
 3. **One chunk per Trainee.** `get` the card (version `v`). New `lastTalk` = the latest of the card's `lastTalk` and this chunk's Talk dates. New `followups` = the card's, minus the ids this chunk's Evidence and sensitive parts `closes`, plus this chunk's Follow-ups as `{id, text, date}` (text "[פרט אישי — בתיק]" for a sensitive one), sorted by `date`, then id. If the chunk has Assessments: for each Skill they are on, `query` `trainees/<tid>/assessments` where `skill == <id>` and `retracted == false`, add this chunk's, and rebuild that Skill's `skills` entry by the card rule (other Skills stay as they are). One `batch`: a create (`set`, no `if_version`) per record, plus `update` `trainees/<tid>` `{lastTalk, followups, skills}` with `if_version: v`. The pin makes the chunk all-or-nothing.
    - Refused because the card moved, or because a record already exists (another session got there first): `get` `entries/<eid>`; if it is gone or has `deletion` set, another session hard-deleted it, so create nothing. Otherwise create each record that is still missing on its own ("already exists" is fine). Then `rebuildCard(tid)`.
@@ -87,13 +88,13 @@ Return the Entry ids you finished.
 
 ### `recordAssessments(tid, assessments)`
 
-Check every Assessment refusal in storage.md (every ref a stored Evidence id of `tid`). Ids `a-YYYYMMDD-HHMM-<rand2>` from Now, each one not already in `trainees/<tid>/assessments` and not repeated; data `{entry: null, trainee: tid, skill, score, author, reason, evidence, date: <today>, at, retracted: false}`. `get` the card (version `v`), rebuild the `skills` entry of each Skill they are on as `recordEntry` step 3 does, and one `batch`: a create per Assessment plus `update` `trainees/<tid>` `{skills}` with `if_version: v`. On a conflict nothing was written: start over with the same ids, at most 10 times. Return `{assessments: [ids]}`.
+Check every Assessment refusal in storage.md (every ref a stored Evidence id of `tid`), and refuse a Trainee whose card has `left` unless `insist` is set. Ids `a-YYYYMMDD-HHMM-<rand2>` from Now, each one not already in `trainees/<tid>/assessments` and not repeated; data `{entry: null, trainee: tid, skill, score, author, reason, evidence, date: <today>, at, retracted: false}`. `get` the card (version `v`), rebuild the `skills` entry of each Skill they are on as `recordEntry` step 3 does, and one `batch`: a create per Assessment plus `update` `trainees/<tid>` `{skills}` with `if_version: v`. On a conflict nothing was written: start over with the same ids, at most 10 times. Return `{assessments: [ids]}`.
 
 ### `createCycle` (setup only)
 
 Runs after setup has published the page and written the pointer.
 
-0. Two Trainees with the same display name → refuse ("duplicate Trainee name — ask for a distinguishing label") and write nothing.
+0. Two Trainees whose display names clash (two display names clash when they are the same ignoring case and spacing, or when one is a bare first name the other starts with ("נועה" and "נועה כ.")) → refuse ("ask for a distinguishing label for both") and write nothing.
 1. `get` `meta/cycle`. `setup: "done"` → refuse ("כבר קיים מעקב למחזור <name>"). Missing → create `{name, start, setup: "in-progress", schema: 1, archived: false, at}`. `in-progress` → an earlier seed was interrupted; carry on.
 2. `get` each of these, then one `batch` creating only the ones that are missing (an existing one is left as it is; a create on an existing document would stop the batch part-way):
    - `meta/skills`: `file_path` = the Skill framework file named in setup (or its content as `data`)
@@ -105,9 +106,26 @@ Runs after setup has published the page and written the pointer.
    - `trainees/<tid>`: the card, with that name and `lastTalk: null`
 4. `update` `meta/cycle` `{setup: "done"}` with its version.
 
-### `updateCycle({addTest})`
+### `updateTrainee(tid?, change)`
 
-Only after the Commander confirmed. `get` `meta/preset` (version `v`). Check as storage.md says (Subject id exists; no Test already has the name or an alias as its name or alias, ignoring case and spacing). Id = `<subject>.<name in lowercase, runs of anything but a–z/0–9 as "-">`, or `<subject>.t-<rand4>` when that leaves nothing; add `-<rand2>` if the id is taken. `update` `meta/preset` `{tests: [...the current tests, {id, subject, number, name, aliases}]}` with `if_version: v`; on a conflict start over.
+Only after the Commander confirmed. `list` `trainees` for the names; check every refusal in storage.md.
+
+- `add`: pick `t-<rand6>` not already a card. One `batch` creating `trainees/<tid>/changes/added` `{type: "added", name, by: "commander", at, retracted: false}` and the card (that name, `active: true`, `left: null`, `lastTalk: null`, `followups: []`, `skills: {}`, the rest `null`/`[]`).
+- `rename`, `leave`, `rejoin`: the record `{type: "renamed", name …}`, `{type: "left", date, how, reason …}` or `{type: "rejoined" …}`, each with `by: "commander", at, retracted: false`, at `trainees/<tid>/changes/c-YYYYMMDD-HHMM-<rand2>` from Now. `get` the card (version `v`), set its `name`, or its `left` and `active`, as the card rules above give with the new record, and one `batch`: create the record, `set` the card with `if_version: v`. On a conflict nothing was written: start over with the same record id, at most 10 times.
+
+Return the card with its `id`.
+
+### `updateSettings(change)`
+
+Only after the Commander confirmed. `get` `commander/settings` (version `v`). Merge: `name`, `role` replace; `talk` values replace only the ones given. Check the result as storage.md says. `set` it with `at: Now` and `if_version: v`; on a conflict start over. Return it.
+
+### `updateCycle(change)`
+
+Only after the Commander confirmed. Check every refusal storage.md lists for that change first.
+
+- **Preset changes** (`addTest`, `editTest`, `removeTest`, `addProject`, `setWeek`): `get` `meta/preset` (version `v`), build the new `tests`, `projects` or `schedule` as storage.md says, and `update` `meta/preset` with only that field and `if_version: v`; on a conflict start over. Names compare ignoring case and spacing. A slug = the name in lowercase with runs of anything but a–z/0–9 as "-" (trimmed); Test id `<subject>.<slug>` (`<subject>.t-<rand4>` if empty), Project id `<slug>` (`p-<rand4>` if empty); add `-<rand2>` while the id is taken. `editTest` with a new name appends the old name to `aliases`; `aliases` never holds the Test's own name. `setWeek` drops that week's entry, adds `{week, subjects, projects?}` (no `projects` key when empty) and sorts by week.
+- **Skill changes** (`addSkill`, `archiveSkill`, `restoreSkill`): `get` `meta/skills` (version `v`), change that group's `skills` (append `{id: <group>.c-<rand4> not already used anywhere, name, added: Now}`; or set `archived: true, archivedAt: Now`; or drop both), and `update` `meta/skills` `{groups}` with `if_version: v`; on a conflict start over. Return `{skill, skills}`.
+- **`setTeam`**: `list` `teams`; with an `id`, `get` `teams/<id>` (version `v`). Data `{project, name, members (no repeats), at: Now}`. New: create `teams/tm-<rand4>` (`set`, no `if_version`; taken → pick another). Replacing: `set` `teams/<id>` with `if_version: v`. Return it with its `id`. Records already written keep the `team` they got.
 
 ### `flipSensitive(id, category?)`
 
@@ -146,4 +164,4 @@ Artifact tool `action: "open"` with the page's address.
 
 ### Not built yet
 
-`updateTrainee`, `updateSettings`, `updateCycle` (anything but `addTest`), `savePlaybookItem`, `retirePlaybookItem`, `hidePlaybookItem`, `copyCommanderScope`.
+Status and evaluation-stage changes in `updateTrainee`, `savePlaybookItem`, `retirePlaybookItem`, `hidePlaybookItem`, `copyCommanderScope`.

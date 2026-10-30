@@ -16,14 +16,16 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `readCycle` | `read-cycle` |
 | `readTeam` | `read-team` |
 | `readTrainee(tid, since, retracted)` | `read-trainee <tid> --since YYYY-MM-DD` (omit `--since` for everything; add `--retracted` to include retracted records and Entries) |
-| `recordEntry(...)` | `record-entry`, payload on stdin (below) |
-| `recordAssessments(tid, ...)` | `record-assessments`, payload on stdin: `--- assessment` blocks (below) of that one Trainee, citing stored Evidence ids |
+| `recordEntry(...)` | `record-entry`, payload on stdin (below); add `--insist` when the Commander insisted on a Trainee who left |
+| `recordAssessments(tid, ...)` | `record-assessments`, payload on stdin: `--- assessment` blocks (below) of that one Trainee, citing stored Evidence ids; `--insist` as above |
 | `retractEntry(eid?)` | `retract-entry <entry id>` (omit the id for the last Entry) |
 | `hardDelete(eid)` | `hard-delete <entry id>` |
 | `resumePending()` | `resume-pending` |
 | `rebuildCard(tid)` | `rebuild-card <tid>` |
 | `flipSensitive(id, category?)` | `flip-sensitive <evidence id> --category <category>` (omit `--category` when moving out of sensitive) |
-| `updateCycle({addTest})` | `update-cycle`, payload on stdin: `add-test:`, `subject:`, `number:`, `alias:` lines |
+| `updateTrainee(tid?, change)` | `update-trainee [<tid>]`, payload on stdin: one change (below) |
+| `updateSettings(change)` | `update-settings`, payload on stdin: any of `name:`, `role:`, `target:`, `yellow:`, `red:` lines (`role:` with nothing after it clears the role) |
+| `updateCycle(change)` | `update-cycle`, payload on stdin: one change (below) |
 | `openDashboard` | none: the local backend has no page; tell the Commander the dashboard exists only on a real Cycle |
 | `createCycle(...)` | `create-cycle`, payload on stdin: `commander:`, `cycle:`, `trainee:` lines |
 
@@ -99,7 +101,28 @@ student-tracker-store --data "<plugin data dir>" record-assessments <<'RATE'
 RATE
 ```
 
-For `updateCycle({addTest})`, after the Commander confirmed:
+For `updateTrainee`, after the Commander confirmed, one change per call: `add: <name>` (no tid), `rename: <name>`, `rejoin`, or `leave: YYYY-MM-DD` followed by `how: dismissal | transfer | other` and `reason: <short, display-safe>`:
+
+```
+student-tracker-store --data "<plugin data dir>" update-trainee t-ef34gh <<'CHANGE'
+leave: 2026-10-29
+how: transfer
+reason: עבר לקורס אחר
+CHANGE
+```
+
+For `updateCycle`, after the Commander confirmed, one change per call. The first line names it; the lines after it are its fields (`alias:` and `member:` repeat):
+
+| First line | Field lines | Change |
+|---|---|---|
+| `add-test: <name>` | `subject:`, `number:`, `alias:` | `addTest` |
+| `edit-test: <current name or alias>` | `name:`, `number:`, `alias:` | `editTest` |
+| `remove-test: <name or alias>` | — | `removeTest` |
+| `add-project: <name>` | `subject:`, `alias:` | `addProject` |
+| `week: <n>` | `subjects: <id>, <id>`, `projects: <id>, …` | `setWeek` |
+| `add-skill: <name>` | `group: <Stage or group id>` | `addSkill` |
+| `archive-skill: <Skill id>` / `restore-skill: <Skill id>` | — | `archiveSkill` / `restoreSkill` |
+| `team: <team name>` | `project: <Project id>`, `member: <tid>`, `id: <team id>` (to replace that team) | `setTeam` |
 
 ```
 student-tracker-store --data "<plugin data dir>" update-cycle <<'CHANGE'
@@ -107,6 +130,15 @@ add-test: Crocodile
 subject: oop
 number: 4
 alias: קרוקודיל
+CHANGE
+```
+
+```
+student-tracker-store --data "<plugin data dir>" update-cycle <<'CHANGE'
+team: בנק א
+project: padens
+member: t-ab12cd
+member: t-ef34gh
 CHANGE
 ```
 

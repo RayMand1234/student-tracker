@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
-import { parseCycle, parseEntry, parseAssessments, parseCycleChange } from './payload.mjs';
+import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings } from './payload.mjs';
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation> [args]
   connect
@@ -8,15 +8,22 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
   read-cycle
   read-team
   read-trainee <tid> [--since YYYY-MM-DD] [--retracted]
-  record-entry            < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>",
+  record-entry [--insist] < "--- entry" + message, then per Evidence "--- evidence <tid> <kind> <date>",
                             "+key: value" field lines, excerpt; "--- followup" + text after its Evidence;
                             "--- sensitive <category>" + "+kind:"/"+closes:" lines + sentence after its Evidence;
                             "--- assessment <tid> <skill id> <score> <author>" + "+evidence: #<n>, <id>" + reason
-  record-assessments      < "--- assessment" blocks of one Trainee, citing stored Evidence ids
+  record-assessments [--insist]
+                          < "--- assessment" blocks of one Trainee, citing stored Evidence ids
+                          (--insist: the Commander asked to record about a Trainee who left)
   flip-sensitive <evidence id> [--category <category>]
   retract-entry [<entry id>]   (the last Entry when none is named)
   hard-delete <entry id>       (only on the Commander's explicit, confirmed request)
-  update-cycle            < lines "add-test: <name>", "subject: <id>", "number: <n>", "alias: <alias>" (repeat)
+  update-trainee [<tid>]  < one of "add: <name>" (no tid), "rename: <name>", "rejoin",
+                            "leave: YYYY-MM-DD" + "how: dismissal|transfer|other" + "reason: <text>"
+  update-settings         < any of "name:", "role:", "target:", "yellow:", "red:" lines
+  update-cycle            < one change: "add-test: <name>" | "edit-test: <test>" | "remove-test: <test>" |
+                            "add-project: <name>" | "week: <n>" | "add-skill: <name>" | "archive-skill: <id>" |
+                            "restore-skill: <id>" | "team: <name>", then its field lines (storage-local.md)
   resume-pending
   rebuild-card <tid>`;
 
@@ -36,6 +43,7 @@ export async function main(argv) {
     return i !== -1;
   };
   const retracted = flag('--retracted');
+  const insist = flag('--insist');
   const [op, ...rest] = args;
   const stdin = () => fs.readFileSync(0, 'utf8');
 
@@ -47,11 +55,13 @@ export async function main(argv) {
       'read-cycle': () => store.readCycle(),
       'read-team': () => store.readTeam(),
       'read-trainee': () => store.readTrainee(rest[0], { since, retracted }),
-      'record-entry': () => store.recordEntry(parseEntry(stdin())),
+      'record-entry': () => store.recordEntry({ ...parseEntry(stdin()), insist }),
       'record-assessments': () => {
         const { trainee, assessments } = parseAssessments(stdin());
-        return store.recordAssessments(trainee, assessments);
+        return store.recordAssessments(trainee, assessments, { insist });
       },
+      'update-trainee': () => store.updateTrainee(rest[0] ?? null, parseTraineeChange(stdin())),
+      'update-settings': () => store.updateSettings(parseSettings(stdin())),
       'update-cycle': () => store.updateCycle(parseCycleChange(stdin())),
       'flip-sensitive': () => store.flipSensitive(rest[0], { category }),
       'retract-entry': () => store.retractEntry(rest[0]),
