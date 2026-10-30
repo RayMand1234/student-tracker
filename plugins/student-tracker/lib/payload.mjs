@@ -21,6 +21,7 @@ export function parseCycle(input) {
     start: (v) => (out.cycle.start = v),
     ...talkFields(out.commander),
     trainee: (v) => out.trainees.push(v),
+    previous: (v) => (out.previous = v),
   };
   for (const line of input.split('\n').map((l) => l.trim()).filter(Boolean)) {
     const m = line.match(/^(\w+):\s*(.+)$/);

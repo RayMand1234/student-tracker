@@ -8,6 +8,8 @@ student-tracker-store --data "<plugin data dir>" <operation> [args]
 
 Tests select this backend with a pointer marked `"backend": "local"`; `create-cycle` keeps that mark.
 
+To read an archived Cycle, add `--cycle <its address from the pointer's archived>` before the operation (`student-tracker-store --data "<plugin data dir>" --cycle "local:/…" read-team`). Writes never take `--cycle`: they go to the current Cycle, and one aimed at an archived Cycle is refused.
+
 Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and writes nothing; fix the input (or ask the Commander) and call again.
 
 | Operation | Command |
@@ -31,8 +33,10 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `updateSettings(change)` | `update-settings`, payload on stdin: any of `name:`, `role:`, `target:`, `yellow:`, `red:` lines (`role:` with nothing after it clears the role) |
 | `updateCycle(change)` | `update-cycle`, payload on stdin: one change (below) |
 | `openDashboard` | none: the local backend has no page; tell the Commander the dashboard exists only on a real Cycle |
-| `createCycle(...)` | `create-cycle`, payload on stdin: `commander:`, `cycle:`, `trainee:` lines, and optionally `role:`, `start:`, `target:`, `yellow:`, `red:` |
+| `createCycle(...)` | `create-cycle`, payload on stdin: `commander:`, `cycle:`, `trainee:` lines, and optionally `role:`, `start:`, `target:`, `yellow:`, `red:`, and `previous: <current Cycle address>` for a new Cycle after it |
 | `finishSetup()` | `finish-setup` |
+| `copyCommanderScope(fromUrl)` | `copy-commander-scope <previous Cycle address>` |
+| `archiveCycle(url)` | `archive-cycle <previous Cycle address>` |
 
 Payloads are plain text in a quoted heredoc, never JSON (the shell safety check refuses `{"` in a command). For `recordEntry`:
 
@@ -233,7 +237,20 @@ trainee: דני
 CYCLE
 ```
 
-`connect` with no `current` in the pointer looks for the stores under `<plugin data dir>/local/` (as the title lookup does on the artifact backend); several are refused with their names, to put to the Commander.
+A new Cycle after the current one (`previous:` is the address `connect` gave for it):
+
+```
+student-tracker-store --data "<plugin data dir>" create-cycle <<'CYCLE'
+commander: רז
+cycle: הכתומים
+trainee: מאיה
+previous: local:/…/local/c-ab12cd
+CYCLE
+```
+
+`create-cycle` writes the pointer itself (the new store as `current`, the previous address into `archived`); the artifact backend's setup writes it by hand.
+
+`connect` with no `current` in the pointer looks for the stores under `<plugin data dir>/local/` (as the title lookup does on the artifact backend), leaving out archived ones; several are refused with their names, to put to the Commander.
 
 The command runs the whole write or Retraction protocol itself, including version conflicts (it rebuilds the card); a refusal still means nothing of that step was written.
 

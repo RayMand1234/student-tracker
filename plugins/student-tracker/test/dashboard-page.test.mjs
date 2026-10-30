@@ -20,3 +20,8 @@ test('the page has no <title>, so the publish title "מעקב חניכים · <C
 test('the page only reads: it never writes to the database', () => {
   assert.doesNotMatch(published, /\.(set|update|delete|add|acquire)\(/);
 });
+
+test('an archived Cycle\'s page says so: the read-only "מחזור בארכיון" banner', () => {
+  assert.match(published, /מחזור בארכיון/);
+  assert.match(published, /cycle\?\.archived/);
+});

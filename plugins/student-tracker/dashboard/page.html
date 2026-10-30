@@ -83,6 +83,10 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .c .ev { position: absolute; inset-block-start: 4px; left: 50%; transform: translateX(-50%); font-family: var(--body); font-style: normal; font-size: .66rem; font-weight: 700; background: var(--surface); color: var(--concern); padding: 0 6px; border-radius: 3px; white-space: nowrap; }
 .left { font-size: .82rem; color: var(--muted); margin: 0; }
 .note { color: var(--muted); max-width: 46ch; margin: 0; }
+/* An archived Cycle: read-only, frozen on the day it was archived. */
+.archived { display: flex; gap: 6px 10px; flex-wrap: wrap; justify-content: center; align-items: baseline; margin: 0; padding: 10px 16px; border: 1px dashed var(--muted); border-radius: 8px; background: var(--surface-2); color: var(--muted); font-size: .88rem; text-align: center; }
+.archived b { color: var(--fg); font-weight: 600; }
+.file > .archived { grid-column: 1 / -1; }
 
 /* Shared atoms: Rating squares, Status pill, tags (as in the prototype). */
 .muted { color: var(--muted); }
@@ -241,6 +245,12 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', 
 // Escaped, with the marker for a cut-out sensitive part shown as a muted chip.
 const redact = (s) => esc(s).split(esc(MARK)).join(`<span class="redact">${esc(MARK)}</span>`);
 const localToday = () => new Date().toLocaleDateString('sv-SE');
+// An archived Cycle is shown as it was on the day it was archived.
+const archivedOn = () => (state.meta.cycle?.archived ? (state.meta.cycle.archivedAt ?? '').slice(0, 10) || null : null);
+const pageToday = () => archivedOn() ?? localToday();
+const archivedBanner = () => (state.meta.cycle?.archived
+  ? `<p class="archived" role="note"><b>מחזור בארכיון</b><span>לקריאה בלבד${archivedOn() ? ` · כפי שהיה ב-${ddmm(archivedOn())}` : ''}. עדכונים חדשים נרשמים במחזור הנוכחי.</span></p>`
+  : '');
 const ddmm = (d) => esc(`${String(d).slice(8, 10)}/${String(d).slice(5, 7)}`);
 const talkOf = () => state.settings?.talk ?? DEFAULT_TALK;
 
@@ -467,12 +477,12 @@ function fileHtml(f, cycle, weeksTotal) {
   const open = f.followups.length
     ? `<section class="panel"><h2>נקודות פתוחות</h2><ul class="bul">${f.followups.map((x) => `<li>${redact(x.text)} <span class="small muted">מ-${ddmm(x.date)}</span></li>`).join('')}</ul></section>`
     : '';
-  const today = localToday();
+  const today = pageToday();
   const skills = `<section class="sec"><div class="sec-head"><h2>מיומנויות לאורך המחזור</h2>${LEGEND}</div>
       <div class="f-stages">${f.skills.map((st) => `<div class="f-stage"><h3>${esc(st.name)} <span class="mono small muted">${f1(st.mean)}</span></h3>
         ${st.skills.map((k) => `<div class="f-sk"><span class="lbl">${esc(k.name)}</span>${square(k.rating, k.name)}${k.history.length ? histSvg(k.history, f.start, today) : '<span class="nohist small muted">אין תיעוד</span>'}<span class="n">${k.n ? `<bdi class="mono">${k.n}</bdi> ${k.n === 1 ? 'תיעוד' : 'תיעודים'}` : ''}</span></div>`).join('')}
       </div>`).join('')}</div>
-      <p class="small muted">קו הזמן: ימין = תחילת המחזור (${ddmm(f.start)}), שמאל = היום. עיגול = הסוכן, ריבוע = מפקד.</p></section>`;
+      <p class="small muted">קו הזמן: ימין = תחילת המחזור (${ddmm(f.start)}), שמאל = ${archivedOn() ? 'יום הארכוב' : 'היום'}. עיגול = הסוכן, ריבוע = מפקד.</p></section>`;
   return `${nav}<div class="f-main">${head}${growthHtml(f)}${keep}${open}${skills}
     <section class="sec"><h2>ציר זמן</h2>${timelineHtml(f)}</section></div>`;
 }
@@ -524,7 +534,7 @@ function renderWindow() {
   const card = open && state.ready && state.cards.find((c) => c.id === open);
   const html = card
     ? windowHtml(traineeWindow(card, {
-      skills: state.meta.skills, preset: state.meta.preset, teams: state.teams, evidence: state.evidence, today: localToday(), talk: talkOf(),
+      skills: state.meta.skills, preset: state.meta.preset, teams: state.teams, evidence: state.evidence, today: pageToday(), talk: talkOf(),
     }))
     : '';
   if (html === shownWindow) return; // unchanged: leave the DOM alone
@@ -559,9 +569,9 @@ function render() {
   if (fileOf) {
     const f = traineeFile(fileOf, {
       cards, skills: state.meta.skills, preset: state.meta.preset, cycle, evidence: state.evidence, changes: state.changes,
-      today: localToday(), talk: talkOf(), kind: state.fileKind,
+      today: pageToday(), talk: talkOf(), kind: state.fileKind,
     });
-    paint('file', fileHtml(f, cycle, state.meta.preset?.schedule?.length));
+    paint('file', archivedBanner() + fileHtml(f, cycle, state.meta.preset?.schedule?.length));
     if (navTo === file) { // just opened: on a phone the side list is a row; bring this Trainee into view
       navTo = null;
       app.querySelector('.f-item[aria-current]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -569,7 +579,7 @@ function render() {
     return;
   }
   const talk = talkOf();
-  const { circles, left } = talkCircles(cards, talk, localToday());
+  const { circles, left } = talkCircles(cards, talk, pageToday());
   const { max, ticks, gradient } = talkScale(talk);
 
   const ring = circles.length
@@ -581,7 +591,7 @@ function render() {
         </button></li>`).join('')}</ul>`
     : `<p class="note">עוד אין חניכים במחזור. אפשר להוסיף בצ'אט: "תוסיף חניכה בשם נועה".</p>`;
 
-  paint('page', `
+  paint('page', `${archivedBanner()}
     <header class="head">
       <h1>${esc(cycle.name)}</h1>
       <span class="sub">ימים מאז השיחה האחרונה · יעד: כל ${esc(talk.target)} ימים</span>

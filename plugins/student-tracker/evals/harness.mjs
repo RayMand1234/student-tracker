@@ -33,11 +33,13 @@ export function useEvalPointer() {
   });
 }
 
-// Remove the store the test pointer names (only test pointers reach here).
+// Remove the stores the test pointer names, archived ones too (only test pointers reach here).
 export function dropTestStore() {
   if (!fs.existsSync(POINTER)) return;
-  const { current } = JSON.parse(fs.readFileSync(POINTER, 'utf8'));
-  if (current?.startsWith('local:')) fs.rmSync(current.slice('local:'.length), { recursive: true, force: true });
+  const { current, archived = [] } = JSON.parse(fs.readFileSync(POINTER, 'utf8'));
+  for (const url of [current, ...archived]) {
+    if (url?.startsWith('local:')) fs.rmSync(url.slice('local:'.length), { recursive: true, force: true });
+  }
 }
 
 export function freshTestStore(options = {}) {

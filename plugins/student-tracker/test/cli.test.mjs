@@ -470,3 +470,27 @@ ${text}
   assert.deepEqual(JSON.parse(run(['--data', data, 'hide-playbook-item', 'b-189'], { cwd }).out), { hidden: ['b-189'] });
   assert.deepEqual(JSON.parse(run(['--data', data, 'unhide-playbook-item', 'b-189'], { cwd }).out), { hidden: [] });
 });
+
+test('a new Cycle by the CLI: create-cycle with "previous:", copy-commander-scope and archive-cycle take the old address; --cycle reads it', () => {
+  const { data, cwd } = fresh();
+  const cli = (args, input) => run(['--data', data, ...args], { cwd, input });
+  const old = JSON.parse(cli(['create-cycle'], SETUP).out).url;
+  cli(['finish-setup']);
+  assert.equal(cli(['hide-playbook-item', 'b-189']).code, 0);
+
+  const created = cli(['create-cycle'], `commander: רז\ncycle: הכתומים\ntrainee: מאיה\nprevious: ${old}\n`);
+  assert.equal(created.code, 0, created.err);
+  const copied = cli(['copy-commander-scope', old]);
+  assert.equal(copied.code, 0, copied.err);
+  assert.deepEqual(JSON.parse(copied.out).hidden, ['b-189']);
+  assert.equal(cli(['archive-cycle', old]).code, 0);
+  assert.equal(cli(['finish-setup']).code, 0);
+
+  assert.equal(JSON.parse(cli(['connect']).out).cycle, 'הכתומים');
+  const archived = JSON.parse(cli(['--cycle', old, 'read-cycle']).out).cycle;
+  assert.deepEqual([archived.name, archived.archived], ['הצהובים', true]);
+  assert.deepEqual(JSON.parse(cli(['--cycle', old, 'read-team']).out).map((t) => t.name).sort(), ['דני', 'נועה כ.']);
+  const refused = cli(['--cycle', old, 'update-trainee'], 'add: אור\n');
+  assert.equal(refused.code, 1);
+  assert.match(refused.err, /בארכיון.*הכתומים/);
+});

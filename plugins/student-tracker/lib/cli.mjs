@@ -2,10 +2,14 @@ import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
 import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings, parsePlaybookItem } from './payload.mjs';
 
-const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation> [args]
+const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <archived Cycle address>] <operation> [args]
+  (--cycle: read a Cycle from the pointer's archived list; every write to it is refused)
   connect
   create-cycle            < lines "commander: <name>", "cycle: <name>", "trainee: <name>" (repeat),
-                            optional "role:", "start: YYYY-MM-DD", "target:", "yellow:", "red:"
+                            optional "role:", "start: YYYY-MM-DD", "target:", "yellow:", "red:",
+                            "previous: <current Cycle address>" (a new Cycle after it)
+  copy-commander-scope <previous Cycle address>   (setup of a new Cycle, after create-cycle)
+  archive-cycle <previous Cycle address>          (setup of a new Cycle, after the copy)
   finish-setup            (last step of setup: marks the Cycle done)
   read-cycle
   read-team
@@ -49,6 +53,7 @@ export async function main(argv) {
     return args.splice(i, 2)[1];
   };
   const dataDir = opt('--data');
+  const cycle = opt('--cycle');
   const since = opt('--since');
   const category = opt('--category');
   const flag = (name) => {
@@ -62,7 +67,7 @@ export async function main(argv) {
   const stdin = () => fs.readFileSync(0, 'utf8');
 
   try {
-    const store = openStore({ dataDir });
+    const store = openStore({ dataDir, cycle });
     const ops = {
       connect: () => store.connect(),
       'create-cycle': () => store.createCycle(parseCycle(stdin())),
@@ -87,6 +92,8 @@ export async function main(argv) {
       'retract-entry': () => store.retractEntry(rest[0]),
       'hard-delete': () => store.hardDelete(rest[0]),
       'resume-pending': () => store.resumePending(),
+      'copy-commander-scope': () => store.copyCommanderScope(rest[0]),
+      'archive-cycle': () => store.archiveCycle(rest[0]),
       'rebuild-card': () => store.rebuildCard(rest[0]),
     };
     if (!ops[op]) {

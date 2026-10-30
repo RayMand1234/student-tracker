@@ -45,18 +45,41 @@ const SENSITIVE_KINDS = KINDS.filter((k) => !Object.keys(KIND_FIELDS[k]).length)
 // to simulate a crash (throw) or a racing writer. Points: 'seeded', 'chunk', 'chunk-written',
 // 'withdraw', 'withdrawn' (a Retraction or hard delete chunk).
 // `base(framework)` gives the base Playbook items (the shipped ones by default; tests pass a fixture).
-export function openStore({ dataDir, now = () => new Date(), rand = randomChars, interrupt = () => {}, base = basePlaybook } = {}) {
+// `cycle`: the address of an archived Cycle (one in the pointer's `archived`) to read instead of
+// the current one. Archived Cycles are read-only: every write on one is refused.
+export function openStore({ dataDir, cycle: address, now = () => new Date(), rand = randomChars, interrupt = () => {}, base = basePlaybook } = {}) {
   if (!dataDir) throw new StoreError('missing plugin data dir');
   const pointerPath = path.join(dataDir, POINTER);
   const readPointer = () => ({ current: null, archived: [], ...readJson(pointerPath) });
 
   function storeRoot() {
-    const { current } = readPointer();
-    if (!current) throw new StoreError(NOT_SET_UP);
-    if (!current.startsWith(LOCAL)) throw new StoreError(`unsupported backend for ${current}`);
-    return current.slice(LOCAL.length);
+    const { current, archived } = readPointer();
+    if (address && address !== current && !archived.includes(address)) {
+      throw new StoreError(`no Cycle ${address} in the pointer: read the current one, or one listed in its archived`);
+    }
+    const url = address ?? current;
+    if (!url) throw new StoreError(NOT_SET_UP);
+    return rootOf(url);
   }
-  const open = () => openDocs(storeRoot());
+  const openRead = () => openDocs(storeRoot());
+  // Writes go to the current Cycle only, and never to one marked archived.
+  function open() {
+    const docs = openRead();
+    const { current } = readPointer();
+    const cycle = docs.get('meta/cycle')?.data;
+    if ((address && address !== current) || cycle?.archived === true) {
+      const currentName = current && current !== address ? openDocs(rootOf(current)).get('meta/cycle')?.data?.name : null;
+      throw new StoreError(`המחזור ${cycle?.name ?? address} בארכיון — אפשר רק לקרוא ממנו. ${currentName ? `עדכונים נרשמים במחזור הנוכחי, ${currentName}.` : 'אין מחזור נוכחי: הרץ `/student-tracker:setup`.'}`);
+    }
+    return docs;
+  }
+  // A Cycle's store by its address, which must hold a Cycle.
+  function cycleAt(url, what) {
+    const root = url?.startsWith(LOCAL) ? url.slice(LOCAL.length) : null;
+    const docs = root && fs.existsSync(root) ? openDocs(root) : null;
+    if (!docs?.get('meta/cycle')) throw new StoreError(`no Cycle at ${url} to ${what}`);
+    return docs;
+  }
 
   // No current Cycle in the pointer: like the artifact backend's title lookup, find this
   // machine's Cycles (archived ones aside). One is saved as current; several are put to the
@@ -67,7 +90,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     const found = (fs.existsSync(dir) ? fs.readdirSync(dir) : [])
       .map((d) => path.join(dir, d))
       .map((root) => ({ url: `${LOCAL}${root}`, cycle: openDocs(root).get('meta/cycle')?.data }))
-      .filter((c) => c.cycle && !pointer.archived.includes(c.url));
+      .filter((c) => c.cycle && c.cycle.archived !== true && !pointer.archived.includes(c.url));
     if (found.length > 1) {
       throw new StoreError(`several Cycles on this machine: ${found.map((c) => `${c.cycle.name} (${c.url})`).join(', ')}; ask the Commander which one`);
     }
@@ -239,12 +262,14 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       const r = storeRoot();
       const cycle = openDocs(r).get('meta/cycle')?.data;
       if (!cycle) throw new StoreError(NOT_SET_UP);
-      return { backend: 'local', url: `${LOCAL}${r}`, cycle: cycle.name, setup: cycle.setup };
+      return { backend: 'local', url: `${LOCAL}${r}`, cycle: cycle.name, setup: cycle.setup, ...(cycle.archived === true ? { archived: true } : {}) };
     },
 
     // Setup only. Seeds the Cycle and leaves it `in-progress` (see finishSetup). Resumes a Cycle
     // whose setup was interrupted; refuses one that is already done.
-    createCycle({ commander, cycle, trainees = [] }) {
+    // `previous`: a new Cycle after the current one, which must be done. The new Cycle gets its
+    // own store; the previous one moves to the pointer's `archived` at once, so it is never lost.
+    createCycle({ commander, cycle, trainees = [], previous }) {
       if (!commander?.name) throw new StoreError('commander.name is required');
       if (!cycle?.name) throw new StoreError('cycle.name is required');
       if (cycle.start !== undefined) checkDate(cycle.start);
@@ -252,26 +277,38 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       names.forEach((n, i) => names.slice(i + 1).forEach((m) => checkNames(n, m)));
 
       const pointer = readPointer();
-      const existing = pointer.current?.startsWith(LOCAL) ? pointer.current.slice(LOCAL.length) : null;
+      const local = (url) => (url?.startsWith(LOCAL) ? url.slice(LOCAL.length) : null);
+      let existing = local(pointer.current);
       const existingCycle = existing && openDocs(existing).get('meta/cycle')?.data;
-      if (existingCycle?.setup === 'done') {
-        throw new StoreError(`כבר קיים מעקב למחזור ${existingCycle.name}`);
+      const resuming = existingCycle?.setup === 'in-progress';
+      if (previous !== undefined && !(resuming && existingCycle.previous === previous)) {
+        if (previous !== pointer.current || existingCycle?.setup !== 'done') {
+          throw new StoreError(`previous must be the current Cycle (${pointer.current ?? 'none'}), set up and done`);
+        }
+        existing = null; // a fresh store for the new Cycle
+      } else if (existingCycle?.setup === 'done') {
+        throw new StoreError(`כבר קיים מעקב למחזור ${existingCycle.name} (a new Cycle names it as previous)`);
       }
-      // Resuming keeps what the interrupted setup stored; answers given again replace it.
-      const prior = existing && openDocs(existing).get('commander/settings')?.data;
+      const follows = previous ?? (existing ? existingCycle?.previous : undefined);
+      // Resuming keeps what the interrupted setup stored; answers given again replace it. A new
+      // Cycle starts from the previous Cycle's settings.
+      const prior = (existing && openDocs(existing).get('commander/settings')?.data)
+        ?? (local(follows) && openDocs(local(follows)).get('commander/settings')?.data);
       const talk = talkSettings(prior?.talk ?? DEFAULT_TALK, commander.talk);
       const r = existing ?? path.join(dataDir, 'local', `c-${rand(6)}`);
       // Pointer first, so an interrupted seed is found and resumed instead of duplicated.
-      writeJson(pointerPath, { ...pointer, current: `${LOCAL}${r}` });
+      const archived = previous && !existing ? [...pointer.archived.filter((u) => u !== previous), previous] : pointer.archived;
+      writeJson(pointerPath, { ...pointer, current: `${LOCAL}${r}`, archived });
       const docs = openDocs(r);
 
       const at = isoWithOffset(now());
       upsert(docs, 'meta/cycle', {
         name: cycle.name,
-        start: cycle.start ?? existingCycle?.start ?? today(),
+        start: cycle.start ?? (existing && existingCycle?.start) ?? today(),
         setup: 'in-progress',
         schema: 1,
         archived: false,
+        ...(follows ? { previous: follows } : {}),
         at,
       });
       // Created once: setup's own changes (added Skills, preset differences) may already be in them.
@@ -313,7 +350,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     },
 
     readCycle() {
-      const docs = open();
+      const docs = openRead();
       return {
         cycle: docs.get('meta/cycle')?.data,
         skills: docs.get('meta/skills')?.data,
@@ -328,12 +365,12 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     },
 
     readTeam() {
-      return flat(open().list('trainees'));
+      return flat(openRead().list('trainees'));
     },
 
     // Retracted records and Entries are left out unless `retracted` asks for them too.
     readTrainee(tid, { since, retracted = false } = {}) {
-      const docs = open();
+      const docs = openRead();
       const card = docs.get(`trainees/${tid}`);
       if (!card) throw new StoreError(`unknown Trainee ${tid}`);
       const shown = (x) => retracted || x.retracted === false;
@@ -354,7 +391,7 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     // The Playbook items Advice draws on for one Trainee: base items (shipped with the plugin)
     // merged with the Commander's own and their hides, per target Skill. A read: stores nothing.
     readPlaybook(tid, { skills = [] } = {}) {
-      const docs = open();
+      const docs = openRead();
       const card = docs.get(`trainees/${tid}`);
       if (!card) throw new StoreError(`unknown Trainee ${tid}`);
       const framework = docs.get('meta/skills')?.data;
@@ -862,6 +899,82 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       const deleting = stuck('deletion');
       for (const id of deleting) finishWithdrawal(docs, id, DELETE);
       return { finished: [...new Set([...writing, ...retracting, ...deleting])] };
+    },
+
+    // Setup of a new Cycle, after createCycle: copies the Commander's scope from the Cycle it
+    // follows. Playbook items keep their ids (one already here is left as it is), hides are
+    // merged in, settings are copied only when this Cycle has none (setup seeded them from the
+    // answers, prefilled from the previous Cycle), and a Skill the Commander added that a live
+    // item is tagged to joins the same group. Copying again copies nothing.
+    copyCommanderScope(fromUrl) {
+      if (fromUrl === readPointer().current) throw new StoreError('copyCommanderScope copies from the previous Cycle into the current Cycle, not from the current Cycle itself');
+      const docs = open();
+      const from = cycleAt(fromUrl, 'copy from');
+      if (docs.get('meta/cycle')?.data.setup !== 'in-progress') {
+        throw new StoreError('copyCommanderScope runs only while setup of a new Cycle is in progress; this Cycle\'s setup is done');
+      }
+      const at = isoWithOffset(now());
+      let settings = 'kept';
+      const theirs = from.get('commander/settings')?.data;
+      if (theirs && !docs.get('commander/settings')) {
+        docs.batch([{ op: 'create', path: 'commander/settings', data: { ...theirs, at } }]);
+        settings = 'copied';
+      }
+
+      // Skills the Commander added there that a live item is tagged to; one of the same name in
+      // that group here stands in for it.
+      const items = from.list('playbook');
+      const oldSkills = from.get('meta/skills')?.data.groups ?? [];
+      const wanted = new Set(items.filter((i) => !i.data.retired).flatMap((i) => i.data.skills));
+      const retag = {};
+      const addedSkills = [];
+      const here = new Set((docs.get('meta/skills')?.data.groups ?? []).flatMap((g) => g.skills.map((k) => k.id)));
+      const lacking = oldSkills.some((o) => o.skills.some((k) => wanted.has(k.id) && !here.has(k.id)));
+      if (lacking) pinned(docs, 'meta/skills', (framework) => ({
+        ...framework,
+        groups: framework.groups.map((g) => {
+          const old = oldSkills.find((o) => o.id === g.id);
+          const extra = (old?.skills ?? []).filter((k) => wanted.has(k.id) && !g.skills.some((x) => x.id === k.id));
+          const fresh = extra.filter((k) => {
+            const same = g.skills.find((x) => sameName(x.name, k.name));
+            if (same) retag[k.id] = same.id;
+            return !same;
+          });
+          addedSkills.push(...fresh.map((k) => k.id));
+          return fresh.length ? { ...g, skills: [...g.skills, ...fresh] } : g;
+        }),
+      }));
+
+      const missing = items.filter((i) => !docs.get(`playbook/${i.id}`));
+      for (let k = 0; k < missing.length; k += MAX_BATCH_WRITES) {
+        docs.batch(missing.slice(k, k + MAX_BATCH_WRITES).map((i) => ({
+          op: 'create',
+          path: `playbook/${i.id}`,
+          data: { ...i.data, skills: [...new Set(i.data.skills.map((sk) => retag[sk] ?? sk))] },
+        })));
+      }
+
+      const theirHides = from.get('commander/hides')?.data.hidden ?? [];
+      const ours = docs.get('commander/hides')?.data.hidden ?? [];
+      const hidden = theirHides.filter((h) => !ours.includes(h));
+      if (hidden.length) {
+        if (docs.get('commander/hides')) pinned(docs, 'commander/hides', (h) => ({ ...h, hidden: [...new Set([...(h.hidden ?? []), ...hidden])] }));
+        else docs.batch([{ op: 'create', path: 'commander/hides', data: { hidden } }]);
+      }
+      return { settings, skills: addedSkills, playbook: missing.map((i) => i.id), hidden };
+    },
+
+    // Setup of a new Cycle, after copyCommanderScope: the previous Cycle goes into the pointer's
+    // `archived` (if not there yet) and is marked `archived: true`, read-only from then on.
+    // Archiving again is harmless. Returns its meta/cycle.
+    archiveCycle(url) {
+      const pointer = readPointer();
+      if (url === pointer.current) throw new StoreError('the current Cycle cannot be archived; archive the previous one once the new Cycle is the current Cycle');
+      const docs = cycleAt(url, 'archive');
+      if (!pointer.archived.includes(url)) writeJson(pointerPath, { ...pointer, archived: [...pointer.archived, url] });
+      const cycle = docs.get('meta/cycle').data;
+      if (cycle.archived === true) return cycle;
+      return pinned(docs, 'meta/cycle', (c) => ({ ...c, archived: true, archivedAt: isoWithOffset(now()) }));
     },
 
     rebuildCard(tid) {
@@ -1499,6 +1612,11 @@ function upsert(docs, docPath, data, current = docs.get(docPath)) {
   docs.batch([current
     ? { op: 'set', path: docPath, data, ifVersion: current.version }
     : { op: 'create', path: docPath, data }]);
+}
+
+function rootOf(url) {
+  if (!url.startsWith(LOCAL)) throw new StoreError(`unsupported backend for ${url}`);
+  return url.slice(LOCAL.length);
 }
 
 function readJson(file) {

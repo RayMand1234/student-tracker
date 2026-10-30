@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Sets up Trainee tracking for a new Cycle — one batched question (the Commander's name and the Cycle are all it needs; role, Talk cadence, start date, course structure, Trainees, Project teams and extra Skills are optional), a confirmation, then the Cycle's private dashboard page and its store. Run once per Cycle.
+description: Sets up Trainee tracking for a new Cycle — one batched question (the Commander's name and the Cycle are all it needs; role, Talk cadence, start date, course structure, Trainees, Project teams and extra Skills are optional), a confirmation, then the Cycle's private dashboard page and its store. Run once per Cycle; the next Cycle carries over the Commander's settings and Playbook and archives the previous one.
 argument-hint: "[שם, מחזור, שמות חניכים]"
 allowed-tools: ArtifactData, Bash(student-tracker-store *), Bash(date *)
 disable-model-invocation: true
@@ -10,7 +10,7 @@ metadata:
 
 # הקמת מעקב חניכים
 
-Set up tracking for one Cycle. Talk to the Commander in Hebrew only, short and plain. Setup creates a Cycle; it never edits a finished one (changes go through normal chat).
+Set up tracking for one Cycle. Talk to the Commander in Hebrew only, short and plain. Setup creates a Cycle; it never edits a finished one (changes go through normal chat). When a Cycle already exists, the Commander can start the next one: their settings, Playbook items and hides carry over, and the previous Cycle is archived (kept, read-only).
 
 - Plugin data dir: `${CLAUDE_PLUGIN_DATA}`
 - Plugin root: `${CLAUDE_PLUGIN_ROOT}`
@@ -40,12 +40,26 @@ Run `connect`.
 - Several Cycles found → ask which one (by name) and stop until the Commander answers; then save that one as the pointer's `current` and run `connect` again.
 - `setup: done` → ask exactly "להתחבר למחזור <cycle>, או להתחיל מחזור חדש?" and wait.
   - Connect → `connect` has already saved the pointer. Reply "מחובר למחזור <cycle>. אפשר פשוט לכתוב לי עדכונים." and stop.
-  - New Cycle → reply "פתיחת מחזור חדש עוד לא נתמכת בגרסה הזו. המעקב של <cycle> נשאר מחובר." and stop.
-- `setup: in-progress` → an earlier setup was interrupted. Never publish a second page. Read what is stored (`readCycle`, `readTeam`; a page with nothing seeded yet has no Cycle, so nothing to read) and say in one line that you're finishing the setup of <cycle>. Treat the stored values as the answers so far and go to step 5: the summary lists what is stored and adds what is still missing (a mandatory answer missing → ask for it first, as step 4 says). In step 6, `createCycle` is called again with every answer, stored or changed: it keeps what is stored and applies what changed.
+  - New Cycle → this is a **new Cycle**: the current one is the **previous Cycle** (its address is `connect`'s `url`, its name `cycle`). `readCycle` it now, before anything changes, for the Commander's settings and how many Playbook items (`playbook`, not retired) and hides (`commander.hides.hidden`) they have. Go to step 3.
+- `setup: in-progress` → an earlier setup was interrupted. Never publish a second page.
+  - It is a **new Cycle** when `readCycle` shows `cycle.previous` (that address is the previous Cycle), or, with nothing seeded yet, when the pointer's `archived` has an address whose Cycle (`readCycle` with that address as `cycle`) is not yet `archived: true`. Read the previous Cycle's name with `readCycle` at its address, and say you're finishing the new Cycle that continues <previous>. Read what is stored (`readCycle`, `readTeam`; a page with nothing seeded yet has no Cycle, so nothing to read) and say in one line that you're finishing the setup of <cycle>. Treat the stored values as the answers so far and go to step 5: the summary lists what is stored and adds what is still missing (a mandatory answer missing → ask for it first, as step 4 says). In step 6, `createCycle` is called again with every answer, stored or changed: it keeps what is stored and applies what changed.
 
 ## 3. Ask everything in one message
 
 If the command arguments already give the Commander's name and the Cycle, don't ask: go to step 4 with them as the answer. Arguments: $ARGUMENTS
+
+**A new Cycle** starts from the previous Cycle's Commander settings: don't ask for the name, role or Talk cadence again; show them for change instead, and send this message (the course part as below):
+
+> מחזור חדש. ממשיך עם: <name>, <role or "תפקיד לא צוין">, שיחה כל <target> ימים (צהוב <yellow>, אדום <red>)<, when there are any: ", <n> פריטים שלך בפלייבוק", ", <m> פריטי בסיס שהסתרת"> — לשנות?
+> ענה לי בהודעה אחת. רק 1 חובה; על כל השאר יש ברירת מחדל, ואפשר להוסיף אחר כך בצ'אט.
+> 1. שם/צבע המחזור החדש?
+> 2. מתי התחיל? (ברירת מחדל: היום, <DD/MM>)
+> 3. שמות החניכים (שמות פרטיים בלבד), ומה שתרצה לספר על כל אחד.
+> 4. צוותי פרויקטים, או מיומנויות שתרצה לעקוב אחריהן מעבר לרשימה הקבועה.
+> <the course part, as below>
+> <previous> יעבור לארכיון: הוא נשמר, לקריאה בלבד, ואפשר לשאול עליו בצ'אט.
+
+Otherwise (the first Cycle):
 
 Otherwise read the shipped Course preset and send **one** message, then wait:
 
@@ -70,9 +84,10 @@ The preset summary is 3–4 lines built from the preset file, never copied from 
 
 ## 4. Read the answer
 
-Partial answers are fine. Only the Commander's name and the Cycle are mandatory: if either is missing, ask for just the missing one in one short line and keep everything else they said. Everything not answered takes its default.
+Partial answers are fine. Only the Commander's name and the Cycle are mandatory (on a new Cycle the name is the previous Cycle's unless changed, so only the Cycle): if either is missing, ask for just the missing one in one short line and keep everything else they said. Everything not answered takes its default.
 
 - **Trainees**: first names only. Never store last names or other identifying details. Two Trainees with the same first name: ask for a short distinguishing label for both (a last-name initial or nickname, "נועה כ." / "נועה ל.") and use it as the display name.
+- **A new Cycle**: the previous Cycle's name, role and Talk values stand unless the Commander changes them ("ממשיך", "בלי שינוי" changes nothing). The new Cycle's name must differ from the previous one's. Trainees, teams, Skills and course differences are this Cycle's alone: nothing of them carries over.
 - **Talk cadence**: whole days. "כל שבוע" is target 7. The thresholds stay yellow 10 / red 14 unless the Commander names them; a target past 10 moves yellow to the target and red to the target + 4 (say so in the summary).
 - **Start date**: resolve it against today (`date '+%F %A'`), as `YYYY-MM-DD`.
 - **Course differences** ("אין אצלנו Atom", "בפוב קוראים לו FOV2", "יש לנו גם תרץ Crocodile ב-OOP", "אין MZ", "הקורס 20 שבועות"): turn each into Course preset changes, by the same rules as the roster reference (`${CLAUDE_PLUGIN_ROOT}/skills/tracker/references/roster.md`): `addTest` (ask for the Subject when it isn't clear), `editTest`, `removeTest`, `addProject`, `removeProject`, `setWeek`, `removeWeek` (a shorter course drops its last weeks, one call per week, from the end). They change only this Cycle's copy. A difference none of these can express: say in the summary that it can't be changed yet; setup goes on without it.
@@ -91,6 +106,8 @@ Show one short summary and wait for a yes. Nothing is created before it.
 > • שיחות: יעד כל <target> ימים (צהוב <yellow>, אדום <red>)
 > • מבנה הקורס: ברירת המחדל (<course>), or with the changes listed one per line ("– בלי Atom", "– FOV נקרא FOV2", "– 20 שבועות")
 > • <Project teams and extra Skills, one line each, when there are any>
+> • <a new Cycle:> ממשיך מ-<previous>: <n> פריטים שלך בפלייבוק, <m> הסתרות (or just "ההגדרות שלך" when there are none)
+> • <a new Cycle:> <previous> יעבור לארכיון: נשמר לקריאה בלבד, ואפשר לשאול עליו בצ'אט.
 > • <when Trainee info was given:> מה שסיפרת על <names> יירשם כתיעוד, כמו כל עדכון. פרטים אישיים נשמרים בתיק בלבד.
 > <artifact backend only:> Claude Code יבקש ממך פעם אחת אישור לפרסם את דף המעקב (פרטי, רק לך).
 > זה מה שאקים — לאשר?
@@ -103,14 +120,15 @@ A clear yes ("כן", "מאשר", "יאללה") → step 6. A reply that changes 
 
 **Artifact backend**, first:
 1. Publish the dashboard page with the Artifact tool: `file_path` = `${CLAUDE_PLUGIN_ROOT}/dashboard/index.html` (read it first, as the tool requires), `title` = "מעקב חניכים · <Cycle>", `description` = "דף המעקב של המחזור <Cycle>: מתי הייתה השיחה האחרונה עם כל חניך.", `icon` = "people", `capabilities` = `{"db": {}, "user": {}}`, `pin: true`. If the tool refuses that path, copy the file into your scratchpad dir and publish the copy. Skip this when finishing an interrupted setup.
-2. Write the pointer right away, before seeding: set `current` to the page's address in `${CLAUDE_PLUGIN_DATA}/cycles.json` with the Write tool, keeping any `archived` list already there (`{"current": "<address>", "archived": []}` when there was no pointer).
+2. Write the pointer right away, before seeding: set `current` to the page's address in `${CLAUDE_PLUGIN_DATA}/cycles.json` with the Write tool, keeping any `archived` list already there (`{"current": "<address>", "archived": []}` when there was no pointer). A new Cycle: in the same write, append the previous Cycle's address to `archived`, so it is never lost if setup stops here.
 
 Then, on either backend, in this order:
-1. `createCycle` with the Commander's name, role, Talk values and the start date when given, the Cycle and the Trainees. (The local backend writes the pointer itself.)
+1. `createCycle` with the Commander's name, role, Talk values and the start date when given, the Cycle and the Trainees; on a new Cycle also `previous` = the previous Cycle's address. (The local backend writes the pointer itself.)
 2. Each Course preset change with `updateCycle`, in the order listed; then each extra Skill (`addSkill`); then each Project team (`setTeam`, members by the ids `createCycle` returned).
 3. The Trainee info, if any: one `recordEntry` by log.md (read it, and the sensitive-details rules in it, before cutting).
-4. `finishSetup`. Only after everything above went in.
-5. Artifact backend: check once that `readTeam` shows one card per Trainee.
+4. A new Cycle: `copyCommanderScope` from the previous Cycle's address, then `archiveCycle` of that address. Both are safe to run again on a resume.
+5. `finishSetup`. Only after everything above went in.
+6. Artifact backend: check once that `readTeam` shows one card per Trainee.
 
 The Commander's yes in step 5 is the confirmation for every change in this step; don't ask again. When finishing an interrupted setup, check `readCycle` and `readTrainee` first and skip what is already stored (a preset change already applied, a team already there, an Entry with the same text). If an operation refuses (a duplicate name, an unknown Subject), fix the input with the Commander and run that operation again; never `finishSetup` with something missing.
 
@@ -121,4 +139,7 @@ One short Hebrew message:
 - The course changes applied, as the list from the summary, when there were any; the Trainees whose info was recorded, when there were any.
 - The dashboard link (artifact backend): private, pinned in the claude.ai sidebar, updates by itself. On the local backend say there is no page in a test setup.
 - Three ways to start, with a real Trainee's name when there is one: "דיברתי היום עם נועה…", "תכין לי שיחה עם נועה", "מה המצב".
+- A new Cycle: one line on what carried over (settings, <n> Playbook items, <m> hides) and that <previous> is archived, read-only, and can still be asked about ("מה היה עם דני במחזור הקודם?").
 - One line: to get plugin updates automatically, turn on auto-update under `/plugin` → Marketplaces.
+
+A new Cycle on the artifact backend: end the hand-off with one question, asked once and never again: "להוריד את <previous> מהסרגל של claude.ai? הוא נשאר בארכיון, ואפשר לשאול עליו בצ'אט." Only a clear yes → Artifact tool `action: "unpin"` with the previous Cycle's address, and say it's done in one line. Anything else → leave it pinned and say nothing more about it. (The local backend has no page: no question.)

@@ -10,3 +10,9 @@ The Commander asks what is on record about a Trainee: "מה כתבתי על נו
 6. Nothing matches → say so in one line and offer the nearest days that have Entries.
 
 This is chat, for the Commander alone: sensitive records and raw Entries may be shown in full here, and only here. Nothing is recorded, so the reply has no Retraction line.
+
+## An earlier Cycle
+
+"מה היה עם דני במחזור הקודם?", "מה כתבתי על נועה במחזור הצהובים?": the question is about an archived Cycle. Its address is in the pointer's `archived` (newest last); "the previous Cycle" is the current Cycle's `cycle.previous` from `readCycle`. A Cycle named by name: `readCycle` each archived address (passing it as `cycle`) and take the one with that name; none → say which Cycles there are, by name.
+
+Read it like the current one, passing its address as `cycle` to every read: `readCycle`, `readTeam` to find the Trainee by name (Trainee ids belong to their Cycle: the same person has another id, or none, in this one), then `readTrainee` with no `since` (an archived Cycle is read whole). Answer as above, and name the Cycle in the reply ("במחזור הצהובים: …"). An archived Cycle is read-only: never pass its address to a write.

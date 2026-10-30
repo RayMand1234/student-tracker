@@ -2,6 +2,8 @@
 
 The Cycle's store is the database of its private claude.ai page, titled "מעקב חניכים · <Cycle>". Every operation is done with the `ArtifactData` tool (deferred: load it once with ToolSearch `select:ArtifactData`), passing the page's address, the pointer's `current`, as `url`.
 
+An archived Cycle (an address in the pointer's `archived`) is read with the same reads, passing its address as `url` instead. Never pass an archived address to a write (`set`, `update`, `delete`, `batch`): a write the Commander aims at an archived Cycle is refused with "המחזור <name> בארכיון — אפשר רק לקרוא ממנו. עדכונים נרשמים במחזור הנוכחי, <current>." The only writes to an archived page are `archiveCycle`'s.
+
 ## Calling ArtifactData
 
 - **Paths.** A document path splits into `collection` (everything before the last segment) and `doc_id` (the last segment): `trainees/t-ab12cd/evidence/e-20261030-0915-x7-1` → `collection: "trainees/t-ab12cd/evidence"`, `doc_id: "e-20261030-0915-x7-1"`; `meta/cycle` → `collection: "meta"`, `doc_id: "cycle"`.
@@ -45,12 +47,12 @@ The card is derived from the Trainee's records and always has this shape:
 ### `connect`
 
 1. Pointer has `current`: `get` `meta/cycle`.
-   - Found → return `{backend: "artifact", url, cycle: name, setup}`.
+   - Found → return `{backend: "artifact", url, cycle: name, setup}`, plus `archived: true` when it has `archived: true` (then write nothing to it).
    - Not found, but the call reached the page → setup published the page and stopped before seeding: return `{backend: "artifact", url, cycle: null, setup: "in-progress"}`.
    - The call fails because the page itself is gone (deleted, or no access) → continue with step 2.
 2. No usable pointer: Artifact tool `action: "list"`, `limit: 200`. Keep titles starting "מעקב חניכים ·" whose address is not in the pointer's `archived`.
    - One → save it as the pointer's `current` (keep any `archived` list already there) in `<plugin data dir>/cycles.json` with the Write tool, then step 1.
-   - Several → ask the Commander which Cycle (by the name after "·") and stop until they answer.
+   - Several → `get` each one's `meta/cycle` and leave out those with `archived: true`. One left → as above. Still several → ask the Commander which Cycle (by the name after "·") and stop until they answer.
    - None → "עוד לא הוקם מעקב — הרץ `/student-tracker:setup`".
 
 ### `readCycle`
@@ -104,11 +106,11 @@ Check every Assessment refusal in storage.md (every ref a stored Evidence id of 
 Runs after setup has published the page and written the pointer.
 
 0. Check first, writing nothing: `start` (default today) is `YYYY-MM-DD`; the Talk values pass `updateSettings`' checks. Two Trainees whose display names clash (two display names clash when they are the same ignoring case and spacing, or when one is a bare first name the other starts with ("נועה" and "נועה כ.")) → refuse ("ask for a distinguishing label for both") and write nothing.
-1. `get` `meta/cycle`. `setup: "done"` → refuse ("כבר קיים מעקב למחזור <name>"). Missing → create `{name, start, setup: "in-progress", schema: 1, archived: false, at}`. `in-progress` → an earlier setup was interrupted: `update` it `{name, start}` with its version (`start` as stored unless given again).
+1. `get` `meta/cycle`. `setup: "done"` → refuse ("כבר קיים מעקב למחזור <name>"). Missing → create `{name, start, setup: "in-progress", schema: 1, archived: false, at}`, plus `previous: <address>` with `previous` (a new Cycle: setup has already written the pointer with the new page as `current` and the previous address in `archived`). `in-progress` → an earlier setup was interrupted: `update` it `{name, start}` with its version (`start` as stored unless given again).
 2. `get` each of these, then one `batch` creating only the ones that are missing (an existing one is left as it is, so the Skills and preset changes an interrupted setup already made stay; a create on an existing document would stop the batch part-way):
    - `meta/skills`: `file_path` = the Skill framework file named in setup (or its content as `data`)
    - `meta/preset`: `file_path` = the Course preset file named in setup (or its content as `data`)
-   - `commander/settings`: `{name, role, talk: {target, yellow, red}, at}`, with `role: null` and Talk 10 / 10 / 14 where the Commander gave none. When it exists (a resumed setup), instead `set` it with its version: `name` as given, `role` and each Talk value as given, else as stored.
+   - `commander/settings`: `{name, role, talk: {target, yellow, red}, at}`, with `role: null` and Talk 10 / 10 / 14 where the Commander gave none (with `previous`: the previous Cycle's role and Talk values instead, from `get` `commander/settings` at its address). When it exists (a resumed setup), instead `set` it with its version: `name` as given, `role` and each Talk value as given, else as stored.
    - `commander/hides`: `{hidden: []}`
 3. `list` `trainees`; skip names that already have a card. For each new name pick `t-<rand6>` and create, in batches of at most 24 Trainees:
    - `trainees/<tid>/changes/added`: `{type: "added", name, by: "commander", at, retracted: false}`
@@ -193,6 +195,17 @@ Only after the Commander confirmed. Refuse a `b-…` id. `get` `playbook/<id>` (
 
 Only after the Commander confirmed. Refuse a `p-…` id. Hiding: refuse an id not among `items` in `${CLAUDE_PLUGIN_ROOT}/data/playbook.json`. `get` `commander/hides` (version `v`); if `hidden` already holds the id (hiding) or lacks it (un-hiding), return it unchanged. Otherwise `update` it `{hidden: <with the id added, or taken out>}` with `if_version: v`; on a conflict start over. Return `{hidden}`.
 
-### Not built yet
+### `copyCommanderScope(fromUrl)` (setup of a new Cycle)
 
-`copyCommanderScope`.
+Runs after `createCycle`, before `archiveCycle`. Refuse `fromUrl` = the pointer's `current`; `get` `meta/cycle` at `fromUrl` (missing → refuse "no Cycle at <fromUrl>") and at `current` (`setup` not `"in-progress"` → refuse). Reads at `fromUrl`, writes at `current`:
+
+1. `get` `commander/settings` at both. Missing at `current` → create it with the previous one's data and `at: Now` (`settings: "copied"`); otherwise leave it (`"kept"`).
+2. `list` `playbook` at `fromUrl` (`limit: 1000`). Skills: `get` `meta/skills` at both; for each Skill id a live item (`retired: false`) is tagged to that `current`'s framework lacks, find it in the previous framework's groups and append it, as stored there, to the same group here, unless that group has a Skill of the same name (ignoring case and spacing): then remember to tag the item to that one instead. Any added → `update` `meta/skills` `{groups}` with its `if_version`; on a conflict start over.
+3. `list` `playbook` at `current`. Each previous item whose id is not there: create `playbook/<id>` (`set`, no `if_version`) with its data as stored (`retired` too), its `skills` retagged as step 2 says, in batches of at most 50. "Already exists" is fine (a resumed copy).
+4. `get` `commander/hides` at both. The previous `hidden` ids missing here → `update` `{hidden: <here + those>}` with its `if_version` (create it if missing); on a conflict start over.
+
+Return `{settings, skills: [added ids], playbook: [created ids], hidden: [added ids]}`. Running it again copies nothing.
+
+### `archiveCycle(url)` (setup of a new Cycle)
+
+Runs after `copyCommanderScope`, before `finishSetup`. Refuse `url` = the pointer's `current`. `get` `meta/cycle` at `url` (missing → refuse "no Cycle at <url>"). If the pointer's `archived` lacks `url`, add it (Write tool, keeping `current`). Then, unless it already has `archived: true`, `update` `meta/cycle` at `url` `{archived: true, archivedAt: Now}` with its version; on a conflict start over. Its dashboard shows "מחזור בארכיון" from then on. Return its `meta/cycle`. The page itself is never deleted; unpinning is setup's question to the Commander.

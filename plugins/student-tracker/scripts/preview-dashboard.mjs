@@ -1,5 +1,5 @@
 // Local preview of the dashboard page with sample data and a stand-in for the artifact db, so the
-// page can be screenshotted in a headless browser: `node scripts/preview-dashboard.mjs <out.html>`.
+// page can be screenshotted in a headless browser: `node scripts/preview-dashboard.mjs <out.html> [archived]`.
 // Mirrors the publish skeleton (doctype, charset, viewport, small reset) the Artifact tool adds.
 import fs from 'node:fs';
 
@@ -20,7 +20,8 @@ const filler = (seed, base) => Object.fromEntries(SKILL_IDS.filter((_, i) => (i 
   return [id, sk([[55 - ((i * 5 + seed) % 20), Math.max(1, s - 1)], [20 - ((i + seed) % 15), s]])];
 }));
 const sample = {
-  'meta/cycle': { name: 'מחזור הצהובים', start: day(62), setup: 'done' },
+  // `archived` as the second argument previews an archived Cycle (archived yesterday).
+  'meta/cycle': { name: 'מחזור הצהובים', start: day(62), setup: 'done', ...(process.argv[3] === 'archived' ? { archived: true, archivedAt: at(1) } : {}) },
   'meta/skills': data('skills.json'),
   'meta/preset': data('preset.json'),
   'commander/settings': { name: 'רז', talk: { target: 10, yellow: 10, red: 14 } },
