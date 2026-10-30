@@ -39,6 +39,24 @@ test('the CLI prints JSON and reports refusals on stderr with exit 1', () => {
   assert.equal(JSON.parse(run(['--data', data, 'read-cycle'], { cwd }).out).commander.settings.name, 'רז');
 });
 
+test('create-cycle takes the role, start date and Talk values; the Cycle stays in progress until finish-setup', () => {
+  const { data, cwd } = fresh();
+  const input = `${SETUP}role: מפ"צ\nstart: 2026-10-25\ntarget: 7\nred: 12\n`;
+  const created = run(['--data', data, 'create-cycle'], { cwd, input });
+  assert.equal(created.code, 0, created.err);
+  const { cycle, commander } = JSON.parse(run(['--data', data, 'read-cycle'], { cwd }).out);
+  assert.deepEqual([cycle.start, cycle.setup, commander.settings.role], ['2026-10-25', 'in-progress', 'מפ"צ']);
+  assert.deepEqual(commander.settings.talk, { target: 7, yellow: 10, red: 12 });
+
+  const finished = run(['--data', data, 'finish-setup'], { cwd });
+  assert.equal(finished.code, 0, finished.err);
+  assert.equal(JSON.parse(run(['--data', data, 'connect'], { cwd }).out).setup, 'done');
+
+  const bad = run(['--data', fresh().data, 'create-cycle'], { cwd, input: `${SETUP}yellow: 20\n` });
+  assert.equal(bad.code, 1);
+  assert.match(bad.err, /before red/);
+});
+
 test('record-entry takes the message and its Evidence as text blocks, keeping both word-for-word', () => {
   const { data, cwd } = fresh();
   const [noa, dani] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
@@ -292,6 +310,8 @@ test('update-cycle edits the preset, Skills and Project teams, one change per ca
   ok('remove-test: Atom\n');
   ok('add-project: Chess\nsubject: oop\nalias: שחמט\n');
   ok('week: 6\nsubjects: oop, db\nprojects: chess\n');
+  ok('remove-project: מז\n');
+  ok('remove-week: 21\n');
   const { skill } = ok('add-skill: ניהול זמן\ngroup: impl\n');
   ok('archive-skill: impl.web-search\n');
   ok('restore-skill: impl.web-search\n');
@@ -303,6 +323,8 @@ test('update-cycle edits the preset, Skills and Project teams, one change per ca
   assert.deepEqual([fov.name, fov.number], ['FOV2', '6']);
   assert.equal(cycle.preset.tests.some((t) => t.name === 'Atom'), false);
   assert.deepEqual(cycle.preset.schedule.find((w) => w.week === 6), { week: 6, subjects: ['oop', 'db'], projects: ['chess'] });
+  assert.equal(cycle.preset.projects.some((p) => p.id === 'mz'), false);
+  assert.equal(cycle.preset.schedule.length, 20);
   assert.ok(cycle.skills.groups.find((g) => g.id === 'impl').skills.some((s) => s.id === skill.id));
   assert.deepEqual(cycle.teams.map((t) => t.members), [[noa.id]]);
 

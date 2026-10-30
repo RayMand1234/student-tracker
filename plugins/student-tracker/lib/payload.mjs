@@ -7,7 +7,11 @@ const LIST_FIELDS = new Set(['topics', 'closes', 'evidence']);
 const NUMBER_FIELDS = new Set(['score']);
 const FLAG_FIELDS = new Set(['unlisted']);
 
-// commander: <name> / role: <role> / cycle: <name> / start: YYYY-MM-DD / trainee: <name> (repeat)
+// target: / yellow: / red: lines (days) into `out.talk`.
+const talkFields = (out) => Object.fromEntries(['target', 'yellow', 'red'].map((k) => [k, (v) => ((out.talk ??= {})[k] = Number(v))]));
+
+// commander: <name> / role: <role> / cycle: <name> / start: YYYY-MM-DD / target: / yellow: / red: (days)
+// / trainee: <name> (repeat)
 export function parseCycle(input) {
   const out = { commander: {}, cycle: {}, trainees: [] };
   const set = {
@@ -15,6 +19,7 @@ export function parseCycle(input) {
     role: (v) => (out.commander.role = v),
     cycle: (v) => (out.cycle.name = v),
     start: (v) => (out.cycle.start = v),
+    ...talkFields(out.commander),
     trainee: (v) => out.trainees.push(v),
   };
   for (const line of input.split('\n').map((l) => l.trim()).filter(Boolean)) {
@@ -191,13 +196,10 @@ export function parseTraineeChange(input) {
 // name: / role: (empty clears it) / target: / yellow: / red: (days)
 export function parseSettings(input) {
   const out = {};
-  const talk = (k) => (v) => ((out.talk ??= {})[k] = Number(v));
   const set = {
     name: (v) => (out.name = v),
     role: (v) => (out.role = v || null),
-    target: talk('target'),
-    yellow: talk('yellow'),
-    red: talk('red'),
+    ...talkFields(out),
   };
   for (const [key, value, line] of keyLines(input)) {
     if (!set[key]) throw new StoreError(`unexpected line "${line}" (keys: ${Object.keys(set).join(', ')})`);
@@ -219,6 +221,8 @@ export function parseCycleChange(input) {
       fields: { name: (c, v) => (c.editTest.name = v), number: (c, v) => (c.editTest.number = v), alias: aliases('editTest') },
     },
     'remove-test': { build: (test) => ({ removeTest: { test } }), fields: {} },
+    'remove-project': { build: (project) => ({ removeProject: { project } }), fields: {} },
+    'remove-week': { build: (week) => ({ removeWeek: { week: Number(week) } }), fields: {} },
     'add-project': {
       build: (name) => ({ addProject: { name, aliases: [] } }),
       fields: { subject: (c, v) => (c.addProject.subject = v), alias: aliases('addProject') },

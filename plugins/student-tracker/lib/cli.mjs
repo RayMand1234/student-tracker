@@ -4,7 +4,9 @@ import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraine
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation> [args]
   connect
-  create-cycle            < lines "commander: <name>", "cycle: <name>", "trainee: <name>" (repeat)
+  create-cycle            < lines "commander: <name>", "cycle: <name>", "trainee: <name>" (repeat),
+                            optional "role:", "start: YYYY-MM-DD", "target:", "yellow:", "red:"
+  finish-setup            (last step of setup: marks the Cycle done)
   read-cycle
   read-team
   read-trainee <tid> [--since YYYY-MM-DD] [--retracted]
@@ -22,7 +24,8 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> <operation>
                             "leave: YYYY-MM-DD" + "how: dismissal|transfer|other" + "reason: <text>"
   update-settings         < any of "name:", "role:", "target:", "yellow:", "red:" lines
   update-cycle            < one change: "add-test: <name>" | "edit-test: <test>" | "remove-test: <test>" |
-                            "add-project: <name>" | "week: <n>" | "add-skill: <name>" | "archive-skill: <id>" |
+                            "add-project: <name>" | "remove-project: <project>" | "week: <n>" |
+                            "remove-week: <last week>" | "add-skill: <name>" | "archive-skill: <id>" |
                             "restore-skill: <id>" | "team: <name>", then its field lines (storage-local.md)
   resume-pending
   rebuild-card <tid>`;
@@ -52,6 +55,7 @@ export async function main(argv) {
     const ops = {
       connect: () => store.connect(),
       'create-cycle': () => store.createCycle(parseCycle(stdin())),
+      'finish-setup': () => store.finishSetup(),
       'read-cycle': () => store.readCycle(),
       'read-team': () => store.readTeam(),
       'read-trainee': () => store.readTrainee(rest[0], { since, retracted }),

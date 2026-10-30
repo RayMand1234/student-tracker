@@ -59,6 +59,7 @@ test('an Entry left half-written is finished by the next message, and cards rebu
   const cwd = workspace();
   const store = freshTestStore();
   store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' }, trainees: ['נועה', 'דני', 'מאיה'] });
+  store.finishSetup();
   const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
 
   // A session that died after Noa's chunk, before Dani's.

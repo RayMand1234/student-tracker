@@ -42,6 +42,9 @@ export function dropTestStore() {
 
 export function freshTestStore(options = {}) {
   dropTestStore();
+  // With no current Cycle, connect looks for every store under local/: start with none. Only
+  // test stores live there (a real Cycle is an artifact).
+  fs.rmSync(path.join(DATA, 'local'), { recursive: true, force: true });
   fs.writeFileSync(POINTER, JSON.stringify({ backend: 'local', current: null, archived: [] }));
   return openStore({ dataDir: DATA, ...options });
 }

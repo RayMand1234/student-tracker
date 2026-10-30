@@ -54,6 +54,22 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
     return current.slice(LOCAL.length);
   }
   const open = () => openDocs(storeRoot());
+
+  // No current Cycle in the pointer: like the artifact backend's title lookup, find this
+  // machine's Cycles (archived ones aside). One is saved as current; several are put to the
+  // Commander; none leaves the pointer as it was.
+  function adoptLocalCycle() {
+    const pointer = readPointer();
+    const dir = path.join(dataDir, 'local');
+    const found = (fs.existsSync(dir) ? fs.readdirSync(dir) : [])
+      .map((d) => path.join(dir, d))
+      .map((root) => ({ url: `${LOCAL}${root}`, cycle: openDocs(root).get('meta/cycle')?.data }))
+      .filter((c) => c.cycle && !pointer.archived.includes(c.url));
+    if (found.length > 1) {
+      throw new StoreError(`several Cycles on this machine: ${found.map((c) => `${c.cycle.name} (${c.url})`).join(', ')}; ask the Commander which one`);
+    }
+    if (found.length === 1) writeJson(pointerPath, { ...pointer, current: found[0].url });
+  }
   const today = () => localDate(now());
 
   // Read every source record of one Trainee (its sensitive records included) and derive the
@@ -216,16 +232,19 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
 
   return {
     connect() {
+      if (!readPointer().current) adoptLocalCycle();
       const r = storeRoot();
       const cycle = openDocs(r).get('meta/cycle')?.data;
       if (!cycle) throw new StoreError(NOT_SET_UP);
       return { backend: 'local', url: `${LOCAL}${r}`, cycle: cycle.name, setup: cycle.setup };
     },
 
-    // Setup only. Resumes a Cycle whose seed was interrupted; refuses one that is already done.
+    // Setup only. Seeds the Cycle and leaves it `in-progress` (see finishSetup). Resumes a Cycle
+    // whose setup was interrupted; refuses one that is already done.
     createCycle({ commander, cycle, trainees = [] }) {
       if (!commander?.name) throw new StoreError('commander.name is required');
       if (!cycle?.name) throw new StoreError('cycle.name is required');
+      if (cycle.start !== undefined) checkDate(cycle.start);
       const names = trainees.map((t) => (typeof t === 'string' ? t : t.name));
       names.forEach((n, i) => names.slice(i + 1).forEach((m) => checkNames(n, m)));
 
@@ -235,6 +254,9 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       if (existingCycle?.setup === 'done') {
         throw new StoreError(`כבר קיים מעקב למחזור ${existingCycle.name}`);
       }
+      // Resuming keeps what the interrupted setup stored; answers given again replace it.
+      const prior = existing && openDocs(existing).get('commander/settings')?.data;
+      const talk = talkSettings(prior?.talk ?? DEFAULT_TALK, commander.talk);
       const r = existing ?? path.join(dataDir, 'local', `c-${rand(6)}`);
       // Pointer first, so an interrupted seed is found and resumed instead of duplicated.
       writeJson(pointerPath, { ...pointer, current: `${LOCAL}${r}` });
@@ -243,20 +265,20 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       const at = isoWithOffset(now());
       upsert(docs, 'meta/cycle', {
         name: cycle.name,
-        start: cycle.start ?? today(),
+        start: cycle.start ?? existingCycle?.start ?? today(),
         setup: 'in-progress',
         schema: 1,
         archived: false,
         at,
       });
-      upsert(docs, 'meta/skills', readJson(path.join(PLUGIN_ROOT, 'data/skills.json')));
-      if (!docs.get('meta/preset')) {
-        docs.batch([{ op: 'create', path: 'meta/preset', data: readJson(path.join(PLUGIN_ROOT, 'data/preset.json')) }]);
+      // Created once: setup's own changes (added Skills, preset differences) may already be in them.
+      for (const [doc, file] of [['meta/skills', 'skills.json'], ['meta/preset', 'preset.json']]) {
+        if (!docs.get(doc)) docs.batch([{ op: 'create', path: doc, data: readJson(path.join(PLUGIN_ROOT, 'data', file)) }]);
       }
       upsert(docs, 'commander/settings', {
         name: commander.name,
-        role: commander.role ?? null,
-        talk: { ...DEFAULT_TALK, ...commander.talk },
+        role: commander.role === undefined ? prior?.role ?? null : commander.role?.trim() || null,
+        talk,
         at,
       });
       if (!docs.get('commander/hides')) docs.batch([{ op: 'create', path: 'commander/hides', data: { hidden: [] } }]);
@@ -274,9 +296,17 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
         return { id, name };
       });
       interrupt('seeded');
-      const done = docs.get('meta/cycle');
-      docs.batch([{ op: 'update', path: 'meta/cycle', data: { setup: 'done' }, ifVersion: done.version }]);
       return { url: `${LOCAL}${r}`, trainees: all };
+    },
+
+    // Setup only, last: after the seed and everything setup records into it (preset changes,
+    // teams, Skills, setup Entries). Until then the Cycle stays `in-progress` and setup resumes it.
+    finishSetup() {
+      const docs = open();
+      const cycle = docs.get('meta/cycle')?.data;
+      if (!cycle) throw new StoreError(NOT_SET_UP);
+      if (cycle.setup === 'done') return cycle;
+      return pinned(docs, 'meta/cycle', (current) => ({ ...current, setup: 'done' }));
     },
 
     readCycle() {
@@ -562,23 +592,13 @@ export function openStore({ dataDir, now = () => new Date(), rand = randomChars,
       if (!Object.keys(change).length) throw new StoreError('nothing to change');
       if (name !== undefined && (typeof name !== 'string' || !name.trim())) throw new StoreError('the Commander name cannot be empty');
       if (role !== undefined && role !== null && typeof role !== 'string') throw new StoreError('role is text, or null to clear it');
-      const badTalk = Object.keys(talk ?? {}).find((k) => !(k in DEFAULT_TALK));
-      if (badTalk) throw new StoreError(`unknown Talk setting "${badTalk}" (target, yellow, red)`);
-      return pinned(open(), 'commander/settings', (current) => {
-        const next = { ...current.talk, ...talk };
-        for (const k of Object.keys(DEFAULT_TALK)) {
-          if (!Number.isInteger(next[k]) || next[k] < 1) throw new StoreError(`Talk ${k} is a whole number of days, at least 1; got ${JSON.stringify(next[k])}`);
-        }
-        if (next.yellow >= next.red) throw new StoreError(`the yellow threshold (${next.yellow}) must come before red (${next.red})`);
-        if (next.target > next.yellow) throw new StoreError(`the Talk target (${next.target}) cannot be past the yellow threshold (${next.yellow})`);
-        return {
-          ...current,
-          ...(name !== undefined ? { name: name.trim() } : {}),
-          ...(role !== undefined ? { role: role?.trim() || null } : {}),
-          talk: next,
-          at: isoWithOffset(now()),
-        };
-      });
+      return pinned(open(), 'commander/settings', (current) => ({
+        ...current,
+        ...(name !== undefined ? { name: name.trim() } : {}),
+        ...(role !== undefined ? { role: role?.trim() || null } : {}),
+        talk: talkSettings(current.talk, talk),
+        at: isoWithOffset(now()),
+      }));
     },
 
     // One change to this Cycle (its preset copy, Skill framework or Project teams), pinned to the
@@ -723,6 +743,11 @@ const sameName = (a, b) => {
 };
 
 // The preset Test known by this name or alias (ignoring case and spacing), if any.
+// The Project known by `name` (or alias; or id, with byId), or undefined.
+function findProject(preset, name, { byId = false } = {}) {
+  return preset.projects.find((p) => [...(byId ? [p.id] : []), p.name, ...(p.aliases ?? [])].some((n) => sameName(n, name)));
+}
+
 function findTest(preset, name) {
   return (preset?.tests ?? []).find((t) => [t.name, ...t.aliases].some((a) => sameName(a, name)));
 }
@@ -849,13 +874,33 @@ const CYCLE_CHANGES = {
     if (typeof name !== 'string' || !name.trim()) throw new StoreError('a Project needs a name');
     checkSubject(preset, subject);
     for (const n of [name, ...aliases]) {
-      const taken = preset.projects.find((p) => [p.name, ...(p.aliases ?? [])].some((a) => sameName(a, n)));
+      const taken = findProject(preset, n);
       if (taken) throw new StoreError(`"${n}" is already the Project "${taken.name}"`);
     }
     const slug = slugOf(name) || `p-${rand(4)}`;
     let id = slug;
     while (preset.projects.some((p) => p.id === id)) id = `${slug}-${rand(2)}`;
     return { ...preset, projects: [...preset.projects, { id, subject, name: name.trim(), aliases }] };
+  }),
+
+  // Recorded Evidence keeps its Project id; a Project that still has a team is refused.
+  removeProject: (docs, { project }) => pinned(docs, 'meta/preset', (preset) => {
+    const current = findProject(preset, project ?? '', { byId: true });
+    if (!current) throw new StoreError(`no Project "${project}" (one of ${preset.projects.map((p) => p.name).join(', ')})`);
+    const team = docs.list('teams').find((t) => t.data.project === current.id);
+    if (team) throw new StoreError(`${current.name} has the team "${team.data.name}"; it stays`);
+    const schedule = preset.schedule.map(({ projects, ...w }) => {
+      const left = (projects ?? []).filter((p) => p !== current.id);
+      return { ...w, ...(left.length ? { projects: left } : {}) };
+    });
+    return { ...preset, projects: preset.projects.filter((p) => p.id !== current.id), schedule };
+  }),
+
+  removeWeek: (docs, { week }) => pinned(docs, 'meta/preset', (preset) => {
+    if (!preset.schedule.some((w) => w.week === week)) throw new StoreError(`no week ${week} in the Schedule`);
+    const last = Math.max(...preset.schedule.map((w) => w.week));
+    if (week !== last) throw new StoreError(`only the last week (${last}) can be dropped; change week ${week} with setWeek`);
+    return { ...preset, schedule: preset.schedule.filter((w) => w.week !== week) };
   }),
 
   setWeek: (docs, { week, subjects = [], projects }) => pinned(docs, 'meta/preset', (preset) => {
@@ -914,6 +959,19 @@ const CYCLE_CHANGES = {
   archiveSkill: (docs, { skill }, { at }) => setArchived(docs, skill, at),
   restoreSkill: (docs, { skill }) => setArchived(docs, skill, null),
 };
+
+// The Talk target and thresholds after `change`, refusing values that make no sense.
+function talkSettings(current, change = {}) {
+  const unknown = Object.keys(change).find((k) => !(k in DEFAULT_TALK));
+  if (unknown) throw new StoreError(`unknown Talk setting "${unknown}" (target, yellow, red)`);
+  const next = { ...current, ...change };
+  for (const k of Object.keys(DEFAULT_TALK)) {
+    if (!Number.isInteger(next[k]) || next[k] < 1) throw new StoreError(`Talk ${k} is a whole number of days, at least 1; got ${JSON.stringify(next[k])}`);
+  }
+  if (next.yellow >= next.red) throw new StoreError(`the yellow threshold (${next.yellow}) must come before red (${next.red})`);
+  if (next.target > next.yellow) throw new StoreError(`the Talk target (${next.target}) cannot be past the yellow threshold (${next.yellow})`);
+  return next;
+}
 
 function checkProject(preset, project) {
   if (!preset?.projects.some((p) => p.id === project)) {

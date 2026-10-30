@@ -9,6 +9,7 @@ useEvalPointer();
 function setUp(trainees = ['נועה', 'דני']) {
   const store = freshTestStore();
   store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' }, trainees });
+  store.finishSetup();
   const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
   // Everything a roster or settings change can touch, plus every Trainee's records.
   const state = () => ({
