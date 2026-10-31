@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Sets up Trainee tracking for a new Cycle — one batched question (the Commander's name and the Cycle are all it needs; role, Talk cadence, start date, course structure, Trainees, Project teams and extra Skills are optional), a confirmation, then the Cycle's private dashboard page and its store. Run once per Cycle; the next Cycle carries over the Commander's settings and Playbook and archives the previous one.
+description: Sets up Trainee tracking for a new Cycle: one batched question, a confirmation, then the dashboard page and store. Once per Cycle.
 argument-hint: "[שם, מחזור, שמות חניכים]"
 allowed-tools: ArtifactData, Bash(student-tracker-store *), Bash(date *)
 disable-model-invocation: true

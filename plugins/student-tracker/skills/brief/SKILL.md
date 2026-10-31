@@ -1,6 +1,6 @@
 ---
 name: brief
-description: Pre-Talk brief on one Trainee, readable a minute before the Talk — what changed since the last Talk, what to check, focus points, something to reinforce, opening questions. The shortcut for "תכין לי שיחה עם <שם>".
+description: Pre-Talk brief on one Trainee ("תכין לי שיחה עם <שם>").
 argument-hint: "<שם החניך>"
 allowed-tools: Skill
 disable-model-invocation: true
