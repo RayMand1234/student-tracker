@@ -46,7 +46,7 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <a
   update-cycle            < one change: "add-test: <name>" | "edit-test: <test>" | "remove-test: <test>" |
                             "add-project: <name>" | "remove-project: <project>" | "week: <n>" |
                             "remove-week: <last week>" | "add-skill: <name>" | "archive-skill: <id>" |
-                            "restore-skill: <id>" | "team: <name>", then its field lines (storage-local.md)
+                            "restore-skill: <id>" | "team: <name>", then its field lines (store/local/roster.md)
   resume-pending
   rebuild-card <tid>`;
 

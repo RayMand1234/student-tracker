@@ -1,4 +1,4 @@
-// Local JSON test backend for the storage interface (skills/tracker/references/storage.md).
+// Local JSON test backend for the storage interface (skills/tracker/references/store/).
 // Built on the document layer (docs.mjs), which keeps the artifact database's write rules.
 import fs from 'node:fs';
 import path from 'node:path';

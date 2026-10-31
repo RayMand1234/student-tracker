@@ -29,9 +29,14 @@ test('the marketplace entry and the manifest agree, and neither pins a version',
 });
 
 const REFERENCES = path.join(PLUGIN, 'skills/tracker/references');
+const referenceFiles = fs.readdirSync(REFERENCES, { recursive: true })
+  .filter((f) => f.endsWith('.md'))
+  .map((f) => path.join(REFERENCES, f));
+// Only the artifact backend's files under store/artifact/ name the Artifact tools.
+const ARTIFACT = path.join(REFERENCES, 'store/artifact') + path.sep;
 const neutralFiles = [
   ...['tracker', 'brief', 'status', 'dashboard', 'research'].map((s) => path.join(PLUGIN, 'skills', s, 'SKILL.md')),
-  ...fs.readdirSync(REFERENCES).filter((f) => f !== 'storage-artifact.md').map((f) => path.join(REFERENCES, f)),
+  ...referenceFiles.filter((f) => !f.startsWith(ARTIFACT)),
 ];
 
 for (const file of neutralFiles) {
@@ -42,8 +47,8 @@ for (const file of neutralFiles) {
 }
 
 test('reference files carry no ${CLAUDE_PLUGIN_*} substitutions (only SKILL.md text is substituted)', () => {
-  for (const f of fs.readdirSync(REFERENCES)) {
-    assert.ok(!/\$\{CLAUDE_PLUGIN_/.test(fs.readFileSync(path.join(REFERENCES, f), 'utf8')), f);
+  for (const f of referenceFiles) {
+    assert.ok(!/\$\{CLAUDE_PLUGIN_/.test(fs.readFileSync(f, 'utf8')), f);
   }
 });
 

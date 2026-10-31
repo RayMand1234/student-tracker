@@ -1,19 +1,13 @@
-# Advice and next-Talk questions
+**Load:** read
 
-**Advice** is your suggestion for helping one Trainee, built from the Playbook and that Trainee's Evidence. It is always marked "(הצעה)" and never stored: it becomes a record only when the Commander accepts it as an improve/keep item or a Follow-up. The **Playbook** is the base items that ship with the plugin plus the Commander's own; each item is a `sign` (what weakness or strength in a Skill looks like), a `tip` (for the Commander), an `exercise` (for the Trainee) or a `talk-question`, tagged to Skills or "general", optionally to a level band.
+# Advice and next-Talk questions
 
 ## "איך לעזור לנועה בדיבאג?"
 
-1. **Who and what.** The Trainee by name, as in [log.md](log.md) (ask when the name is unknown or shared). The focus, if they named one, as Skill ids from `readCycle` → `skills` ("דיבאג" → `impl.debugging`; a name in several Stages, like "סדר וארגון", → the ids their Evidence is about, or all of them). A focus that no Skill names ("ניהול זמן") is no Skill id: go on without one and keep their words as the theme. "איך לעזור לנועה?" names no focus.
-2. **Read.** `readTrainee(tid, since: 6 weeks back)` and `readPlaybook(tid, skills: <the focus ids>)`. With no focus, `readPlaybook` picks the targets itself: the declining (↓) Skills, then the lowest-rated. A Trainee with nothing rated and no focus gets only the general items: build from their Evidence.
-3. **Choose 2–3 suggestions**, never more:
-   - From the targets' items (already fitted to the Rating band; the Commander's own come first, prefer them) and the general items.
-   - **Skip** an item the Evidence shows was already tried without effect ("ישבה עם דני ולא עזר", "ניסינו זמן קצוב, לא עבד"), and one an active improve/keep item or open Follow-up on the card already covers.
-   - Use the `sign` items to read the Evidence, not as suggestions themselves.
-4. **Rewrite each to this Trainee**: what to do, grounded in what the Evidence says about them, and cite it (`— <Evidence kind> <DD/MM>`, as in [assess.md](assess.md)). No item text pasted bare, nothing the Evidence doesn't support, and nothing of a sensitive record beyond "מצב אישי" (the Commander may be reading in front of others).
-5. **Record nothing.**
-
-The reply is the brief's "מיקוד (הצעה)" block ([brief.md](brief.md)) on its own, each point with the Evidence it rests on:
+1. Trainee by name (ask if unknown or shared). Focus, if named → Skill ids from `readCycle` → `skills`; a name in several Stages ("סדר וארגון") → the ids their Evidence is about, or all; no Skill matches ("ניהול זמן") → keep their words as the theme.
+2. `readTrainee(tid, since: 6 weeks back)` and `readPlaybook(tid, skills: <focus ids>)`. Nothing rated and no focus → only general items: build from the Evidence.
+3. Choose 2–3, never more, from target items (Commander's own preferred) and general items. Skip what the Evidence shows was tried without effect, or an active item or open Follow-up covers. `sign` items only help read the Evidence.
+4. Rewrite each to this Trainee, grounded in their Evidence. No bare item text, nothing unsupported, nothing sensitive beyond "מצב אישי" (others may be reading). Record nothing.
 
 ```
 נועה — יכולות דיבאג 2 (↓)
@@ -26,31 +20,32 @@ The reply is the brief's "מיקוד (הצעה)" block ([brief.md](brief.md)) on
 לשמור אחת מהן כנקודה לשיפור או לשיחה הבאה?
 ```
 
-The heading line names each target Skill with its Rating, and its arrow only when it has one ("(לא מדורג)" when unrated). Then `מיקוד (הצעה)` and the 2–3 suggestions, numbered `1.`–`3.`, each `<Skill or theme> — <what to do> — <what in the Evidence it rests on> — <Evidence kind> <DD/MM>`.
+Heading: each target Skill with its Rating, arrow only if it has one, "(לא מדורג)" if unrated. Each point: `<Skill or theme> — <what to do> — <what in the Evidence it rests on> — <Evidence kind> <DD/MM>`.
+
+A target Skill the Commander added with no items: after the suggestions, offer draft items: read [playbook.md](playbook.md) "A Skill the Commander added" only then.
 
 ## When the Commander accepts one
 
-- **As an improve item** ("כן, תוסיף את השנייה לשיפור"): their message is the Entry, by [log.md](log.md): one `improve-keep` Evidence about the Trainee with the whole message as its excerpt, and an `improve` item `by: agent` taken from it (`from: #1`), its text the suggestion in a few display-safe words. When their message carries its own wording ("תוסיף לה לשיפור: לכתוב מה ניסתה לפני ששואלת"), the item is theirs, word-for-word, as [state.md](state.md) says.
-- **As a Follow-up** ("תוסיף לשיחה הבאה לבדוק שהיא כותבת לוג"): a Follow-up is the Commander's words, so their message is the Entry and the Follow-up its words, by [log.md](log.md). When they only point at a suggestion ("כן, את הראשונה לשיחה הבאה"), ask once: `מה לרשום לשיחה הבאה? (במילים שלך, למשל: "<the suggestion, short>")` and record their answer the same way.
-- The same holds for a next-Talk question they adopt from the dashboard.
-- "אל תציע לי את זה יותר" on a suggestion: hide its base item, or retire their own, by [playbook.md](playbook.md) (confirmed first).
-- Anything else, or no answer: nothing is recorded.
+Their message is an Entry: read [log.md](log.md) only now, and record it (load `record`).
 
-A target Skill the Commander added with no items: offer draft items for it by [playbook.md](playbook.md), after the suggestions.
+- **Improve item** ("כן, תוסיף את השנייה לשיפור"): one `improve-keep` Evidence, the whole message as excerpt, plus an `improve` item `by: agent`, `from: #1`, text the suggestion in a few display-safe words. If the message has its own wording ("תוסיף לה לשיפור: לכתוב מה ניסתה לפני ששואלת"), the item is `by: commander`, their words word-for-word.
+- **Follow-up** ("תוסיף לשיחה הבאה לבדוק שהיא כותבת לוג"): the Follow-up is their words. If they only point ("כן, את הראשונה לשיחה הבאה"), ask once: `מה לרשום לשיחה הבאה? (במילים שלך, למשל: "<the suggestion, short>")`, then record the answer the same way.
+- Same for a next-Talk question adopted from the dashboard.
+- "אל תציע לי את זה יותר": hide its base item or retire their own, confirmed first: read [playbook.md](playbook.md) only then (load `playbook`).
+- Anything else or no answer: record nothing.
 
 ## Next-Talk questions (`nextTalk`)
 
-The card keeps two or three questions the Commander could ask the Trainee in their next Talk; the dashboard shows them under "לשיחה הבאה", marked הצעה. They go stale whenever the Trainee's records change, so you rewrite them in the same call:
+2–3 card questions for the next Talk (dashboard "לשיחה הבאה"). Rewrite them:
 
-- **With every Entry**, for each Trainee it has Evidence about: a `nextTalk` change in the `recordEntry` call, next to the Snapshot ([state.md](state.md)).
-- **With a re-rate** or an accepted proposal: `nextTalk` in the `recordAssessments` call.
-- **With a brief** ([brief.md](brief.md)): refreshed and shown as its "שאלות פתיחה", stored on their own with `recordNextTalk`.
-- **After marking something sensitive**, when `flipSensitive` lists the questions in `repeats` ([sensitive.md](sensitive.md)): fresh ones with `recordNextTalk`.
-- Not with the Commander's own Status change, a roster change or any other flip: those don't change what the Trainee is working on, and the next Entry or brief refreshes the questions.
+- Every Entry: a `nextTalk` change in `recordEntry` per Trainee with Evidence in it, beside the Snapshot.
+- Re-rate or accepted proposal: `nextTalk` in `recordAssessments`.
+- Brief: refreshed, shown as "שאלות פתיחה", stored with `recordNextTalk`.
+- `flipSensitive` lists them in `repeats`: fresh ones with `recordNextTalk`.
+- Not on the Commander's Status change, a roster change or other flips.
 
 Writing them:
-
-- Two or three short Hebrew questions, addressed to the Trainee ("איך מצאת את הבאג הפעם?"), from their card, the 6 weeks of `readTrainee` you already read, and this Entry: their lowest or declining Skills, what just happened, a goal they set. A `talk-question` item from `readPlaybook` can be one, rewritten to them, when you have read it in this conversation.
-- Not an open Follow-up again (the dashboard shows those right above), not a question the Trainee already answered in this Entry.
-- Display-safe: no word of a sensitive part, ever ("איך את מרגישה השבוע?" at most). Storage refuses a question that repeats one.
-- Not in the reply (the confirmation line carries no Advice), except in a brief, which shows the ones it stored.
+- Short Hebrew, to the Trainee ("איך מצאת את הבאג הפעם?"): lowest or declining Skills, what just happened, a goal they set. A `talk-question` item read in this conversation may be one, rewritten.
+- Not an open Follow-up, not one answered in this Entry.
+- Display-safe: no word of a sensitive part ("איך את מרגישה השבוע?" at most).
+- Never in the reply, except a brief's.
