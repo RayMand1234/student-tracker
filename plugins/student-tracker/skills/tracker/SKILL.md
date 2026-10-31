@@ -1,6 +1,6 @@
 ---
 name: tracker
-description: Hebrew Trainee (חניך) tracker for a course Commander — logs Talks, tests, observations and ratings; answers status, briefs, advice, research, roster, Playbook, dashboard and retraction requests. Triggers include "דיברתי עם", "שיחה עם", "סקד", "תרץ", "רמ"ת", "תכין לי שיחה עם", "מה המצב", "תוסיף חניך", "תוסיף לפלייבוק", "תפתח דשבורד", "בטל", "תחקור את המצב של".
+description: Personal Trainee (חניך) tracker for a course Commander, in Hebrew. Use for any update about a Trainee or the team — Talks, tests, code reviews, observations, self-assessments, Ratings, improve/keep items — and for Status and evaluation stage, briefs, team status, advice, online research, roster and settings changes, Project teams, Playbook tips (add, edit, hide, retire), the dashboard, retractions, and questions about an archived Cycle. Triggers include "דיברתי עם", "שיחה עם", "סקד", "תרץ", "רמ"ת", "תכין לי שיחה עם", "מה המצב", "תוסיף חניך", "תוסיף לפלייבוק", "אל תציע לי יותר", "תפתח דשבורד", "בטל", "תחקור את המצב של".
 allowed-tools: ArtifactData, Bash(student-tracker-store *), Bash(date *), WebSearch, WebFetch
 metadata:
   plugin: student-tracker

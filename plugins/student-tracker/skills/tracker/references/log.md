@@ -33,7 +33,9 @@ After the answer, record the original message as the Entry, plus the answer only
 7. **State**: read [state.md](state.md); write per it items, retirements, a due Status, a confirmed stage, a Snapshot per Trainee with Evidence. Also per such Trainee a `nextTalk`: short Hebrew questions to them ("איך מצאת את הבאג הפעם?") on weak or declining Skills, what just happened, a goal (or a rewritten `talk-question` from a `readPlaybook` read this conversation); not an open Follow-up or one this Entry answered; personal at most "איך את מרגישה השבוע?"; never in the reply.
 8. **One `recordEntry`** with everything. Refused → fix and retry; ask only if the fix needs the Commander's word.
 9. **Reply** (below); don't repeat the message back.
-10. Read [roster.md](roster.md) § Proposing a new Skill only if the Evidence shows a way of working that no Skill names itself (a stretch, "ניהול זמן" under "סדר וארגון", doesn't count, though you may assess it) and that recurs in ≥3 Evidence incl. this one (that Trainee's 6 weeks, or Trainees read this conversation).
+10. **A recurring theme with no Skill.** Check every update: does the Evidence show a way of working that no Skill in `readCycle` → `skills` names itself (time management, asking for help, presenting…)? A Skill you'd stretch to fit ("ניהול זמן" under "סדר וארגון") does not count, though you may still assess it. If the theme shows up in ≥3 Evidence, this one included (that Trainee's 6 weeks of `readTrainee`, or Trainees read this conversation), add before the Retraction line:
+    `(הצעה) "<theme>" חוזר ב-<N> תיעודים ואין לו מיומנות — להוסיף מיומנות "<name>" ל<Stage or group name>? (כן / לא)`
+    Never add the Skill before a yes. On a yes, read [roster.md](roster.md) § Proposing a new Skill.
 
 ## Kinds
 
