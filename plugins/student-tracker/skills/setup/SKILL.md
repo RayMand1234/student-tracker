@@ -24,7 +24,7 @@ Storage operations are defined in `${CLAUDE_PLUGIN_ROOT}/skills/tracker/referenc
 Read the pointer file (a missing file means there is no pointer).
 
 - The pointer is marked `"backend": "local"` → **local test backend**: no page is published; skip the rest of this step.
-- Otherwise → **artifact backend**. Before asking anything, check that this session can create artifacts: the `Artifact` tool is in your tool list, and ToolSearch `select:ArtifactData` finds `ArtifactData`. If either is missing, send exactly this and stop:
+- Otherwise → **artifact backend**. Before asking anything, check that this session can create artifacts: the `Artifact` tool is in your tool list, and ToolSearch `select:ArtifactData` finds `ArtifactData`. If either is missing, send exactly this as your whole reply (no words before or after it, not quoted) and stop:
 
 > אי אפשר להקים את המעקב בסשן הזה, כי Claude Code לא יכול ליצור כאן את דף המעקב. בדרך כלל הסיבה אחת מאלה:
 > • נדרש מנוי Pro, Max, Team או Enterprise.
@@ -42,7 +42,7 @@ Run `connect`.
   - Connect → `connect` has already saved the pointer. Reply "מחובר למחזור <cycle>. אפשר פשוט לכתוב לי עדכונים." and stop.
   - New Cycle → this is a **new Cycle**: the current one is the **previous Cycle** (its address is `connect`'s `url`, its name `cycle`). `readCycle` it now, before anything changes, for the Commander's settings and how many Playbook items (`playbook`, not retired) and hides (`commander.hides.hidden`) they have. Go to step 3.
 - `setup: in-progress` → an earlier setup was interrupted. Never publish a second page.
-  - It is a **new Cycle** when `readCycle` shows `cycle.previous` (that address is the previous Cycle), or, with nothing seeded yet, when the pointer's `archived` has an address whose Cycle (`readCycle` with that address as `cycle`) is not yet `archived: true`. Read the previous Cycle's name with `readCycle` at its address, and say you're finishing the new Cycle that continues <previous>. Read what is stored (`readCycle`, `readTeam`; a page with nothing seeded yet has no Cycle, so nothing to read) and say in one line that you're finishing the setup of <cycle>. Treat the stored values as the answers so far and go to step 5: the summary lists what is stored and adds what is still missing (a mandatory answer missing → ask for it first, as step 4 says). In step 6, `createCycle` is called again with every answer, stored or changed: it keeps what is stored and applies what changed.
+  - It is a **new Cycle** when `readCycle` shows `cycle.previous` (that address is the previous Cycle), or, with nothing seeded yet, when the pointer's `archived` has an address whose Cycle (`readCycle` with that address as `cycle`) is not yet `archived: true`. Read the previous Cycle's name with `readCycle` at its address, and say you're finishing the new Cycle that continues <previous>. Read what is stored (`readCycle`, `readTeam`; a page with nothing seeded yet has no Cycle, so nothing to read) and say in one line that you're finishing the setup of <cycle>. Treat the stored values as the answers so far and go to step 5: the summary lists what is stored and adds what is still missing (a mandatory answer missing → ask for it first, as step 4 says). It is step 5's summary as written, ending with its last line "זה מה שאקים — לאשר?", never a question of your own. In step 6, `createCycle` is called again with every answer, stored or changed: it keeps what is stored and applies what changed.
 
 ## 3. Ask everything in one message
 

@@ -203,6 +203,13 @@ export function parseNextTalk(input) {
   return { trainee, questions: nextTalk };
 }
 
+// record-snapshot: one "--- snapshot <tid>" block, its text below, and nothing else.
+export function parseSnapshot(input) {
+  const m = input.trim().match(/^--- snapshot (\S+)\n([\s\S]+)$/);
+  if (!m || /^--- /m.test(m[2])) throw new StoreError('record-snapshot takes one "--- snapshot <tid>" block with its text, and nothing else');
+  return { trainee: m[1], text: m[2].trim() };
+}
+
 function assessmentBlock(line, body) {
   const [trainee, skill, score, author, ...extra] = line.slice('--- assessment '.length).trim().split(/\s+/);
   if (!author || extra.length) throw new StoreError(`an assessment header is "--- assessment <tid> <skill id> <score> <author>": "${line}"`);

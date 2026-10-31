@@ -742,6 +742,18 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
       return { change: id, card };
     },
 
+    // A fresh Snapshot on its own (no Entry), when marking something sensitive left the card's
+    // Snapshot repeating it: the dashboard stops showing it now, not at the next update.
+    recordSnapshot(tid, text) {
+      const docs = open();
+      if (!docs.get(`trainees/${tid}`)) throw new StoreError(`unknown Trainee ${tid}`);
+      checkActive(docs, tid, false);
+      if (typeof text !== 'string' || !text.trim()) throw new StoreError('a Snapshot needs its text');
+      checkDisplaySafe([text.trim()], leaksFor(docs, tid));
+      const { id, card } = writeChangeRecord(docs, tid, { type: 'snapshot', entry: null, trainee: tid, text: text.trim(), by: 'agent', at: isoWithOffset(now()), retracted: false });
+      return { change: id, card };
+    },
+
     // A roster change, written as a `changes` record with the card in one pinned batch. Only after
     // the Commander confirms. `add` takes no tid and creates the Trainee.
     updateTrainee(tid, change = {}) {

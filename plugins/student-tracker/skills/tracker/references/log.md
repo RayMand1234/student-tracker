@@ -4,7 +4,7 @@ The Commander wrote something about one or more Trainees. Keep it, cut it into E
 
 ## Rule one: the Commander's words are kept word-for-word
 
-- The whole message is the Entry's `text`, exactly as written: no rewording, shortening or typo fixes.
+- The whole message is the Entry's `text`, exactly as written: no rewording, shortening or typo fixes. Its spelling and punctuation stay too: add or drop no quotes, gershayim, hyphens or spaces ("פאדנס" stays "פאדנס", with no gershayim added).
 - Each Evidence `excerpt`, and each Follow-up's text, is copied character-for-character out of that text; the one exception is "[פרט אישי — בתיק]" standing where a sensitive part was cut out (below). `recordEntry` refuses anything else.
 - Never invent a score, rating or conclusion the text does not state. A short note with no context is recorded as it is; you may ask about it, never interpret it.
 

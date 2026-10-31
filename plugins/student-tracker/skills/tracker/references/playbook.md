@@ -52,7 +52,7 @@ Find it in `readCycle` → `playbook` (live ones: `retired` is `false`), by Skil
 
 Base items are in `data/playbook.json` under the plugin root (`items`; read it with the Read tool), or an item `readPlaybook` gave you in this conversation (`origin: base`). The hidden ids are `readCycle` → `commander.hides.hidden`.
 
-- **Hide** ("אל תציע לי יותר את…", "זה לא מתאים לי", after Advice "את השנייה אל תציע שוב"): `להסתיר מהפלייבוק את "<text>"? אפשר להחזיר בכל זמן. (כן / לא)` → `hidePlaybookItem(id, hidden: true)`.
+- **Hide** ("אל תציע לי יותר את…", "זה לא מתאים לי", after Advice "את השנייה אל תציע שוב"): find the base item whose text matches, then ask, as for every change here: `להסתיר מהפלייבוק את "<text>"? אפשר להחזיר בכל זמן. (כן / לא)` → `hidePlaybookItem(id, hidden: true)`.
 - **Un-hide** ("תחזיר את הטיפ על…"): find it among the hidden ids → `להחזיר לפלייבוק את "<text>"? (כן / לא)` → `hidePlaybookItem(id, hidden: false)`.
 - A base item is never edited. "תשנה את זה ל…" on a base item → offer both in one confirmation: hide it and save their wording as their own item.
 - "תוריד את…" without saying whose: the Commander's item → retire; a base item → hide.

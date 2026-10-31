@@ -120,6 +120,10 @@ Check every Assessment refusal in storage.md (every ref a stored Evidence id of 
 
 `get` the card (version `v`); refuse an unknown Trainee or one whose card has `left`. Check the questions as `recordEntry` checks next-Talk questions, the display-safe check against the stored sensitive records only. One `batch`: create `trainees/<tid>/changes/c-YYYYMMDD-HHMM-<rand2>` (from Now, not already taken) `{type: "nextTalk", entry: null, trainee: tid, questions, by: "agent", at, retracted: false}` and `update` `trainees/<tid>` `{nextTalk: {questions, at}}` with `if_version: v`. On a conflict nothing was written: start over with the same id, at most 10 times. Return `{change: <its id>, card}`.
 
+### `recordSnapshot(tid, text)`
+
+As `recordNextTalk`, with the text checked display-safe against the stored sensitive records (refuse an empty one), the change `{type: "snapshot", entry: null, trainee: tid, text, by: "agent", at, retracted: false}` and the card update `{snapshot: {text, at}}`. Return `{change: <its id>, card}`.
+
 ### `createCycle` (setup only)
 
 Runs after setup has published the page and written the pointer.

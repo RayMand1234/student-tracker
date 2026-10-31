@@ -22,6 +22,7 @@ Success prints JSON on stdout. A refusal exits 1 with the reason on stderr and w
 | `readStatus` | `read-status` |
 | `takeAlert(pattern?)` | `take-alert` (with a pattern: `take-alert <tid> <theme words…>`) |
 | `recordNextTalk(tid, questions)` | `record-next-talk`, payload on stdin: one `--- next-talk <tid>` block (below) and nothing else |
+| `recordSnapshot(tid, text)` | `record-snapshot`, payload on stdin: one `--- snapshot <tid>` block (below) and nothing else |
 | `recordEntry(...)` | `record-entry`, payload on stdin (below); add `--insist` when the Commander insisted on a Trainee who left |
 | `recordAssessments(tid, ..., nextTalk?)` | `record-assessments`, payload on stdin: `--- assessment` blocks (below) of that one Trainee, citing stored Evidence ids, then optionally one `--- next-talk <tid>` block; `--insist` as above |
 | `retractEntry(eid?)` | `retract-entry <entry id>` (omit the id for the last Entry) |

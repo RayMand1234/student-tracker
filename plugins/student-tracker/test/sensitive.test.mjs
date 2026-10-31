@@ -5,13 +5,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openStore } from '../lib/store.mjs';
+import { parseSnapshot } from '../lib/payload.mjs';
 
 const NOW = new Date('2026-10-30T09:15:00');
 const MARK = '[פרט אישי — בתיק]';
 
-function team() {
+function team(now = () => NOW) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'st-sens-'));
-  const store = openStore({ dataDir, now: () => NOW });
+  const store = openStore({ dataDir, now });
   store.createCycle({ commander: { name: 'רז' }, cycle: { name: 'הצהובים' }, trainees: ['נועה', 'דני'] });
   const id = Object.fromEntries(store.readTeam().map((t) => [t.name, t.id]));
   return { store, id };
@@ -147,7 +148,9 @@ test('"זה רגיש" moves a whole public Evidence and its Follow-ups into the 
 });
 
 test('"זה רגיש" names the card texts that now repeat what became sensitive, so they can be rewritten', () => {
-  const { store, id } = team();
+  // A clock a minute on per write, so the fresh Snapshot is the latest one.
+  let tick = 0;
+  const { store, id } = team(() => new Date(new Date(NOW).getTime() + 60_000 * tick++));
   const dani = id['דני'];
   const text = 'דיברתי עם דני, הוא סיפר שיש לו חובות כבדים בבנק.';
   const { evidence: [eid] } = store.recordEntry({
@@ -166,7 +169,20 @@ test('"זה רגיש" names the card texts that now repeat what became sensitive
   // Fresh questions go in; the old ones would be refused now.
   assert.throws(() => store.recordNextTalk(dani, ['מה תעשה עם חובות כבדים בבנק?', 'מה עם הפרויקט?']), /repeats a sensitive part/);
   store.recordNextTalk(dani, ['איך אתה מרגיש השבוע?', 'מה עם הפרויקט?']);
+  // And a fresh Snapshot now, so the dashboard stops showing it before the next update.
+  assert.throws(() => store.recordSnapshot(dani, 'עדיין יש לו חובות כבדים בבנק'), /repeats a sensitive part/);
+  const { card } = store.recordSnapshot(dani, 'מצב אישי; מתקדם בפרויקט');
+  assert.deepEqual(card.snapshot.text, 'מצב אישי; מתקדם בפרויקט');
+  assert.equal(store.readTrainee(dani).card.snapshot.text, 'מצב אישי; מתקדם בפרויקט');
   assert.equal('repeats' in store.flipSensitive(eid), false, 'moving out repeats nothing');
+});
+
+test('recordSnapshot refuses an unknown Trainee, an empty text, and the CLI takes one snapshot block only', () => {
+  const { store, id } = team();
+  assert.throws(() => store.recordSnapshot('t-nobody', 'טקסט'), /unknown Trainee/);
+  assert.throws(() => store.recordSnapshot(id['דני'], '  '), /needs its text/);
+  assert.deepEqual(parseSnapshot(`--- snapshot ${id['דני']}\nמתקדם יפה\n`), { trainee: id['דני'], text: 'מתקדם יפה' });
+  assert.throws(() => parseSnapshot(`--- snapshot ${id['דני']}\nא\n--- next-talk ${id['דני']}\nב?\n`), /nothing else/);
 });
 
 test('flipSensitive takes an Evidence id; a Follow-up moves with its Evidence and an unknown id is refused', () => {

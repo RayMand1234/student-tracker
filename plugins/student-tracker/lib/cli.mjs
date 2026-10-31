@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
-import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings, parsePlaybookItem, parseNextTalk } from './payload.mjs';
+import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings, parsePlaybookItem, parseNextTalk, parseSnapshot } from './payload.mjs';
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <archived Cycle address>] <operation> [args]
   (--cycle: read a Cycle from the pointer's archived list; every write to it is refused)
@@ -30,6 +30,7 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <a
                             optional "--- next-talk <tid>" + one question per line
                           (--insist: the Commander asked to record about a Trainee who left)
   record-next-talk        < "--- next-talk <tid>" + one question per line (the brief's questions)
+  record-snapshot         < "--- snapshot <tid>" + text (a fresh Snapshot after marking something sensitive)
   save-playbook-item [<item id>]
                           < "+kind:", "+skills:", "+band: low|mid|high|none", "+source: <entry id>" lines,
                             then the text word-for-word (with an id: an edit, only the lines that change)
@@ -86,6 +87,10 @@ export async function main(argv) {
       'record-next-talk': () => {
         const { trainee, questions } = parseNextTalk(stdin());
         return store.recordNextTalk(trainee, questions);
+      },
+      'record-snapshot': () => {
+        const { trainee, text } = parseSnapshot(stdin());
+        return store.recordSnapshot(trainee, text);
       },
       'record-assessments': () => {
         const { trainee, assessments, nextTalk } = parseAssessments(stdin());
