@@ -50,4 +50,4 @@ If you can't tell whether the message is an update or a question, ask one short 
 
 ## Every reply ends here
 
-Before you send a reply, run the alert check in [references/alerts.md](references/alerts.md): at most one alert line, placed just before `לביטול: 'בטל'`. The brief and team status skip it. `לביטול: 'בטל'` ends a reply only when it recorded something; a reply that asks and records nothing never has it.
+Before you send a reply, run the alert check in [references/alerts.md](references/alerts.md): at most one alert line, placed just before `לביטול: 'בטל'`. The brief, team status and online research skip it. `לביטול: 'בטל'` ends a reply only when it recorded something; a reply that asks and records nothing never has it.

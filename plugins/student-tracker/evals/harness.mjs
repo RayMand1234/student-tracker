@@ -72,7 +72,9 @@ export function claudeTrace(cwd, prompt, session = newSession()) {
     .filter((e) => e.type === 'assistant')
     .flatMap((e) => e.message.content.filter((c) => c.type === 'tool_use'))
     .map(({ name, input }) => ({ name, input }));
-  return { result: events.find((e) => e.type === 'result').result, tools };
+  const done = events.find((e) => e.type === 'result');
+  console.log(`turn: ${Math.round(done.duration_ms / 1000)}s, $${done.total_cost_usd?.toFixed(2)}, ${done.num_turns} turns, ${tools.length} tool calls`);
+  return { result: done.result, tools };
 }
 
 function run(cwd, prompt, session, output) {

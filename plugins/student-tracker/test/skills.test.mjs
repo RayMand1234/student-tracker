@@ -19,7 +19,7 @@ function skill(name) {
 }
 
 test('the six skills are setup, tracker and the four shortcuts', () => {
-  assert.deepEqual(fs.readdirSync(SKILLS).sort(), ['brief', 'dashboard', 'research', 'setup', 'status', 'tracker']);
+  assert.deepEqual(fs.readdirSync(SKILLS).filter((n) => !n.startsWith('.')).sort(), ['brief', 'dashboard', 'research', 'setup', 'status', 'tracker']);
   assert.ok(skill('tracker').meta.description.length <= 1024);
   assert.equal(skill('tracker').meta['disable-model-invocation'], undefined, 'tracker auto-triggers');
 });
