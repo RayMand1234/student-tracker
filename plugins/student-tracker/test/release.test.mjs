@@ -30,7 +30,7 @@ test('the marketplace entry and the manifest agree, and neither pins a version',
 
 const REFERENCES = path.join(PLUGIN, 'skills/tracker/references');
 const neutralFiles = [
-  ...['tracker', 'brief', 'status', 'dashboard'].map((s) => path.join(PLUGIN, 'skills', s, 'SKILL.md')),
+  ...['tracker', 'brief', 'status', 'dashboard', 'research'].map((s) => path.join(PLUGIN, 'skills', s, 'SKILL.md')),
   ...fs.readdirSync(REFERENCES).filter((f) => f !== 'storage-artifact.md').map((f) => path.join(REFERENCES, f)),
 ];
 
