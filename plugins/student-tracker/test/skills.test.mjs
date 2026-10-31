@@ -1,5 +1,5 @@
-// The plugin's skill surface (spec, Packaging): `tracker` auto-triggers; `brief`, `status` and
-// `dashboard` are user-only shortcuts of a few lines that hand off to `tracker` by name.
+// The plugin's skill surface (spec, Packaging): `tracker` auto-triggers; `brief`, `status`,
+// `dashboard` and `research` are user-only shortcuts of a few lines that hand off to `tracker` by name.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -18,13 +18,13 @@ function skill(name) {
   return { meta, body };
 }
 
-test('the five skills are setup, tracker and the three shortcuts', () => {
-  assert.deepEqual(fs.readdirSync(SKILLS).sort(), ['brief', 'dashboard', 'setup', 'status', 'tracker']);
+test('the six skills are setup, tracker and the four shortcuts', () => {
+  assert.deepEqual(fs.readdirSync(SKILLS).sort(), ['brief', 'dashboard', 'research', 'setup', 'status', 'tracker']);
   assert.ok(skill('tracker').meta.description.length <= 1024);
   assert.equal(skill('tracker').meta['disable-model-invocation'], undefined, 'tracker auto-triggers');
 });
 
-for (const name of ['brief', 'status', 'dashboard']) {
+for (const name of ['brief', 'status', 'dashboard', 'research']) {
   test(`/${name} is a user-only shortcut that hands off to tracker by name, passing its arguments`, () => {
     const { meta, body } = skill(name);
     assert.equal(meta.name, name);
@@ -37,3 +37,12 @@ for (const name of ['brief', 'status', 'dashboard']) {
     assert.ok(body.trim().split('\n').length <= 8, 'a few lines');
   });
 }
+
+test('tracker may search the web, and routes online research to its reference', () => {
+  const { meta, body } = skill('tracker');
+  assert.match(meta['allowed-tools'], /\bWebSearch\b/);
+  assert.match(meta['allowed-tools'], /\bWebFetch\b/);
+  assert.match(body, /\(references\/research\.md\)/);
+  const research = fs.readFileSync(path.join(SKILLS, 'tracker/references/research.md'), 'utf8');
+  assert.match(research, /nothing about the Trainee leaves for the web/, 'the privacy rule comes first');
+});

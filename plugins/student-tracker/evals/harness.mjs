@@ -61,6 +61,21 @@ export const newSession = () => ({ id: randomUUID(), resume: false });
 
 // One turn of a Commander session. `session` = {id, resume}: the first turn creates it, later turns resume it.
 export function claude(cwd, prompt, session = newSession()) {
+  return JSON.parse(run(cwd, prompt, session, ['--output-format', 'json'])).result;
+}
+
+// The same turn, also returning every tool call the agent made: `{result, tools: [{name, input}]}`.
+export function claudeTrace(cwd, prompt, session = newSession()) {
+  const events = run(cwd, prompt, session, ['--output-format', 'stream-json', '--verbose'])
+    .split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  const tools = events
+    .filter((e) => e.type === 'assistant')
+    .flatMap((e) => e.message.content.filter((c) => c.type === 'tool_use'))
+    .map(({ name, input }) => ({ name, input }));
+  return { result: events.find((e) => e.type === 'result').result, tools };
+}
+
+function run(cwd, prompt, session, output) {
   const r = spawnSync(
     'claude',
     [
@@ -69,14 +84,14 @@ export function claude(cwd, prompt, session = newSession()) {
       '--plugin-dir', PLUGIN,
       // Only the plugin under test: skip the user's own plugins, hooks and settings.
       '--setting-sources', 'project,local',
-      '--allowedTools', 'Bash(student-tracker-store *)', 'Bash(date *)', 'Skill', 'Read',
-      '--output-format', 'json',
+      '--allowedTools', 'Bash(student-tracker-store *)', 'Bash(date *)', 'Skill', 'Read', 'WebSearch', 'WebFetch',
+      ...output,
       ...(process.env.EVAL_MODEL ? ['--model', process.env.EVAL_MODEL] : []),
     ],
     { cwd, encoding: 'utf8', timeout: 600_000 },
   );
   assert.equal(r.status, 0, `claude exited ${r.status}: ${r.stderr}`);
-  return JSON.parse(r.stdout).result;
+  return r.stdout;
 }
 
 // YYYY-MM-DD, local, `days` from today.

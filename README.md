@@ -62,9 +62,10 @@ Just write in chat. A few ways to start:
 - "תכין לי שיחה עם נועה" — a pre-Talk brief.
 - "מה המצב" — team status: who needs a Talk, who is declining.
 - "איך לעזור לנועה עם דיבאג?" — Advice from the Playbook.
+- "תחקור את המצב של נועה בדיבאג" — online research: working hypotheses from what is on record, good sources from the web (with links) and 2–3 suggestions that join the two. Search queries carry only generic words (the Skill, "programming bootcamp"), never a name, a quote from your notes or anything personal; the reply ends with the queries it ran ("חיפשתי:").
 - "תפתח דשבורד" — opens the dashboard.
 
-Shortcuts: `/student-tracker:brief <שם>`, `/student-tracker:status`, `/student-tracker:dashboard`.
+Shortcuts: `/student-tracker:brief <שם>`, `/student-tracker:status`, `/student-tracker:dashboard`, `/student-tracker:research <שם> [נושא]`.
 
 A new Cycle: run `/student-tracker:setup` again and choose to start a new Cycle. Your name, role, Talk thresholds and Playbook items carry over; the previous Cycle is kept as a read-only archive you can still ask about ("מה היה עם דני במחזור הקודם?").
 
