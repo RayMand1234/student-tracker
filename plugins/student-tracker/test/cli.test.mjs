@@ -537,6 +537,9 @@ test('boot prints the pointer, its backend\'s store cores, and a route with its 
   assert.deepEqual(files, ['log.md', 'alerts.md', 'store/read.md', 'store/artifact/read.md', 'store/record.md', 'store/artifact/record.md']);
   assert.ok(!run(['--data', data, 'boot', 'brief'], { cwd }).out.includes('alerts.md'), 'a brief has no alert');
   assert.equal(run(['--data', data, 'boot', '../x'], { cwd }).code, 1);
+  const record = run(['--data', data, 'boot', 'store/record'], { cwd }).out;
+  assert.deepEqual([...record.matchAll(/^<!-- references\/(\S+) -->$/gm)].map((m) => m[1]), ['store/record.md', 'store/artifact/record.md']);
+  assert.equal(run(['--data', data, 'boot', 'store/nope'], { cwd }).code, 1);
 });
 
 test('boot --tracker prints the tracker instructions with paths filled in and the cores in place of the inject line', () => {

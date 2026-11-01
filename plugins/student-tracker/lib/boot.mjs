@@ -27,20 +27,27 @@ function pointer(dataDir) {
 }
 
 // The route file and the store families its **Load:** line names, for this backend.
+function family(name, backend, seen) {
+  if (!/^[a-z]+$/.test(name) || !fs.existsSync(path.join(REF, `store/${name}.md`))) throw new StoreError(`unknown store family ${name}`);
+  const out = [];
+  for (const rel of [`store/${name}.md`, `store/${backend}/${name}.md`]) {
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    out.push(section(`references/${rel}`, read(path.join(REF, rel))));
+  }
+  return out;
+}
+
+// `store/<family>` alone prints that family (a route's "load <family>" mid-way).
 function route(name, backend, seen, alerts = !NO_ALERT.includes(name)) {
+  if (name.startsWith('store/')) return family(name.slice('store/'.length), backend, seen);
   const file = path.join(REF, `${name}.md`);
   if (!/^[a-z]+$/.test(name) || !fs.existsSync(file)) throw new StoreError(`unknown route ${name}`);
   const text = read(file);
   const out = [section(`references/${name}.md`, text)];
   if (alerts) out.push(...route('alerts', backend, seen, false));
   const load = text.split('\n')[0].match(/^\*\*Load:\*\*\s*(.*)$/)?.[1] ?? '';
-  for (const family of load.split(',').map((s) => s.trim()).filter(Boolean)) {
-    for (const rel of [`store/${family}.md`, `store/${backend}/${family}.md`]) {
-      if (seen.has(rel)) continue;
-      seen.add(rel);
-      out.push(section(`references/${rel}`, read(path.join(REF, rel))));
-    }
-  }
+  for (const f of load.split(',').map((s) => s.trim()).filter(Boolean)) out.push(...family(f, backend, seen));
   return out;
 }
 
