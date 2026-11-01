@@ -106,7 +106,8 @@ function run(cwd, prompt, session, output) {
       ...output,
       ...(process.env.EVAL_MODEL ? ['--model', process.env.EVAL_MODEL] : []),
     ],
-    { cwd, encoding: 'utf8', timeout: 600_000 },
+    // An installed copy's bin/ on the inherited PATH would shadow this plugin's CLI.
+    { cwd, encoding: 'utf8', timeout: 600_000, env: { ...process.env, PATH: process.env.PATH.split(':').filter((d) => !d.includes('/plugins/cache/student-tracker/')).join(':') } },
   );
   assert.equal(r.status, 0, `claude exited ${r.status}: ${r.stderr}`);
   return r.stdout;

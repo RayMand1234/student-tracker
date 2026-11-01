@@ -1,5 +1,5 @@
 // The plugin's skill surface (spec, Packaging): `tracker` auto-triggers; `brief`, `status`,
-// `dashboard` and `research` are user-only shortcuts of a few lines that hand off to `tracker` by name.
+// `dashboard` and `research` are user-only shortcuts of a few lines that load `tracker` through `boot`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -24,19 +24,31 @@ test('the six skills are setup, tracker and the four shortcuts', () => {
   assert.equal(skill('tracker').meta['disable-model-invocation'], undefined, 'tracker auto-triggers');
 });
 
-for (const name of ['brief', 'status', 'dashboard', 'research']) {
-  test(`/${name} is a user-only shortcut that hands off to tracker by name, passing its arguments`, () => {
+// Each shortcut injects the tracker's instructions (and its route) at load time through `boot`,
+// so the slash command spends no model turn on the Skill tool or on reading files.
+const ROUTE = { brief: 'brief', status: 'status', dashboard: '', research: 'research' };
+for (const name of Object.keys(ROUTE)) {
+  test(`/${name} is a user-only shortcut that loads tracker through boot, passing its arguments`, () => {
     const { meta, body } = skill(name);
     assert.equal(meta.name, name);
     assert.ok(meta.description);
     assert.equal(meta['disable-model-invocation'], 'true');
     assert.ok(meta['argument-hint'] !== undefined);
-    assert.match(body, /student-tracker:tracker/);
+    const route = ROUTE[name] ? ` ${ROUTE[name]}` : '';
+    assert.ok(body.includes(`!\`student-tracker-store --data "\${CLAUDE_PLUGIN_DATA}" boot${route} --tracker\``), body);
+    for (const tool of skill('tracker').meta['allowed-tools'].split(', ').filter((t) => !/^Web/.test(t) || name === 'research')) {
+      assert.ok(meta['allowed-tools'].split(', ').includes(tool), `${name} allows ${tool}`);
+    }
     assert.match(body, /\$ARGUMENTS/);
-    assert.doesNotMatch(body, /\.md|references\/|\.\.\//, 'by skill name, never by file path');
+    assert.doesNotMatch(body, /\.md|references\/|\.\.\//, 'never by file path');
     assert.ok(body.trim().split('\n').length <= 8, 'a few lines');
   });
 }
+
+test('tracker injects the pointer and store cores at load, as its last line', () => {
+  const { body } = skill('tracker');
+  assert.ok(body.trimEnd().endsWith('!`student-tracker-store --data "${CLAUDE_PLUGIN_DATA}" boot`'));
+});
 
 test('tracker may search the web, and routes online research to its reference', () => {
   const { meta, body } = skill('tracker');
