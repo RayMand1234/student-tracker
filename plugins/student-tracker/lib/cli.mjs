@@ -1,9 +1,13 @@
 import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
+import { boot } from './boot.mjs';
 import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings, parsePlaybookItem, parseNextTalk, parseSnapshot } from './payload.mjs';
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <archived Cycle address>] <operation> [args]
   (--cycle: read a Cycle from the pointer's archived list; every write to it is refused)
+  boot [<route>] [--tracker]   (plain text: the pointer, its backend's store cores; a route file and the
+                            store families its Load line names; --tracker: the tracker's instructions first)
+  start                   (connect, resumePending, readCycle and readTeam in one call)
   connect
   create-cycle            < lines "commander: <name>", "cycle: <name>", "trainee: <name>" (repeat),
                             optional "role:", "start: YYYY-MM-DD", "target:", "yellow:", "red:",
@@ -68,13 +72,24 @@ export async function main(argv) {
   };
   const retracted = flag('--retracted');
   const insist = flag('--insist');
+  const tracker = flag('--tracker');
   const [op, ...rest] = args;
   const stdin = () => fs.readFileSync(0, 'utf8');
 
   try {
+    if (op === 'boot') {
+      process.stdout.write(boot({ dataDir, route: rest[0], tracker }));
+      return 0;
+    }
     const store = openStore({ dataDir, cycle });
     const ops = {
       connect: () => store.connect(),
+      start: () => {
+        const connect = store.connect();
+        if (connect.setup !== 'done') return { connect };
+        const resumed = connect.archived ? {} : { resumePending: store.resumePending() };
+        return { connect, ...resumed, cycle: store.readCycle(), team: store.readTeam() };
+      },
       'create-cycle': () => store.createCycle(parseCycle(stdin())),
       'finish-setup': () => store.finishSetup(),
       'read-cycle': () => store.readCycle(),

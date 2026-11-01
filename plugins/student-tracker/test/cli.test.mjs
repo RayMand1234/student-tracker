@@ -522,3 +522,42 @@ test('a new Cycle by the CLI: create-cycle with "previous:", copy-commander-scop
   assert.equal(refused.code, 1);
   assert.match(refused.err, /בארכיון.*הכתומים/);
 });
+
+test('boot prints the pointer, its backend\'s store cores, and a route with its families and the alert', () => {
+  const { data, cwd } = fresh();
+  fs.writeFileSync(path.join(data, 'cycles.json'), JSON.stringify({ current: 'https://claude.ai/artifact/X', archived: [] }));
+  const core = run(['--data', data, 'boot'], { cwd });
+  assert.equal(core.code, 0, core.err);
+  assert.match(core.out, /Backend: artifact/);
+  assert.match(core.out, /references\/store\/core\.md[\s\S]*references\/store\/artifact\/core\.md/);
+  assert.doesNotMatch(core.out, /store\/local\//);
+
+  const log = run(['--data', data, 'boot', 'log'], { cwd }).out;
+  const files = [...log.matchAll(/^<!-- references\/(\S+) -->$/gm)].map((m) => m[1]);
+  assert.deepEqual(files, ['log.md', 'alerts.md', 'store/read.md', 'store/artifact/read.md', 'store/record.md', 'store/artifact/record.md']);
+  assert.ok(!run(['--data', data, 'boot', 'brief'], { cwd }).out.includes('alerts.md'), 'a brief has no alert');
+  assert.equal(run(['--data', data, 'boot', '../x'], { cwd }).code, 1);
+});
+
+test('boot --tracker prints the tracker instructions with paths filled in and the cores in place of the inject line', () => {
+  const { data, cwd } = fresh();
+  const out = run(['--data', data, 'boot', 'brief', '--tracker'], { cwd }).out;
+  assert.doesNotMatch(out, /\$\{CLAUDE_PLUGIN_|^!`/m);
+  assert.ok(out.includes(`Pointer file: \`${data}/cycles.json\``));
+  assert.match(out, /missing \(none\)/);
+  assert.equal(out.match(/<!-- references\/store\/core\.md -->/g).length, 1);
+  assert.ok(out.indexOf('## Loaded') < out.indexOf('<!-- references/brief.md -->'));
+});
+
+test('start runs connect, resumePending, readCycle and readTeam in one call', () => {
+  const { data, cwd } = fresh();
+  assert.match(run(['--data', data, 'start'], { cwd }).err, /עוד לא הוקם מעקב/);
+  run(['--data', data, 'create-cycle'], { cwd, input: SETUP });
+  assert.deepEqual(Object.keys(JSON.parse(run(['--data', data, 'start'], { cwd }).out)), ['connect']);
+  run(['--data', data, 'finish-setup'], { cwd });
+  const s = JSON.parse(run(['--data', data, 'start'], { cwd }).out);
+  assert.equal(s.connect.setup, 'done');
+  assert.deepEqual(s.resumePending, { finished: [] });
+  assert.equal(s.cycle.commander.settings.name, 'רז');
+  assert.deepEqual(s.team.map((t) => t.name).sort(), ['דני', 'נועה כ.']);
+});

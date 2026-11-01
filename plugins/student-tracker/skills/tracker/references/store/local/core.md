@@ -14,6 +14,7 @@ Payloads go on stdin as plain text in a quoted heredoc, never JSON (the shell ch
 
 | Operation | Command |
 |---|---|
+| `connect` + `resumePending` + `readCycle` + `readTeam` (Start) | `start` → `{connect, resumePending, cycle, team}`; stops after `connect` unless setup is done, no `resumePending` on an archived Cycle; a refusal is `connect`'s |
 | `connect` | `connect` (no `current`: looks under `<plugin data dir>/local/`; several are refused with their names, to ask) |
 | `resumePending` | `resume-pending` |
 | `readCycle` / `readTeam` | `read-cycle` / `read-team` |
