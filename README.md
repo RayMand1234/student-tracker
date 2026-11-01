@@ -82,11 +82,11 @@ A new machine: install the plugin and just write. The agent finds your Cycle on 
 
 ## The Claude-only layer
 
-The prompts (`skills/*/SKILL.md` bodies and `skills/tracker/references/`) follow the [Agent Skills](https://agentskills.io/specification) standard and are written agent-neutrally: they call storage operations defined in `skills/tracker/references/storage.md`, not any one tool. What ties the plugin to Claude Code with a claude.ai login is a thin layer:
+The prompts (`skills/*/SKILL.md` bodies and `skills/tracker/references/`) follow the [Agent Skills](https://agentskills.io/specification) standard and are written agent-neutrally: they call storage operations defined in `skills/tracker/references/store/`, not any one tool. What ties the plugin to Claude Code with a claude.ai login is a thin layer:
 
 - **Invocation flags** in skill frontmatter: `disable-model-invocation` (setup and the shortcuts are user-only), `argument-hint`, and `$ARGUMENTS` in the shortcuts.
 - **Plugin path substitutions**: `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PLUGIN_DATA}` in the `setup` and `tracker` SKILL.md files, and the `/student-tracker:<skill>` command names.
-- **The Artifact and ArtifactData tools**: only in the artifact backend mapping (`skills/tracker/references/storage-artifact.md`) and in setup's preflight and publish steps.
+- **The Artifact and ArtifactData tools**: only in the artifact backend mapping (`skills/tracker/references/store/artifact/`) and in setup's preflight and publish steps.
 - **The dashboard page** (`dashboard/`), which runs on claude.ai's artifact runtime.
 
 Porting to another agent means replacing that layer, mainly with a new storage backend mapping. That port isn't part of this version.

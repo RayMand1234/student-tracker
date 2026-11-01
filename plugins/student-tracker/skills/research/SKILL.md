@@ -1,6 +1,6 @@
 ---
 name: research
-description: Research one Trainee's situation online — working hypotheses from what is on record, good sources found on the web (with links), and 2–3 suggestions that join the two. Never sends a name or anything personal to the web. The shortcut for "תחקור את המצב של <שם>".
+description: Online research on one Trainee's situation; nothing personal goes to the web ("תחקור את המצב של <שם>").
 argument-hint: "<שם החניך> [נושא]"
 allowed-tools: Skill
 disable-model-invocation: true

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Local test backend for the storage interface. See skills/tracker/references/storage-local.md.
+// Local test backend for the storage interface. See skills/tracker/references/store/local/.
 import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';

@@ -61,7 +61,22 @@ export const newSession = () => ({ id: randomUUID(), resume: false });
 
 // One turn of a Commander session. `session` = {id, resume}: the first turn creates it, later turns resume it.
 export function claude(cwd, prompt, session = newSession()) {
-  return JSON.parse(run(cwd, prompt, session, ['--output-format', 'json'])).result;
+  const done = JSON.parse(run(cwd, prompt, session, ['--output-format', 'json']));
+  logUsage(prompt, done);
+  return done.result;
+}
+
+// With EVAL_USAGE_LOG set, append one JSON line per turn: tokens, cost, turns. For before/after comparisons.
+function logUsage(prompt, done) {
+  if (!process.env.EVAL_USAGE_LOG) return;
+  const u = done.usage ?? {};
+  fs.appendFileSync(process.env.EVAL_USAGE_LOG, JSON.stringify({
+    prompt: prompt.slice(0, 60),
+    input: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
+    output: u.output_tokens ?? 0,
+    cost: done.total_cost_usd,
+    turns: done.num_turns,
+  }) + '\n');
 }
 
 // The same turn, also returning every tool call the agent made: `{result, tools: [{name, input}]}`.
@@ -73,6 +88,7 @@ export function claudeTrace(cwd, prompt, session = newSession()) {
     .flatMap((e) => e.message.content.filter((c) => c.type === 'tool_use'))
     .map(({ name, input }) => ({ name, input }));
   const done = events.find((e) => e.type === 'result');
+  logUsage(prompt, done);
   console.log(`turn: ${Math.round(done.duration_ms / 1000)}s, $${done.total_cost_usd?.toFixed(2)}, ${done.num_turns} turns, ${tools.length} tool calls`);
   return { result: done.result, tools };
 }

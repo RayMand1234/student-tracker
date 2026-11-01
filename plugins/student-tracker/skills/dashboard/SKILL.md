@@ -1,6 +1,6 @@
 ---
 name: dashboard
-description: Opens the Cycle's dashboard page (Talk circles, Trainee windows and files). The shortcut for "תפתח דשבורד".
+description: Opens the Cycle's dashboard ("תפתח דשבורד").
 argument-hint: ""
 allowed-tools: Skill
 disable-model-invocation: true

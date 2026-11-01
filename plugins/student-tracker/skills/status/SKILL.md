@@ -1,6 +1,6 @@
 ---
 name: status
-description: Team status for the Cycle — who needs a Talk, who is declining, weaknesses shared across Trainees, one action for the team. The shortcut for "מה המצב".
+description: Team status: who needs a Talk, who is declining, shared weaknesses ("מה המצב").
 argument-hint: ""
 allowed-tools: Skill
 disable-model-invocation: true
