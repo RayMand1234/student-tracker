@@ -1,0 +1,883 @@
+<title>אב-טיפוס מעקב חניכים</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  PROTOTYPE, throwaway. Ticket 08 "How should the dashboard artifact look and behave?"
+  Three structurally different dashboard variants on one page, switchable via #variant-a/b/c
+  and the floating bar. Fake Trainees only. Data follows the ticket-09 shape: Trainee cards
+  (current state + counting Assessments [[date, score, author]] + n per Skill) and per-Trainee
+  Evidence / status changes. Rating, Trend and stale are computed here at render time.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Secular+One&family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: a field-office board. Olive-biased neutrals, deep pine accent, the 1–5 Rating ramp is the only loud color. */
+:root {
+  --bg: #f2f3ef; --surface: #ffffff; --surface-2: #e8eae3; --fg: #1b201c; --muted: #5d665e; --line: #d3d8cd;
+  --accent: #2d5b4e; --accent-ink: #ffffff;
+  --good: #2f8a4a; --watch: #b97c06; --concern: #b3261e;
+  --r0: #d6d9d1; --r0-ink: #7a8079;
+  --r1: #6b0e17; --r2: #c43a2c; --r3: #e6a21a; --r4: #7dc142; --r5: #10bf4c;
+  --r1-ink: #ffffff; --r2-ink: #ffffff; --r3-ink: #2a1f05; --r4-ink: #13240a; --r5-ink: #ffffff;
+  --shadow: 0 1px 2px rgb(20 30 20 / .06), 0 4px 16px rgb(20 30 20 / .06);
+  --s1: #2a78d6; --down: #e34948; --cmp: #898781; --grid: #e3e6de; --axis: #c3c8bc;
+  --display: "Secular One", "IBM Plex Sans Hebrew", system-ui, sans-serif;
+  --body: "IBM Plex Sans Hebrew", "Segoe UI", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111412; --surface: #191d1a; --surface-2: #222723; --fg: #e5e9e2; --muted: #98a198; --line: #303730;
+  --accent: #82bba7; --accent-ink: #0d1a15;
+  --good: #5cc27a; --watch: #e2ad45; --concern: #f06a5f;
+  --r0: #343a35; --r0-ink: #8c958c;
+  --r1: #8c1d27; --r2: #d24a3b; --r3: #e9a925; --r4: #7fc64a; --r5: #1fd660;
+  --r1-ink: #ffffff; --r2-ink: #ffffff; --r3-ink: #241a03; --r4-ink: #10200a; --r5-ink: #062410;
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
+  --s1: #3987e5; --down: #e66767; --cmp: #898781; --grid: #2a2f2b; --axis: #3a403b;
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #111412; --surface: #191d1a; --surface-2: #222723; --fg: #e5e9e2; --muted: #98a198; --line: #303730;
+  --accent: #82bba7; --accent-ink: #0d1a15;
+  --good: #5cc27a; --watch: #e2ad45; --concern: #f06a5f;
+  --r0: #343a35; --r0-ink: #8c958c;
+  --r1: #8c1d27; --r2: #d24a3b; --r3: #e9a925; --r4: #7fc64a; --r5: #1fd660;
+  --r1-ink: #ffffff; --r2-ink: #ffffff; --r3-ink: #241a03; --r4-ink: #10200a; --r5-ink: #062410;
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
+  --s1: #3987e5; --down: #e66767; --cmp: #898781; --grid: #2a2f2b; --axis: #3a403b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+#app { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 110px; max-width: 1480px; margin-inline: auto; }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; margin: 0; text-wrap: balance; line-height: 1.2; }
+h1 { font-size: 1.7rem; } h2 { font-size: 1.2rem; } h3 { font-size: 1.02rem; }
+button { font: inherit; color: inherit; }
+button:focus-visible, [tabindex]:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: .82rem; }
+.proto-banner { font-size: .78rem; color: var(--muted); border: 1px dashed var(--line); border-radius: 6px; padding: 4px 10px; display: inline-block; }
+
+/* shared atoms */
+.rc { display: inline-grid; place-items: center; width: 30px; height: 26px; border-radius: 4px; font-family: var(--mono); font-weight: 600; font-size: .85rem; position: relative; flex: none; }
+.rc.r0 { background: var(--r0); color: var(--r0-ink); }
+.rc.r1 { background: var(--r1); color: var(--r1-ink); } .rc.r2 { background: var(--r2); color: var(--r2-ink); }
+.rc.r3 { background: var(--r3); color: var(--r3-ink); } .rc.r4 { background: var(--r4); color: var(--r4-ink); }
+.rc.r5 { background: var(--r5); color: var(--r5-ink); }
+.rc .tr { position: absolute; inset-block-start: -7px; inset-inline-start: -5px; font-style: normal; font-size: .7rem; background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 50%; width: 15px; height: 15px; display: grid; place-items: center; line-height: 1; }
+.rc.stale { opacity: .38; }
+.rc.thin { background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgb(255 255 255 / .38) 4px 6px); }
+.rc.cmd::after { content: ""; position: absolute; inset-block-end: 2px; inset-inline-end: 2px; width: 6px; height: 6px; border-radius: 1px; background: currentColor; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 1px 9px; border-radius: 999px; font-size: .78rem; font-weight: 600; border: 1px solid currentColor; white-space: nowrap; }
+.pill.good { color: var(--good); } .pill.watch { color: var(--watch); } .pill.concern { color: var(--concern); }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.dot.good { background: var(--good); } .dot.watch { background: var(--watch); } .dot.concern { background: var(--concern); } .dot.left { background: var(--r0); }
+.evtag { font-size: .72rem; font-weight: 700; background: var(--concern); color: #fff; padding: 1px 7px; border-radius: 3px; white-space: nowrap; }
+.days { font-family: var(--mono); font-size: .8rem; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
+.days.g { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.days.y { background: color-mix(in srgb, var(--watch) 22%, transparent); color: var(--watch); }
+.days.r { background: color-mix(in srgb, var(--concern) 18%, transparent); color: var(--concern); }
+.kind { font-size: .72rem; font-weight: 600; padding: 1px 7px; border-radius: 3px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.assess { font-size: .72rem; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; }
+.redact { background: var(--surface-2); color: var(--muted); border-radius: 3px; padding: 0 4px; font-size: .9em; white-space: nowrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: .8rem; color: var(--muted); }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 2px 11px; font-size: .8rem; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.feed li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.feed li:last-child { border-bottom: 0; }
+.feed .when { font-family: var(--mono); font-size: .78rem; color: var(--muted); padding-top: 2px; }
+.feed .what { min-width: 0; display: grid; gap: 3px; }
+.feed .head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.feed .ex { margin: 0; }
+.retracted-note { font-size: .75rem; color: var(--muted); }
+.hist { display: block; }
+.sec { display: grid; gap: 12px; }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* floating switcher (prototype chrome, not part of the design) */
+#switcher { position: fixed; inset-block-end: calc(14px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: 999px; background: #0b0d0c; color: #f4f4f0; box-shadow: 0 8px 30px rgb(0 0 0 / .35); font-size: .82rem; max-width: calc(100vw - 24px); flex-wrap: wrap; justify-content: center; direction: rtl; }
+#switcher button { background: transparent; border: 0; color: inherit; padding: 4px 10px; border-radius: 999px; cursor: pointer; }
+#switcher button:hover { background: #2a2e2b; }
+#switcher .lbl { padding: 0 8px; font-weight: 600; white-space: nowrap; }
+#switcher label { display: inline-flex; gap: 5px; align-items: center; padding: 3px 8px; border-radius: 999px; background: #1d211e; cursor: pointer; white-space: nowrap; }
+#switcher .sep { width: 1px; height: 18px; background: #3a3f3b; }
+
+/* ================= Variant A: action board ================= */
+.A { display: grid; gap: 22px; }
+.A-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.A-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.A-stat { background: var(--surface); padding: 12px 14px; display: grid; gap: 2px; }
+.A-stat b { font-family: var(--mono); font-size: 1.6rem; font-weight: 600; line-height: 1.1; }
+.A-stat .sub { font-size: .78rem; color: var(--muted); }
+.A-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.A-tabs button { background: none; border: 0; padding: 8px 14px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.A-tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.A-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 22px; align-items: start; }
+@media (max-width: 860px) { .A-split { grid-template-columns: 1fr; } }
+.A-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.A-talk { display: grid; grid-template-columns: 7.5em 1fr 4.5em; gap: 10px; align-items: center; padding: 4px 0; cursor: pointer; border: 0; background: none; text-align: start; width: 100%; }
+.A-talk:hover .A-name { text-decoration: underline; }
+.A-meter { height: 8px; border-radius: 4px; background: var(--surface-2); position: relative; overflow: hidden; }
+.A-meter i { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: 4px; }
+.A-meter .tick { position: absolute; inset-block: -2px; width: 1px; background: var(--muted); opacity: .5; }
+.A-attn { display: grid; gap: 10px; }
+.A-attn button { text-align: start; background: var(--surface-2); border: 0; border-radius: 6px; padding: 10px 12px; cursor: pointer; display: grid; gap: 4px; }
+.A-attn button[data-s="concern"] { box-shadow: inset -4px 0 0 var(--concern); }
+.A-attn button[data-s="watch"] { box-shadow: inset -4px 0 0 var(--watch); }
+.A-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.A-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 10px; cursor: pointer; text-align: start; }
+.A-card:hover { border-color: var(--accent); }
+.A-card .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.A-bars { display: grid; gap: 4px; }
+.A-bar { display: grid; grid-template-columns: 6.6em 1fr 1.6em; gap: 6px; align-items: center; font-size: .75rem; color: var(--muted); }
+.A-bar .track { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.A-bar .track i { display: block; height: 100%; border-radius: 3px; }
+.A-left { opacity: .55; }
+.A-weak { display: flex; flex-wrap: wrap; gap: 8px; }
+.A-weak span { background: color-mix(in srgb, var(--r2) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--r2) 40%, transparent); border-radius: 6px; padding: 4px 10px; font-size: .84rem; }
+.A-sheet-bg { position: fixed; inset: 0; background: rgb(0 0 0 / .45); z-index: 40; display: grid; justify-items: center; align-items: start; overflow-y: auto; padding: calc(24px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 100px max(12px, env(safe-area-inset-left, 0px)); }
+.A-sheet { background: var(--bg); border-radius: 10px; width: min(860px, 100%); padding: 20px; display: grid; gap: 18px; box-shadow: var(--shadow); }
+.A-sheet .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 640px) { .A-sheet .cols { grid-template-columns: 1fr; } }
+.closeX { background: var(--surface-2); border: 0; border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+.A-grid-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+
+/* ================= Variant B: skill matrix ================= */
+.B { display: grid; gap: 14px; }
+.B-head { display: flex; gap: 10px 24px; flex-wrap: wrap; align-items: baseline; justify-content: space-between; }
+.B-line { font-size: .95rem; }
+.B-line b { font-family: var(--mono); }
+.B-wrap { overflow: auto; max-height: calc(100vh - 210px); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table.mx { border-collapse: separate; border-spacing: 0; font-size: .8rem; }
+.mx th, .mx td { padding: 3px; text-align: center; border-bottom: 1px solid var(--line); background: var(--surface); }
+.mx thead th { position: sticky; top: 0; z-index: 2; vertical-align: bottom; }
+.mx thead tr.stages th { top: 0; font-family: var(--display); font-weight: 400; font-size: .92rem; padding: 8px 4px; border-inline-start: 2px solid var(--line); }
+.mx thead tr.skills th { top: 40px; height: 150px; }
+.mx thead tr.skills th span { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; font-weight: 500; color: var(--muted); display: inline-block; max-height: 140px; overflow: hidden; text-overflow: ellipsis; }
+.mx th.weak span { color: var(--r2) !important; font-weight: 700 !important; }
+.mx .first { position: sticky; inset-inline-start: 0; z-index: 3; text-align: start; padding-inline: 10px; min-width: 210px; border-inline-end: 1px solid var(--line); }
+.mx thead .first { z-index: 4; }
+.mx .gstart { border-inline-start: 2px solid var(--line); }
+.mx td.c { cursor: pointer; }
+.mx td.c:hover .rc { outline: 2px solid var(--fg); outline-offset: 1px; }
+.mx td.c.sel .rc { outline: 3px solid var(--accent); outline-offset: 1px; }
+.mx tr.team td { background: var(--surface-2); font-weight: 600; }
+.mx tr.left td { opacity: .45; }
+.mx .nm { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
+.mx .nm button { background: none; border: 0; padding: 0; cursor: pointer; font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+.mx .nm button:hover { text-decoration: underline; }
+.mx .avg { font-family: var(--mono); font-size: .75rem; color: var(--muted); }
+.B-drawer { position: fixed; inset-block: 0; inset-inline-end: 0; width: min(420px, 100vw); background: var(--surface); z-index: 45; box-shadow: var(--shadow); border-inline-start: 1px solid var(--line); padding: calc(18px + env(safe-area-inset-top, 0px)) 18px 110px; overflow-y: auto; display: grid; gap: 16px; align-content: start; }
+.B-big { display: flex; gap: 12px; align-items: center; }
+.B-big .rc { width: 54px; height: 46px; font-size: 1.3rem; }
+
+/* ================= Variant C: Trainee file ================= */
+.C { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 820px) { .C { grid-template-columns: 1fr; } }
+.C-nav { position: sticky; top: calc(12px + env(safe-area-inset-top, 0px)); display: grid; gap: 14px; }
+.C-list { display: grid; gap: 2px; }
+.C-list h3 { font-size: .8rem; color: var(--muted); letter-spacing: .04em; margin-block: 8px 2px; font-family: var(--body); font-weight: 600; }
+.C-item { display: flex; gap: 8px; align-items: center; justify-content: space-between; background: none; border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer; text-align: start; width: 100%; }
+.C-item:hover { background: var(--surface-2); }
+.C-item[aria-current="true"] { background: var(--accent); color: var(--accent-ink); }
+.C-item[aria-current="true"] .days { background: rgb(255 255 255 / .2); color: inherit; }
+.C-item .nm { display: inline-flex; gap: 7px; align-items: center; font-weight: 600; }
+@media (max-width: 820px) { .C-nav { position: static; } .C-list { display: flex; overflow-x: auto; gap: 6px; padding-bottom: 6px; } .C-list h3 { display: none; } .C-item { width: auto; flex: none; border: 1px solid var(--line); } }
+.C-main { display: grid; gap: 26px; min-width: 0; }
+.C-hdr { display: grid; gap: 8px; }
+.C-hdr .meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.C-snap { font-size: 1.05rem; max-width: 70ch; margin: 0; }
+.C-two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 640px) { .C-two { grid-template-columns: 1fr; } }
+.C-two ul, .C-fu { margin: 0; padding-inline-start: 18px; display: grid; gap: 4px; }
+.C-stage { display: grid; gap: 4px; }
+.C-stage h3 { display: flex; gap: 10px; align-items: baseline; }
+.C-sk { display: grid; grid-template-columns: minmax(0, 14em) 34px minmax(0, 1fr) 4.5em; gap: 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.C-sk .lbl { font-size: .88rem; }
+.C-sk .n { font-family: var(--mono); font-size: .75rem; color: var(--muted); text-align: end; }
+@media (max-width: 560px) { .C-sk { grid-template-columns: minmax(0,1fr) 34px 4em; } .C-sk .hist { display: none; } }
+.C-stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr)); gap: 18px 28px; }
+.C-teamstage { display: grid; gap: 8px; }
+.C-tsrow { display: grid; grid-template-columns: 8em 1fr 2.4em; gap: 10px; align-items: center; }
+.C-tsrow .track { height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+.C-tsrow .track i { display: block; height: 100%; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+
+/* ================= Variant D: Talk circles (Commander's design) ================= */
+.D { display: grid; gap: 28px; justify-items: center; text-align: center; }
+.D-head { display: grid; gap: 6px; justify-items: center; }
+.D-scale { display: grid; gap: 4px; width: min(420px, 100%); }
+.D-scale .bar { height: 10px; border-radius: 5px; }
+.D-scale .ticks { position: relative; height: 1.2em; font-size: .75rem; color: var(--muted); font-family: var(--mono); }
+.D-scale .ticks span { position: absolute; transform: translateX(50%); white-space: nowrap; }
+.D-ring { display: flex; flex-wrap: wrap; justify-content: center; gap: clamp(14px, 3vw, 26px); max-width: 860px; padding-block: 8px; }
+.D-c { width: clamp(104px, 26vw, 136px); aspect-ratio: 1; max-width: 100%; border-radius: 50%; border: 0; cursor: pointer; display: grid; place-content: center; gap: 2px; padding: 8px; box-shadow: var(--shadow); transition: transform .15s ease; position: relative; }
+.D-c:hover { transform: scale(1.05); }
+.D-c b { font-family: var(--display); font-weight: 400; font-size: clamp(1.05rem, 3.6vw, 1.3rem); line-height: 1.1; }
+.D-c span { font-family: var(--mono); font-size: .8rem; opacity: .9; }
+.D-c .ev { position: absolute; inset-block-start: 4px; left: 50%; transform: translateX(-50%); font-family: var(--body); font-size: .66rem; font-weight: 700; background: var(--surface); color: var(--concern); padding: 0 6px; border-radius: 3px; opacity: 1; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .D-c { transition: none; } .D-c:hover { transform: none; } }
+.D-left { font-size: .82rem; color: var(--muted); }
+.D-bg { position: fixed; inset: 0; z-index: 40; background: rgb(0 0 0 / .5); display: grid; justify-items: center; align-items: start; overflow-y: auto; padding: calc(28px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 100px max(12px, env(safe-area-inset-left, 0px)); }
+.D-modal { background: var(--bg); width: min(760px, 100%); border-radius: 12px; box-shadow: var(--shadow); display: grid; gap: 20px; padding: 0 0 22px; overflow: hidden; text-align: start; }
+.D-modal > .top { padding: 18px 22px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.D-modal > section { padding-inline: 22px; display: grid; gap: 8px; }
+.D-modal h2 { font-size: 1.05rem; }
+.D-sk { display: grid; gap: 10px; }
+.D-sk .st { display: grid; gap: 4px; }
+.D-sk .row { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.D-sk .one { display: inline-flex; gap: 6px; align-items: center; font-size: .86rem; }
+.D-info { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.D-info dt { color: var(--muted); font-size: .86rem; }
+.D-info dd { margin: 0; min-width: 0; }
+.D-q { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.D-q li { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: grid; gap: 2px; }
+.D-q .src { font-size: .74rem; color: var(--muted); }
+
+/* growth & trend charts (Trainee file) */
+.G { display: grid; gap: 16px; }
+.G-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.G-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 2px; align-content: start; }
+.G-tile .lbl { font-size: .82rem; color: var(--muted); }
+.G-tile .val { font-size: 1.9rem; font-weight: 600; line-height: 1.15; }
+.G-tile .delta { font-size: .82rem; color: var(--muted); }
+.G-key { display: flex; gap: 16px; flex-wrap: wrap; font-size: .8rem; color: var(--muted); }
+.G-key span { display: inline-flex; gap: 6px; align-items: center; }
+.G-key i { display: inline-block; width: 18px; height: 2px; border-radius: 1px; }
+.G-mult { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; }
+.G-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 6px; display: grid; gap: 2px; min-width: 0; }
+.G-panel .t { display: flex; justify-content: space-between; gap: 8px; font-size: .88rem; font-weight: 600; }
+.G-panel .t .num { font-weight: 500; color: var(--muted); font-size: .8rem; }
+.lc { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.G-mv { display: grid; gap: 4px; }
+.G-mv .row { display: grid; grid-template-columns: minmax(0, 13em) 1fr 3em; gap: 10px; align-items: center; font-size: .86rem; padding: 2px 0; }
+.G-mv .track { position: relative; height: 14px; }
+.G-mv .track::before { content: ""; position: absolute; inset-block: -3px; left: 50%; width: 1px; background: var(--axis); }
+.G-mv .bar { position: absolute; inset-block: 1px; }
+.G-mv .bar.up { left: 50%; border-radius: 0 4px 4px 0; background: var(--s1); }
+.G-mv .bar.dn { right: 50%; border-radius: 4px 0 0 4px; background: var(--down); }
+.G-mv .v { font-family: var(--mono); font-size: .8rem; text-align: end; }
+#tip { position: fixed; z-index: 60; pointer-events: none; background: var(--fg); color: var(--bg); font-size: .8rem; padding: 6px 9px; border-radius: 6px; box-shadow: var(--shadow); display: grid; gap: 1px; max-width: 240px; }
+.G table { border-collapse: collapse; font-size: .8rem; }
+.G td, .G th { padding: 3px 8px; border-bottom: 1px solid var(--line); text-align: center; font-family: var(--mono); }
+.G th { font-family: var(--body); font-weight: 600; }
+</style>
+
+<div id="app" dir="rtl" lang="he"></div>
+<div id="switcher" role="toolbar" aria-label="מעבר בין גרסאות האב-טיפוס"></div>
+<div id="tip" hidden></div>
+
+<script>
+// ---------- fake data (ticket-09 shape) ----------
+const TODAY = new Date('2026-10-29T12:00:00+02:00');
+const D = s => new Date(s + 'T12:00:00+02:00');
+const daysBetween = (a, b) => Math.round((b - a) / 864e5);
+const fmt = s => { const x = D(s); return x.getDate() + '/' + (x.getMonth() + 1); };
+
+const META = {
+  cycle: { name: 'מחזור הצהובים', start: '2026-07-05', weeks: 21, setup: 'done', schema: 1 },
+  settings: { commander: 'אורי', target: 10, yellow: 14 },
+};
+const WEEK = Math.floor(daysBetween(D(META.cycle.start), TODAY) / 7) + 1;
+
+const STAGES = [
+  { id: 'learn', name: 'למידה ותאוריה', short: 'למידה', skills: [
+    ['learn.selfaware', 'מודעות עצמית'], ['learn.depth', 'העמקה והבנה לעומק'], ['learn.detail', 'תשומת לב לפרטים'], ['learn.independence', 'עצמאות'],
+    ['learn.order', 'סדר וארגון'], ['learn.diligence', 'שקדנות'], ['learn.motivation', 'מוטיבציה'], ['learn.lessons', 'הפקת לקחים ויישום להבא']] },
+  { id: 'prob', name: 'הבנת הבעיה', short: 'הבנה', skills: [
+    ['prob.reading', 'הבנת הנקרא'], ['prob.detail', 'תשומת לב לפרטים הקטנים'], ['prob.req', 'הבנה טובה של הדרישה'], ['prob.deepread', 'קריאה מעמיקה'],
+    ['prob.edge', 'זיהוי של מקרי קצה אפשריים'], ['prob.edgedeep', 'הבנה לעומק של מקרי קצה אפשריים']] },
+  { id: 'plan', name: 'תכנון הקוד', short: 'תכנון', skills: [
+    ['plan.ideas', 'חשיבה על הרבה רעיונות'], ['plan.order', 'סדר וארגון'], ['plan.predebug', 'לדבאג לפני כתיבת הקוד'], ['plan.creative', 'חשיבה יצירתית'], ['plan.focus', 'מיקוד בדרישה']] },
+  { id: 'impl', name: 'מימוש בקוד', short: 'מימוש', skills: [
+    ['impl.env', 'שליטה בסביבת עבודה'], ['impl.debugging', 'יכולות דיבאג'], ['impl.functions', 'חלוקה טובה לפונקציות'], ['impl.readability', 'קריאות וסטנדרטים'],
+    ['impl.search', 'חיפוש באינטרנט'], ['impl.critical', 'ביקורתיות כלפי קוד'], ['impl.order', 'סדר וארגון']] },
+  { id: 'inter', name: 'בין-אישי', short: 'בין-אישי', group: true, skills: [
+    ['inter.team', 'עבודת צוות'], ['inter.comm', 'תקשורת'], ['inter.feedback', 'קבלת ביקורת'], ['inter.resp', 'אחריות ואמינות'], ['inter.help', 'עזרה לאחרים']] },
+];
+const SKILL = {}; STAGES.forEach(s => s.skills.forEach(([id, name]) => SKILL[id] = { id, name, stage: s }));
+
+const KIND = { talk: 'שיחה', test: 'תרץ', review: 'סקד', project: 'תצפית פרויקט', self: 'רמ"ת', improvekeep: 'שיפור/שימור', goal: 'שאיפות', background: 'רקע', eval: 'תהליך הערכה', note: 'הערה', clarification: 'הבהרה', status: 'שינוי סטטוס' };
+const STATUS = { good: 'במסלול', watch: 'במעקב', concern: 'דורש טיפול' };
+const RED = '[פרט אישי — בתיק]';
+
+// Trainee cards. base = rough level per Stage [learn, prob, plan, impl, inter], used only to fake Assessments.
+const TRAINEES = [
+  { id: 't-a81k2c', name: 'נועה כ.', status: 'good', evalStage: null, lastTalk: '2026-10-22', base: [4, 4, 3, 4, 4],
+    snapshot: { text: 'מתקדמת בקצב טוב. בתרצי OOP פותרת לבד ובודקת מקרי קצה לפני הגשה. עדיין קופצת לקוד לפני שהתכנון סגור.', at: '2026-10-22' },
+    items: [{ k: 'improve', text: 'לכתוב תכנון על דף לפני שפותחת IDE' }, { k: 'keep', text: 'שואלת שאלות מדויקות' }, { k: 'improve', text: 'לקרוא את הדרישה פעמיים לפני שמתחילה', s: true }],
+    followups: [{ text: 'לבדוק אם סיימה את תרגיל הרקורסיה הנוסף', at: '2026-10-22' }] },
+  { id: 't-q2m9xa', name: 'נועה ל.', status: 'watch', evalStage: null, lastTalk: '2026-10-16', base: [4, 2, 3, 3, 3],
+    snapshot: { text: 'מבינה את החומר אבל מתקשה לפרק בעיה חדשה. בתרץ DB 2 נתקעה על הבנת הדרישה ולא שאלה.', at: '2026-10-16' },
+    items: [{ k: 'improve', text: 'לסמן בדרישה מה הקלט ומה הפלט לפני שמתחילה' }, { k: 'keep', text: 'מגיעה מוכנה, סיכומים מסודרים' }],
+    followups: [{ text: 'לראות אם סימנה קלט/פלט בתרץ הבא', at: '2026-10-16' }] },
+  { id: 't-7hd0pe', name: 'איתי', status: 'good', evalStage: null, lastTalk: '2026-10-26', base: [4, 3, 4, 3, 4],
+    snapshot: { text: 'הדיבאג השתפר מאוד מאז שעבר ל-breakpoints. רוצה עוד אתגרים; כדאי לתת לו להסביר פתרונות לצוות.', at: '2026-10-26' },
+    items: [{ k: 'keep', text: 'מדבאג עם breakpoints ולא עם הדפסות' }, { k: 'improve', text: 'לבדוק מקרי קצה לפני הגשה' }],
+    followups: [] },
+  { id: 't-m4ya01', name: 'מאיה', status: 'concern', evalStage: 'רף מקס', lastTalk: '2026-10-09', base: [2, 3, 2, 3, 2],
+    snapshot: { text: 'ירידה בתפקוד מאז אמצע אוקטובר, בהקשר של ' + RED + '. מגיעה לא מוכנה לתרצים ונמנעת מלבקש עזרה.', at: '2026-10-19' },
+    items: [{ k: 'improve', text: 'לבקש עזרה אחרי 20 דקות תקיעה' }, { k: 'keep', text: 'מקבלת ביקורת בפתיחות' }],
+    followups: [{ text: 'לקבוע שיחה השבוע', at: '2026-10-19' }, { text: 'לבדוק מה התוכנית לחזרה על DB 1', at: '2026-10-17' }] },
+  { id: 't-y0n4tn', name: 'יונתן', status: 'good', evalStage: null, lastTalk: '2026-10-20', base: [4, 5, 4, 4, 3],
+    snapshot: { text: 'יציב וחזק בהבנת הבעיה. מכסה מקרי קצה בלי שמזכירים לו. שקט בצוות.', at: '2026-10-20' },
+    items: [{ k: 'keep', text: 'מכסה את כל מקרי הקצה, גם קלט ריק' }], followups: [{ text: 'לשלוח לו חומר נוסף על רקורסיה', at: '2026-10-20' }] },
+  { id: 't-sh1r4a', name: 'שירה', status: 'watch', evalStage: null, lastTalk: '2026-10-13', base: [3, 3, 4, 5, 2],
+    snapshot: { text: 'חזקה מאוד במימוש. חלשה בתקשורת בצוות: בפרויקט Padens עבדה לבד על החלק שלה בלי לעדכן.', at: '2026-10-13' },
+    items: [{ k: 'improve', text: 'לעדכן את הצוות לפני שלוקחת משימה' }, { k: 'keep', text: 'קוד נקי וקריא' }], followups: [] },
+  { id: 't-0mr8kq', name: 'עומר', status: 'good', evalStage: null, lastTalk: '2026-10-24', base: [3, 3, 3, 3, 5],
+    snapshot: { text: 'עוזר לאחרים הרבה, לפעמים על חשבון התרגול שלו. מקצועית במקום סביר.', at: '2026-10-24' },
+    items: [{ k: 'keep', text: 'עוזר לחברים שנתקעים' }, { k: 'improve', text: 'לשמור זמן לתרגול שלו', s: true }], followups: [] },
+  { id: 't-d4n1el', name: 'דניאל', status: 'concern', evalStage: 'רף רמד', lastTalk: '2026-10-27', base: [2, 2, 2, 2, 2],
+    snapshot: { text: 'בתהליך הערכה, רף רמד. מגיע באיחור ומגיש חלקית. ' + RED + '. נראה רצון בשיחה האחרונה.', at: '2026-10-27' },
+    items: [{ k: 'improve', text: 'להגיע בזמן לכל בוקר' }, { k: 'improve', text: 'להגיש גם פתרון חלקי עם הסבר מה חסר' }],
+    followups: [{ text: 'שיחת המשך בסוף השבוע', at: '2026-10-27' }] },
+  { id: 't-t4l7vv', name: 'טל', status: 'watch', evalStage: null, lastTalk: '2026-10-15', base: [3, 3, 2, 3, 3],
+    snapshot: { text: 'מתקשה לבחור בין כמה פתרונות ומבזבז זמן. מדרג את עצמו גבוה מהמצב בפועל.', at: '2026-10-15' },
+    items: [{ k: 'improve', text: 'לבחור פתרון אחד תוך 10 דקות ולהתחיל' }], followups: [] },
+  { id: 't-r0n1yy', name: 'רוני', status: 'watch', evalStage: null, lastTalk: '2026-10-02', base: [3, 3, 3, 2, 3],
+    snapshot: { text: 'הצטרפה בשבוע 9 ומשלימה פערים. מעט תיעוד עד עכשיו.', at: '2026-10-02' },
+    items: [], followups: [{ text: 'לבנות איתה תוכנית השלמה', at: '2026-10-02' }] },
+  { id: 't-av1v0b', name: 'אביב', status: 'good', evalStage: null, lastTalk: '2026-08-28', base: [3, 3, 3, 3, 3], left: { date: '2026-09-03', reason: 'מעבר למסלול אחר' },
+    snapshot: { text: 'עזב את הקורס.', at: '2026-09-03' }, items: [], followups: [] },
+];
+
+// Evidence (public only; sensitive sentences already replaced), [date, kind, excerpt, skills, extra]
+const EV = {
+  't-a81k2c': [
+    ['2026-10-22', 'talk', 'שיחה עם נועה. סיפרה שתרץ OOP 2 הלך לה טוב כי הפעם בדקה מקרי קצה לפני ההגשה. סיכמנו שתנסה לכתוב תכנון על דף לפני שפותחת את ה-IDE.', ['prob.edge', 'plan.order']],
+    ['2026-10-21', 'test', 'נועה עברה את תרץ 2 ב-OOP, 88. בדקה לבד מקרי קצה.', ['prob.edge', 'impl.functions'], { test: 'תרץ OOP 2', score: 88, self: 'עובר' }],
+    ['2026-10-14', 'review', 'סקד על תרץ 2: חלוקה לפונקציות טובה, שמות משתנים ברורים. קפצה לקוד לפני שהבינה את כל הדרישה ונאלצה לשכתב חצי.', ['impl.functions', 'impl.readability', 'plan.focus']],
+    ['2026-10-05', 'project', 'Interpreter: נועה הובילה את חלוקת המשימות בצוות ועזרה לאיתי לדבאג את ה-parser.', ['inter.team', 'inter.help']],
+    ['2026-09-28', 'self', 'רמ"ת: נועה דירגה את עצמה 3 בתכנון ו-5 בדיבאג.', ['learn.selfaware']],
+    ['2026-09-15', 'talk', 'שיחה ראשונה אחרי החופשה. מוטיבציה גבוהה, רוצה להגיע ליחידה מבצעית. ' + RED, ['learn.motivation']],
+    ['2026-08-30', 'goal', 'נועה: "אני רוצה לסיים את הקורס בלי לחזור על אף תרץ."', []],
+  ],
+  't-q2m9xa': [
+    ['2026-10-16', 'talk', 'שיחה עם נועה ל. נתקעה בתרץ DB 2 על הבנת הדרישה ולא שאלה. סיכמנו שתסמן קלט ופלט בדרישה לפני שמתחילה.', ['prob.req', 'prob.deepread']],
+    ['2026-10-15', 'test', 'נועה ל., תרץ DB 2: 67. עברה בקושי.', ['prob.req'], { test: 'תרץ DB 2', score: 67, self: 'לא עובר' }],
+    ['2026-09-30', 'note', 'מגיעה מוכנה לכל שיעור, סיכומים מסודרים.', ['learn.diligence', 'learn.order']],
+  ],
+  't-7hd0pe': [
+    ['2026-10-26', 'talk', 'שיחה עם איתי. מרגיש שהדיבאג השתפר מאז שהתחיל להשתמש ב-breakpoints במקום הדפסות. רוצה עוד אתגרים.', ['impl.debugging', 'learn.motivation']],
+    ['2026-10-21', 'review', 'סקד DB 1: איתי מצא בעצמו את הבאג ב-join תוך כמה דקות. הקוד מסודר.', ['impl.debugging', 'impl.order']],
+    ['2026-10-05', 'project', 'Interpreter: איתי נתקע על ה-parser, נועה עזרה לו. אחר כך הסביר לשאר הצוות את הפתרון.', ['inter.team', 'inter.comm']],
+    ['2026-09-24', 'test', 'איתי עבר את תרץ OOP 1, 79.', ['impl.debugging'], { test: 'תרץ OOP 1', score: 79, self: 'עובר' }],
+    ['2026-08-20', 'note', 'איתי מדבאג עם console.log בכל שורה, לוקח לו הרבה זמן למצוא שגיאות.', ['impl.debugging', 'impl.env']],
+  ],
+  't-m4ya01': [
+    ['2026-10-25', 'clarification', 'הבהרה לתרץ DB 1 של מאיה: הציון הנכון 54, לא 45.', []],
+    ['2026-10-19', 'eval', 'מאיה עלתה לרף מקס. דיברנו איתה על מה שמצופה ממנה בשבועיים הקרובים.', []],
+    ['2026-10-17', 'test', 'מאיה לא עברה את תרץ DB 1, 54. לא הגיעה מוכנה, אמרה שלא הספיקה ללמוד.', ['learn.diligence', 'prob.req'], { test: 'תרץ DB 1', score: 54, self: 'עובר' }],
+    ['2026-10-09', 'talk', 'שיחה עם מאיה. ' + RED + ' קבענו שתבוא אליי כשהיא נתקעת במקום לשבת לבד.', ['learn.independence']],
+    ['2026-10-02', 'note', 'מאיה ישבה שעה וחצי על באג אחד ולא ביקשה עזרה, למרות שעומר ישב לידה.', ['inter.comm', 'impl.debugging']],
+    ['2026-09-20', 'review', 'סקד OOP: הקוד עובד אבל פונקציה אחת של 200 שורות. כשהערתי על זה קיבלה את ההערה בפתיחות.', ['impl.functions', 'inter.feedback']],
+    ['2026-08-25', 'test', 'מאיה עברה את תרץ תבי 3, 91.', ['prob.reading'], { test: 'תרץ תבי 3', score: 91, self: 'עובר' }],
+  ],
+  't-y0n4tn': [
+    ['2026-10-20', 'talk', 'שיחה עם יונתן. הכל זורם. ביקש חומר נוסף על רקורסיה.', ['learn.motivation', 'learn.depth']],
+    ['2026-10-12', 'review', 'סקד: כיסה את כל מקרי הקצה, כולל קלט ריק.', ['prob.edge', 'prob.edgedeep']],
+  ],
+  't-sh1r4a': [
+    ['2026-10-13', 'talk', 'שיחה עם שירה על הפרויקט. אמרה שקל לה יותר לעבוד לבד.', ['inter.team']],
+    ['2026-10-08', 'project', 'Padens: שירה כתבה את כל מודול ה-API לבד ולא עדכנה את הצוות. שניים עבדו על אותו דבר.', ['inter.team', 'inter.comm']],
+    ['2026-09-29', 'test', 'שירה עברה את תרץ OOP 1, 95.', ['impl.functions', 'impl.readability'], { test: 'תרץ OOP 1', score: 95, self: 'עובר' }],
+  ],
+  't-0mr8kq': [
+    ['2026-10-24', 'talk', 'שיחה עם עומר. עוזר לאחרים הרבה, לפעמים על חשבון התרגול שלו.', ['inter.help']],
+    ['2026-10-02', 'note', 'עומר הציע למאיה עזרה כשראה שנתקעה.', ['inter.help']],
+  ],
+  't-d4n1el': [
+    ['2026-10-27', 'talk', 'שיחת רף רמד עם דניאל. הגיע באיחור שלוש פעמים השבוע. ' + RED, ['inter.resp']],
+    ['2026-10-20', 'eval', 'דניאל עלה לרף רמד.', []],
+    ['2026-10-14', 'test', 'דניאל, תרץ DB 1: 48. הגיש חצי.', ['learn.diligence', 'plan.order'], { test: 'תרץ DB 1', score: 48, self: 'לא עובר' }],
+    ['2026-09-10', 'eval', 'דניאל עלה לרף מקס.', []],
+  ],
+  't-t4l7vv': [
+    ['2026-10-15', 'talk', 'שיחה עם טל. מתקשה לבחור בין כמה פתרונות ומבזבז זמן.', ['plan.ideas', 'plan.focus']],
+    ['2026-10-01', 'self', 'רמ"ת: טל דירג את עצמו 5 במיקוד בדרישה.', ['learn.selfaware']],
+  ],
+  't-r0n1yy': [
+    ['2026-10-02', 'talk', 'שיחה עם רוני. הצטרפה למחזור בשבוע 9, משלימה פערים.', ['learn.motivation']],
+    ['2026-09-25', 'background', 'רוני הגיעה מהמחזור הקודם אחרי הפסקה.', []],
+  ],
+  't-av1v0b': [['2026-09-03', 'note', 'אביב עבר למסלול אחר.', []]],
+};
+const CHANGES = {
+  't-m4ya01': [['2026-10-08', 'good', 'watch', 'agent', 'ירידה בתרצים וחוסר הכנה'], ['2026-10-19', 'watch', 'concern', 'commander', 'עלתה לרף מקס']],
+  't-d4n1el': [['2026-09-10', 'watch', 'concern', 'commander', 'רף מקס']],
+  't-sh1r4a': [['2026-10-08', 'good', 'watch', 'agent', 'עבודה לבד בפרויקט בלי לעדכן']],
+  't-q2m9xa': [['2026-10-16', 'good', 'watch', 'agent', 'קושי חוזר בהבנת הדרישה']],
+};
+
+// Project team and suggested questions for the next Talk (agent output, "(הצעה)"), per Trainee
+const EXTRA = {
+  't-a81k2c': { team: 'Interpreter · צוות 2', q: ['איך הלך התכנון על דף בתרץ האחרון?', 'מה עזר לך לבדוק מקרי קצה ב-OOP 2, ואיך תשמרי על זה?'] },
+  't-q2m9xa': { team: 'Interpreter · צוות 1', q: ['סימנת קלט ופלט בדרישה של התרץ האחרון? מה זה שינה?', 'מתי נתקעת לאחרונה ולא שאלת? מה עצר אותך?'] },
+  't-7hd0pe': { team: 'Interpreter · צוות 2', q: ['איזה אתגר נוסף היית רוצה לקחת?', 'תסכים להראות לצוות איך אתה מדבאג עם breakpoints?'] },
+  't-m4ya01': { team: 'Interpreter · צוות 2', q: ['איך את מרגישה מאז השיחה האחרונה?', 'מה התוכנית שלך לחזרה על DB 1?', 'מה יעזור לך לבקש עזרה מוקדם יותר?'] },
+  't-y0n4tn': { team: 'Padens · צוות 3', q: ['קראת את החומר על רקורסיה? מה היה הכי מעניין?', 'יש לך מספיק מקום לדבר בצוות?'] },
+  't-sh1r4a': { team: 'Padens · צוות 1', q: ['איך מתחלקות המשימות בצוות עכשיו?', 'מה ישתנה אם תעדכני את הצוות לפני שאת לוקחת משימה?'] },
+  't-0mr8kq': { team: 'Padens · צוות 1', q: ['כמה זמן נשאר לך לתרגול שלך השבוע?', 'מה אתה הכי רוצה לשפר בעצמך?'] },
+  't-d4n1el': { team: 'Padens · צוות 3', q: ['מה עזר לך להגיע בזמן השבוע?', 'מה חסר בהגשה האחרונה, ואיך משלימים?'] },
+  't-t4l7vv': { team: 'Padens · צוות 1', q: ['איך בחרת פתרון בתרץ האחרון, וכמה זמן זה לקח?', 'דירגת את עצמך 5 במיקוד בדרישה. מה גורם לך לחשוב כך?'] },
+  't-r0n1yy': { team: 'Padens · צוות 3', q: ['אילו נושאים עוד חסרים לך מהשבועות שפספסת?', 'איזה קצב השלמה נראה לך אפשרי?'] },
+  't-av1v0b': { team: '—', q: [] },
+};
+
+// fake growth over the Cycle (score drift from start to today), per Stage when an array
+const GROW = { 't-a81k2c': 1.6, 't-q2m9xa': .5, 't-7hd0pe': [1, 1, 1.2, 2.2, .6], 't-m4ya01': -1.6, 't-y0n4tn': .6, 't-sh1r4a': [.8, .8, .8, 1, -1.6], 't-0mr8kq': 1, 't-d4n1el': -.8, 't-t4l7vv': .3, 't-r0n1yy': 1.4 };
+
+// fake counting Assessments, deterministic
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const iso = dt => dt.toISOString().slice(0, 10);
+TRAINEES.forEach((t, ti) => {
+  const r = rng(ti * 7919 + 13);
+  const start = D(META.cycle.start).getTime() + 21 * 864e5;
+  const end = t.left ? D(t.left.date).getTime() : TODAY.getTime() - 864e5;
+  t.skills = {};
+  STAGES.forEach((st, si) => st.skills.forEach(([sid]) => {
+    const p = t.id === 't-r0n1yy' ? .35 : st.group ? .55 : .7;
+    if (r() > p) return;
+    const k = 1 + Math.floor(r() * 3);
+    const dates = Array.from({ length: k }, () => iso(new Date(start + (1 - r() ** 2) * (end - start)))).sort();
+    let cmd = false, a = [];
+    dates.forEach((dt, i) => {
+      const g = GROW[t.id] ?? .6, gs = Array.isArray(g) ? g[si] : g;
+      const prog = (D(dt).getTime() - D(META.cycle.start).getTime()) / (TODAY.getTime() - D(META.cycle.start).getTime());
+      const score = Math.max(1, Math.min(5, Math.round(t.base[si] + gs * (prog - .5) + (r() - .5) * 1.2)));
+      const byC = cmd || r() < .14;
+      if (byC) cmd = true;
+      a.push([dt, score, byC ? 'commander' : 'agent']);
+    });
+    t.skills[sid] = { a, n: t.id === 't-r0n1yy' ? 1 : a.length + Math.floor(r() * 3) };
+  }));
+});
+const patch = (tid, sid, a, n) => { TRAINEES.find(t => t.id === tid).skills[sid] = { a, n }; };
+patch('t-7hd0pe', 'impl.debugging', [['2026-08-20', 2, 'agent'], ['2026-09-24', 3, 'agent'], ['2026-10-21', 4, 'agent'], ['2026-10-26', 4, 'agent']], 5);
+patch('t-m4ya01', 'learn.motivation', [['2026-08-25', 4, 'agent'], ['2026-09-20', 3, 'agent'], ['2026-10-17', 2, 'agent']], 4);
+patch('t-m4ya01', 'inter.comm', [['2026-10-02', 2, 'agent'], ['2026-10-09', 2, 'commander']], 2);
+patch('t-m4ya01', 'learn.independence', [['2026-10-09', 1, 'agent']], 1);
+patch('t-a81k2c', 'prob.edge', [['2026-09-10', 3, 'agent'], ['2026-10-21', 4, 'agent'], ['2026-10-22', 4, 'agent']], 4);
+patch('t-a81k2c', 'plan.focus', [['2026-10-14', 2, 'agent']], 1);
+patch('t-q2m9xa', 'prob.edge', [['2026-09-14', 2, 'agent'], ['2026-10-15', 2, 'agent']], 3);
+patch('t-q2m9xa', 'prob.req', [['2026-09-14', 3, 'agent'], ['2026-10-15', 2, 'agent'], ['2026-10-16', 2, 'commander']], 4);
+patch('t-t4l7vv', 'prob.edge', [['2026-10-15', 2, 'agent']], 1);
+patch('t-d4n1el', 'prob.edge', [['2026-10-14', 1, 'agent']], 2);
+patch('t-sh1r4a', 'inter.team', [['2026-09-01', 3, 'agent'], ['2026-10-08', 2, 'agent'], ['2026-10-13', 2, 'commander']], 3);
+patch('t-sh1r4a', 'inter.comm', [['2026-10-08', 2, 'agent']], 2);
+patch('t-t4l7vv', 'plan.focus', [['2026-08-18', 3, 'agent'], ['2026-10-15', 2, 'agent']], 2);
+patch('t-y0n4tn', 'prob.edge', [['2026-10-12', 5, 'agent']], 3);
+patch('t-0mr8kq', 'inter.help', [['2026-09-11', 5, 'commander'], ['2026-10-24', 5, 'commander']], 4);
+
+// ---------- derived at render time (rules from ticket 05) ----------
+function ratingAt(list, asOf) {
+  const L = list.filter(x => D(x[0]) <= asOf);
+  if (!L.length) return null;
+  const c = L.filter(x => x[2] === 'commander');
+  const pick = (c.length ? c : L).reduce((a, b) => D(b[0]) >= D(a[0]) ? b : a);
+  return { date: pick[0], score: pick[1], author: pick[2] };
+}
+function cellOf(t, sid) {
+  const s = t.skills[sid]; if (!s || !s.a.length) return null;
+  const r = ratingAt(s.a, TODAY); if (!r) return null;
+  const past = ratingAt(s.a, new Date(TODAY - 28 * 864e5));
+  return { ...r, trend: past ? Math.sign(r.score - past.score) : null, stale: daysBetween(D(r.date), TODAY) > 42, n: s.n, hist: s.a };
+}
+const active = () => TRAINEES.filter(t => !t.left);
+const talkDays = t => t.lastTalk ? daysBetween(D(t.lastTalk), TODAY) : null;
+const talkBand = t => { const d = talkDays(t); if (d === null || d > META.settings.yellow) return 'r'; return d > META.settings.target ? 'y' : 'g'; };
+const stageAvg = (t, st) => { const v = st.skills.map(([sid]) => cellOf(t, sid)).filter(Boolean).map(c => c.score); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+const teamAvg = sid => { const v = active().map(t => cellOf(t, sid)).filter(Boolean).map(c => c.score); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+function sharedWeak() {
+  return Object.values(SKILL).map(sk => ({ sk, who: active().filter(t => { const c = cellOf(t, sk.id); return c && c.score <= 2; }) }))
+    .filter(x => x.who.length >= 3).sort((a, b) => b.who.length - a.who.length).slice(0, 6); // prototype: 3+ active Trainees at 1–2
+}
+function stats() {
+  const A = active(); let rated = 0, stale = 0, cells = 0;
+  A.forEach(t => Object.keys(SKILL).forEach(sid => { cells++; const c = cellOf(t, sid); if (c) { rated++; if (c.stale) stale++; } }));
+  const band = { g: 0, y: 0, r: 0 }; A.forEach(t => band[talkBand(t)]++);
+  const st = { good: 0, watch: 0, concern: 0 }; A.forEach(t => st[t.status]++);
+  return { n: A.length, band, st, rated, stale, cover: Math.round(rated / cells * 100), evalN: A.filter(t => t.evalStage).length };
+}
+function evidenceOf(t) {
+  const ev = (EV[t.id] || []).map(([date, kind, ex, skills, x], i) => ({ id: t.id + '-' + i, date, kind, ex, skills, x: x || {}, t, retracted: false }));
+  (CHANGES[t.id] || []).forEach(([date, from, to, by, why], i) => ev.push({ id: t.id + '-s' + i, date, kind: 'status', ex: STATUS[from] + ' ← ' + STATUS[to] + ': ' + why, by, skills: [], x: {}, t, retracted: false }));
+  return ev.filter(e => !e.retracted).sort((a, b) => b.date.localeCompare(a.date));
+}
+const allEvidence = () => TRAINEES.flatMap(evidenceOf).sort((a, b) => b.date.localeCompare(a.date));
+
+// ---------- shared render atoms ----------
+const OPT = { cmd: true, thin: true };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const redact = s => esc(s).split(esc(RED)).join('<span class="redact">' + esc(RED) + '</span>');
+const rColor = v => v == null ? 'var(--r0)' : 'var(--r' + Math.max(1, Math.min(5, Math.round(v))) + ')';
+function rc(c, extraTitle) {
+  if (!c) return '<span class="rc r0" title="אין תיעוד עדיין">·</span>';
+  const cls = ['rc', 'r' + c.score, c.stale && 'stale', OPT.thin && c.n <= 1 && 'thin', OPT.cmd && c.author === 'commander' && 'cmd'].filter(Boolean).join(' ');
+  const arrow = c.trend > 0 ? '↑' : c.trend < 0 ? '↓' : '';
+  const title = `${c.score}/5 · ${c.author === 'commander' ? 'דירוג מפקד' : 'הערכת הסוכן'} · ${fmt(c.date)} · ${c.n} תיעודים${c.stale ? ' · ישן' : ''}${extraTitle ? ' · ' + extraTitle : ''}`;
+  return `<span class="${cls}" title="${esc(title)}">${c.score}${arrow ? `<i class="tr">${arrow}</i>` : ''}</span>`;
+}
+const statusPill = t => t.left ? '<span class="pill" style="color:var(--muted)">עזב</span>' : `<span class="pill ${t.status}"><span class="dot ${t.status}"></span>${STATUS[t.status]}</span>`;
+const evTag = t => t.evalStage ? `<span class="evtag">${esc(t.evalStage)}</span>` : '';
+const daysChip = t => { if (t.left) return ''; const d = talkDays(t); return `<span class="days ${talkBand(t)}" title="ימים מאז השיחה האחרונה">${d === null ? 'טרם נערכה' : d + ' ימים'}</span>`; };
+const legend = () => `<div class="legend">
+  <span>${[1, 2, 3, 4, 5].map(v => `<span class="rc r${v}" style="width:22px;height:20px">${v}</span>`).join('')}</span>
+  <span><span class="rc r0" style="width:22px;height:20px">·</span> אין תיעוד</span>
+  <span><span class="rc r3" style="width:22px;height:20px"><i class="tr">↑</i></span> מגמה מול לפני 4 שבועות</span>
+  <span><span class="rc r3 stale" style="width:22px;height:20px"></span> ישן (מעל 6 שבועות)</span>
+  ${OPT.cmd ? '<span><span class="rc r3 cmd" style="width:22px;height:20px"></span> דירוג מפקד</span>' : ''}
+  ${OPT.thin ? '<span><span class="rc r3 thin" style="width:22px;height:20px"></span> תיעוד אחד בלבד</span>' : ''}
+</div>`;
+function histSvg(hist, w = 160, h = 22) {
+  const s = D(META.cycle.start).getTime(), e = TODAY.getTime();
+  const x = dt => 6 + (w - 12) * (1 - (D(dt).getTime() - s) / (e - s)); // RTL: newest on the left
+  const y = v => h - 4 - (v - 1) * ((h - 8) / 4);
+  const pts = hist.map(([dt, v]) => [x(dt), y(v)]);
+  return `<svg class="hist" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">
+    <line x1="4" x2="${w - 4}" y1="${h - 4}" y2="${h - 4}" stroke="var(--line)" stroke-width="1"/>
+    ${pts.length > 1 ? `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="var(--muted)" stroke-width="1" opacity=".6"/>` : ''}
+    ${hist.map(([dt, v, a], i) => a === 'commander'
+      ? `<rect x="${pts[i][0] - 4}" y="${pts[i][1] - 4}" width="8" height="8" fill="${rColor(v)}" stroke="var(--fg)" stroke-width="1"/>`
+      : `<circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="4" fill="${rColor(v)}"/>`).join('')}
+  </svg>`;
+}
+function feedHTML(list, withName) {
+  if (!list.length) return '<p class="muted">אין תיעודים בסינון הזה.</p>';
+  return `<ul class="feed">${list.map(e => `<li><span class="when">${fmt(e.date)}</span><div class="what">
+    <div class="head"><span class="kind">${KIND[e.kind]}</span>${withName ? `<b>${esc(e.t.name)}</b>` : ''}${e.x.test ? `<span class="mono small">${esc(e.x.test)} · ${e.x.score ?? '—'}${e.x.self ? ' · לדבריו/ה: ' + esc(e.x.self) : ''}</span>` : ''}${e.kind === 'status' ? `<span class="assess">${e.by === 'agent' ? 'הצעת הסוכן' : 'מפקד'}</span>` : ''}</div>
+    <p class="ex">${redact(e.ex)}</p></div></li>`).join('')}</ul>`;
+}
+let feedFilter = 'all';
+function feedFilterChips(list, id) {
+  const kinds = [...new Set(list.map(e => e.kind))];
+  return `<div class="chips" data-feedfilter="${id}">${['all', ...kinds].map(k => `<button class="chip" data-k="${k}" aria-pressed="${feedFilter === k}">${k === 'all' ? 'הכל' : KIND[k]}</button>`).join('')}</div>`;
+}
+const filtered = list => feedFilter === 'all' ? list : list.filter(e => e.kind === feedFilter);
+function skillGridHTML(compact) {
+  const A = TRAINEES.slice().sort((a, b) => (a.left ? 1 : 0) - (b.left ? 1 : 0) || ['concern', 'watch', 'good'].indexOf(a.status) - ['concern', 'watch', 'good'].indexOf(b.status));
+  const weak = new Set(sharedWeak().map(w => w.sk.id));
+  return `<table class="mx">
+    <thead><tr class="stages"><th class="first"></th>${STAGES.map(st => `<th colspan="${st.skills.length}" class="gstart">${st.name}</th>`).join('')}</tr>
+    <tr class="skills"><th class="first" style="vertical-align:bottom">${compact ? '' : '<span class="small muted" style="writing-mode:horizontal-tb;transform:none">חניך · ימים מאז שיחה</span>'}</th>${STAGES.map(st => st.skills.map(([sid, nm], i) => `<th class="${i === 0 ? 'gstart' : ''} ${weak.has(sid) ? 'weak' : ''}" title="${esc(nm)}"><span>${esc(nm)}</span></th>`).join('')).join('')}</tr></thead>
+    <tbody>${A.map(t => `<tr class="${t.left ? 'left' : ''}"><td class="first"><div class="nm"><button data-open="${t.id}"><span class="dot ${t.left ? 'left' : t.status}"></span>${esc(t.name)}</button><span style="display:inline-flex;gap:4px">${evTag(t)}${daysChip(t)}</span></div></td>
+      ${STAGES.map(st => st.skills.map(([sid], i) => `<td class="c ${i === 0 ? 'gstart' : ''}" data-cell="${t.id}|${sid}">${rc(cellOf(t, sid))}</td>`).join('')).join('')}</tr>`).join('')}
+      <tr class="team"><td class="first">ממוצע צוות (פעילים)</td>${STAGES.map(st => st.skills.map(([sid], i) => { const v = teamAvg(sid); return `<td class="${i === 0 ? 'gstart' : ''}"><span class="avg">${v == null ? '—' : v.toFixed(1)}</span></td>`; }).join('')).join('')}</tr>
+    </tbody></table>`;
+}
+
+// ================= Variant A: action board =================
+let aTab = 'team', aOpen = null;
+function VariantA() {
+  const s = stats(), A = active();
+  const talks = A.slice().sort((a, b) => (talkDays(b) ?? 999) - (talkDays(a) ?? 999));
+  const attn = A.filter(t => t.status !== 'good').sort((a, b) => (a.status === 'concern' ? -1 : 1) - (b.status === 'concern' ? -1 : 1));
+  const maxD = 28;
+  const tabs = [['team', 'צוות'], ['skills', 'לוח מיומנויות'], ['feed', 'תיעודים אחרונים']];
+  let body = '';
+  if (aTab === 'team') body = `
+    <div class="A-split">
+      <section class="A-panel"><div class="sec-head"><h2>מי צריך שיחה</h2><span class="small muted">יעד ${META.settings.target} ימים</span></div>
+        <div>${talks.map(t => { const d = talkDays(t), b = talkBand(t); return `<button class="A-talk" data-open="${t.id}"><span class="A-name" style="font-weight:600">${esc(t.name)} ${evTag(t)}</span>
+          <span class="A-meter"><i style="width:${Math.min(100, (d ?? maxD) / maxD * 100)}%;background:var(--${b === 'g' ? 'good' : b === 'y' ? 'watch' : 'concern'})"></i><span class="tick" style="inset-inline-start:${META.settings.target / maxD * 100}%"></span><span class="tick" style="inset-inline-start:${META.settings.yellow / maxD * 100}%"></span></span>
+          <span class="days ${b}">${d === null ? 'טרם' : d + ' ימ׳'}</span></button>`; }).join('')}</div></section>
+      <section class="A-panel"><div class="sec-head"><h2>דורשים תשומת לב</h2><span class="small muted">תמונת מצב היא הערכה של הסוכן</span></div>
+        <div class="A-attn">${attn.map(t => `<button data-open="${t.id}" data-s="${t.status}"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${esc(t.name)}</b>${statusPill(t)}${evTag(t)}${daysChip(t)}</div><span class="small">${redact(t.snapshot.text)}</span>${t.followups.length ? `<span class="small muted">נקודה פתוחה: ${esc(t.followups[0].text)}</span>` : ''}</button>`).join('')}</div>
+        ${sharedWeak().length ? `<h3 style="margin-top:6px">חולשות משותפות</h3><div class="A-weak">${sharedWeak().map(w => `<span>${esc(w.sk.name)} <span class="muted small">(${w.sk.stage.short})</span> · ${w.who.map(t => esc(t.name)).join(', ')}</span>`).join('')}</div>` : ''}
+      </section>
+    </div>
+    <section class="sec"><div class="sec-head"><h2>כל החניכים</h2><span class="small muted">ממוצע לפי שלב, רק מיומנויות עם תיעוד</span></div>
+      <div class="A-cards">${TRAINEES.map(t => `<button class="A-card ${t.left ? 'A-left' : ''}" data-open="${t.id}">
+        <div class="row"><b style="font-size:1.05rem">${esc(t.name)}</b><span style="display:inline-flex;gap:6px">${evTag(t)}${statusPill(t)}</span></div>
+        <div class="A-bars">${STAGES.map(st => { const v = stageAvg(t, st); return `<div class="A-bar"><span>${st.short}</span><span class="track"><i style="width:${v ? v / 5 * 100 : 0}%;background:${rColor(v)}"></i></span><span class="num">${v ? v.toFixed(1) : '—'}</span></div>`; }).join('')}</div>
+        <div class="row small muted"><span>${t.left ? 'עזב ' + fmt(t.left.date) + ' · ' + esc(t.left.reason) : 'שיחה אחרונה ' + fmt(t.lastTalk)}</span>${daysChip(t)}</div></button>`).join('')}</div></section>`;
+  if (aTab === 'skills') body = `<div class="sec">${legend()}<div class="A-grid-wrap">${skillGridHTML(true)}</div><p class="small muted">כותרת באדום = חולשה משותפת (3+ חניכים ב-1–2). לחיצה על שם פותחת את החניך.</p></div>`;
+  if (aTab === 'feed') { const all = allEvidence().filter(e => !e.t.left); body = `<div class="sec">${feedFilterChips(all, 'a')}<div class="A-panel">${feedHTML(filtered(all).slice(0, 25), true)}</div></div>`; }
+  return `<div class="A">
+    <header class="A-top"><div style="display:grid;gap:4px"><span class="proto-banner">אב-טיפוס · נתוני דמה</span><h1>${META.cycle.name}</h1><span class="muted">שבוע ${WEEK} מתוך ${META.cycle.weeks} · מפקד: ${META.settings.commander}</span></div></header>
+    <div class="A-stats">
+      <div class="A-stat"><span class="sub">חניכים פעילים</span><b>${s.n}</b><span class="sub">אחד עזב</span></div>
+      <div class="A-stat"><span class="sub">צריכים שיחה</span><b style="color:var(--concern)">${s.band.r}</b><span class="sub">ועוד ${s.band.y} מתקרבים</span></div>
+      <div class="A-stat"><span class="sub">סטטוס</span><b><span style="color:var(--good)">${s.st.good}</span>·<span style="color:var(--watch)">${s.st.watch}</span>·<span style="color:var(--concern)">${s.st.concern}</span></b><span class="sub">במסלול · במעקב · דורש טיפול</span></div>
+      <div class="A-stat"><span class="sub">בתהליך הערכה</span><b>${s.evalN}</b><span class="sub">${A.filter(t => t.evalStage).map(t => t.name + ' (' + t.evalStage + ')').join(', ')}</span></div>
+      <div class="A-stat"><span class="sub">כיסוי מיומנויות</span><b>${s.cover}%</b><span class="sub">${s.stale} דירוגים ישנים</span></div>
+    </div>
+    <nav class="A-tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" data-atab="${k}" aria-selected="${aTab === k}">${l}</button>`).join('')}</nav>
+    ${body}
+    ${aOpen ? sheetA(TRAINEES.find(t => t.id === aOpen)) : ''}
+  </div>`;
+}
+function sheetA(t) {
+  const ev = evidenceOf(t).slice(0, 5);
+  return `<div class="A-sheet-bg" data-close="1"><div class="A-sheet" role="dialog" aria-label="${esc(t.name)}">
+    <div class="sec-head"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h1>${esc(t.name)}</h1>${statusPill(t)}${evTag(t)}${daysChip(t)}</div><button class="closeX" data-close="1">סגירה</button></div>
+    <div><span class="assess">הערכה</span> <span class="small muted">${fmt(t.snapshot.at)}</span><p style="margin:.3em 0 0">${redact(t.snapshot.text)}</p></div>
+    <div class="cols">
+      <div class="A-panel"><h3>שיפור</h3>${t.items.filter(i => i.k === 'improve').map(i => `<div>${esc(i.text)}${i.s ? ' <span class="assess">הצעה</span>' : ''}</div>`).join('') || '<span class="muted">—</span>'}</div>
+      <div class="A-panel"><h3>שימור</h3>${t.items.filter(i => i.k === 'keep').map(i => `<div>${esc(i.text)}${i.s ? ' <span class="assess">הצעה</span>' : ''}</div>`).join('') || '<span class="muted">—</span>'}</div>
+    </div>
+    ${t.followups.length ? `<div><h3>נקודות פתוחות</h3><ul style="margin:.3em 0 0">${t.followups.map(f => `<li>${esc(f.text)} <span class="small muted">${fmt(f.at)}</span></li>`).join('')}</ul></div>` : ''}
+    <div class="sec"><h3>מיומנויות לפי שלב</h3>${STAGES.map(st => `<div style="display:grid;gap:4px"><span class="small muted">${st.name}</span><div style="display:flex;gap:4px;flex-wrap:wrap">${st.skills.map(([sid, nm]) => rc(cellOf(t, sid), nm)).join('')}</div></div>`).join('')}<p class="small muted">ריחוף על ריבוע מראה את שם המיומנות. היסטוריה מלאה: בתיק החניך (גרסה ג׳) או בצ׳אט.</p></div>
+    <div><h3>תיעודים אחרונים</h3>${feedHTML(ev, false)}</div>
+  </div></div>`;
+}
+
+// ================= Variant B: skill matrix =================
+let bSel = null; // {tid, sid} or {tid}
+function VariantB() {
+  const s = stats();
+  return `<div class="B">
+    <header class="B-head"><div style="display:grid;gap:2px"><span class="proto-banner" style="justify-self:start">אב-טיפוס · נתוני דמה</span><h1>${META.cycle.name} <span class="muted" style="font-size:.9rem;font-family:var(--body)">שבוע ${WEEK}/${META.cycle.weeks}</span></h1></div>
+      <p class="B-line" style="margin:0"><b>${s.n}</b> פעילים · <b style="color:var(--concern)">${s.band.r}</b> צריכים שיחה · <b style="color:var(--concern)">${s.st.concern}</b> דורשים טיפול · <b>${s.cover}%</b> כיסוי · <b>${s.stale}</b> ישנים</p></header>
+    ${legend()}
+    <div class="B-wrap">${skillGridHTML(false).replace(/data-cell="([^"]+)"/g, (m, k) => { const [tid, sid] = k.split('|'); return m + (bSel && bSel.tid === tid && bSel.sid === sid ? ' data-sel' : ''); }).replace(/class="c ([^"]*)" data-cell="([^"]+)" data-sel/g, 'class="c sel $1" data-cell="$2"')}</div>
+    <p class="small muted">לחיצה על ריבוע: היסטוריית הדירוג והתיעודים שמאחוריו. לחיצה על שם: סיכום החניך. שורה אחרונה = ממוצע הצוות לכל מיומנות.</p>
+    ${bSel ? drawerB() : ''}
+  </div>`;
+}
+function drawerB() {
+  const t = TRAINEES.find(x => x.id === bSel.tid);
+  if (!bSel.sid) {
+    return `<aside class="B-drawer"><div class="sec-head"><h2>${esc(t.name)}</h2><button class="closeX" data-bclose="1">סגירה</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${statusPill(t)}${evTag(t)}${daysChip(t)}</div>
+      <div><span class="assess">הערכה</span><p style="margin:.3em 0 0">${redact(t.snapshot.text)}</p></div>
+      <div class="sec">${STAGES.map(st => { const v = stageAvg(t, st); return `<div style="display:flex;justify-content:space-between"><span>${st.name}</span><span class="rc r${v ? Math.round(v) : 0}" style="width:44px">${v ? v.toFixed(1) : '·'}</span></div>`; }).join('')}</div>
+      ${t.followups.length ? `<div><h3>נקודות פתוחות</h3>${t.followups.map(f => `<div class="small">• ${esc(f.text)}</div>`).join('')}</div>` : ''}
+      <div><h3>תיעודים אחרונים</h3>${feedHTML(evidenceOf(t).slice(0, 4), false)}</div></aside>`;
+  }
+  const sk = SKILL[bSel.sid], c = cellOf(t, sk.id);
+  const ev = evidenceOf(t).filter(e => e.skills.includes(sk.id));
+  return `<aside class="B-drawer"><div class="sec-head"><div><span class="small muted">${esc(t.name)} · ${sk.stage.name}</span><h2>${esc(sk.name)}</h2></div><button class="closeX" data-bclose="1">סגירה</button></div>
+    ${c ? `<div class="B-big">${rc(c)}<div class="small"><div>${c.author === 'commander' ? 'דירוג מפקד' : 'הערכת הסוכן <span class="assess">הערכה</span>'} · ${fmt(c.date)}</div><div class="muted">${c.trend === null ? 'אין בסיס למגמה (לא דורג לפני 4 שבועות)' : c.trend > 0 ? 'עלה מול לפני 4 שבועות' : c.trend < 0 ? 'ירד מול לפני 4 שבועות' : 'ללא שינוי מול לפני 4 שבועות'}</div><div class="muted">${c.n} תיעודים${c.stale ? ' · לא נבדק מעל 6 שבועות' : ''}</div></div></div>
+      <div><h3>היסטוריית הערכות</h3>${histSvg(c.hist, 360, 60)}<div class="small muted">עיגול = הסוכן · ריבוע = מפקד · ימין = תחילת המחזור</div>
+      <ul class="feed">${c.hist.slice().reverse().map(([dt, v, a]) => `<li><span class="when">${fmt(dt)}</span><div class="what"><div class="head"><span class="rc r${v}" style="width:24px;height:20px">${v}</span><span class="small">${a === 'commander' ? 'מפקד' : 'הסוכן'}</span></div></div></li>`).join('')}</ul></div>`
+      : '<p class="muted">אין עדיין תיעוד למיומנות הזו.</p>'}
+    <div><h3>תיעודים שמאחורי הדירוג</h3>${ev.length ? feedHTML(ev, false) : '<p class="small muted">בנתוני הדמה אין קישור לתיעודים לריבוע הזה.</p>'}</div>
+  </aside>`;
+}
+
+// ================= Variant C: Trainee file =================
+let cSel = 't-a81k2c';
+function VariantC() {
+  const groups = [['concern', 'דורשים טיפול'], ['watch', 'במעקב'], ['good', 'במסלול']];
+  const nav = `<nav class="C-nav"><div style="display:grid;gap:2px"><span class="proto-banner" style="justify-self:start">אב-טיפוס · נתוני דמה</span><h2 style="margin-top:6px">${META.cycle.name}</h2><span class="small muted">שבוע ${WEEK}/${META.cycle.weeks}</span></div>
+    <div class="C-list"><button class="C-item" data-home="1"><span class="nm">→ לעיגולי השיחות</span></button>
+    ${groups.map(([s, l]) => `<h3>${l}</h3>${active().filter(t => t.status === s).map(t => `<button class="C-item" data-c="${t.id}" aria-current="${cSel === t.id}"><span class="nm"><span class="dot ${s}"></span>${esc(t.name)} ${evTag(t)}</span>${daysChip(t)}</button>`).join('')}`).join('')}
+    <h3>עזבו</h3>${TRAINEES.filter(t => t.left).map(t => `<button class="C-item" data-c="${t.id}" aria-current="${cSel === t.id}" style="opacity:.6"><span class="nm"><span class="dot left"></span>${esc(t.name)}</span></button>`).join('')}</div></nav>`;
+  return `<div class="C">${nav}<main class="C-main">${cSel === 'team' ? teamC() : fileC(TRAINEES.find(t => t.id === cSel))}</main></div>`;
+}
+function teamC() {
+  const s = stats(), A = active(), all = allEvidence().filter(e => !e.t.left);
+  const overdue = A.filter(t => talkBand(t) === 'r'), soon = A.filter(t => talkBand(t) === 'y');
+  return `<section class="C-hdr"><h1>הצוות</h1>
+      <p class="C-snap">${s.n} חניכים פעילים. ${overdue.length ? `<b style="color:var(--concern)">${overdue.map(t => t.name).join(', ')}</b> עברו ${META.settings.yellow} ימים בלי שיחה` : 'כולם בתוך יעד השיחות'}${soon.length ? `, ו<b style="color:var(--watch)">${soon.map(t => t.name).join(', ')}</b> מתקרבים` : ''}. ${s.st.concern} דורשים טיפול, ${s.evalN} בתהליך הערכה. ${s.cover}% מהמיומנויות מכוסות בתיעוד, ${s.stale} מהדירוגים לא נבדקו מעל 6 שבועות.</p></section>
+    <section class="C-two">
+      <div class="panel C-teamstage"><h2>ממוצע צוות לפי שלב</h2>${STAGES.map(st => { const v = A.map(t => stageAvg(t, st)).filter(Boolean); const m = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; return `<div class="C-tsrow"><span>${st.name}</span><span class="track"><i style="width:${m ? m / 5 * 100 : 0}%;background:${rColor(m)}"></i></span><span class="num">${m ? m.toFixed(1) : '—'}</span></div>`; }).join('')}</div>
+      <div class="panel"><h2>חולשות משותפות</h2><div style="display:grid;gap:8px;margin-top:8px">${sharedWeak().map(w => `<div><b>${esc(w.sk.name)}</b> <span class="small muted">${w.sk.stage.name}</span><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px">${w.who.map(t => `<span class="small" style="display:inline-flex;gap:4px;align-items:center">${rc(cellOf(t, w.sk.id))}${esc(t.name)}</span>`).join('')}</div></div>`).join('')}</div></div>
+    </section>
+    <section class="sec"><div class="sec-head"><h2>תיעודים אחרונים</h2></div>${feedFilterChips(all, 'c')}<div class="panel">${feedHTML(filtered(all).slice(0, 20), true)}</div></section>`;
+}
+// ---------- growth & trend charts ----------
+const weekEnd = w => new Date(Math.min(D(META.cycle.start).getTime() + (7 * w - 1) * 864e5, TODAY.getTime()));
+const mean = v => v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+const avgAt = (t, skills, asOf) => mean(skills.map(sid => t.skills[sid] ? ratingAt(t.skills[sid].a, asOf) : null).filter(Boolean).map(r => r.score));
+const ALL_SKILLS = Object.keys(SKILL);
+const weekly = (t, skills) => Array.from({ length: WEEK }, (_, i) => avgAt(t, skills, weekEnd(i + 1)));
+const teamWeekly = skills => Array.from({ length: WEEK }, (_, i) => mean(active().map(t => avgAt(t, skills, weekEnd(i + 1))).filter(v => v != null)));
+const f1 = v => v == null ? '—' : v.toFixed(1);
+// line chart: weeks run right → left (Cycle start on the right), y = 1–5. Hover handled globally via data-lc.
+function lineChart(series, { W = 300, H = 130, axis = true } = {}) {
+  const pl = 8, pr = axis ? 22 : 6, pt = 8, pb = axis ? 20 : 6, pw = W - pl - pr, ph = H - pt - pb;
+  const x = i => W - pr - (WEEK > 1 ? i / (WEEK - 1) : 0) * pw, y = v => pt + (5 - v) / 4 * ph;
+  const path = vals => { let d = '', on = false; vals.forEach((v, i) => { if (v == null) { on = false; return; } d += (on ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); on = true; }); return d; };
+  const grid = axis ? [1, 2, 3, 4, 5].map(v => `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${W - pr + 5}" y="${y(v) + 4}" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${v}</text>`).join('')
+    + [1, 5, 9, 13, 17, 21].filter(w => w <= WEEK).map(w => `<text x="${x(w - 1)}" y="${H - 5}" font-size="10" fill="var(--muted)" text-anchor="middle">ש׳ ${w}</text>`).join('') : '';
+  const last = s => { for (let i = s.vals.length - 1; i >= 0; i--) if (s.vals[i] != null) return [i, s.vals[i]]; return null; };
+  const marks = series.map(s => `<path d="${path(s.vals)}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`).join('')
+    + series.filter(s => s.dot).map(s => { const l = last(s); return l ? `<circle cx="${x(l[0])}" cy="${y(l[1])}" r="4" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>` : ''; }).join('');
+  const data = esc(JSON.stringify({ W, pl, pr, pt, ph, s: series.map(s => ({ n: s.name, c: s.color, v: s.vals })) }));
+  return `<svg class="lc" viewBox="0 0 ${W} ${H}" direction="ltr" data-lc="${data}" role="img" aria-label="${esc(series.map(s => s.name + ' ' + f1(last(s)?.[1])).join(', '))}">
+    ${grid}${axis ? `<line x1="${pl}" x2="${W - pr}" y1="${pt + ph}" y2="${pt + ph}" stroke="var(--axis)" stroke-width="1"/>` : ''}${marks}
+    <line class="xh" x1="0" x2="0" y1="${pt}" y2="${pt + ph}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg>`;
+}
+function growthC(t) {
+  const me = weekly(t, ALL_SKILLS), team = teamWeekly(ALL_SKILLS);
+  const now = me[WEEK - 1], then = WEEK > 4 ? me[WEEK - 5] : null, dlt = now != null && then != null ? now - then : null;
+  const cells = ALL_SKILLS.map(sid => [sid, cellOf(t, sid)]).filter(([, c]) => c);
+  const movers = cells.filter(([, c]) => c.trend !== null).map(([sid, c]) => { const p = ratingAt(c.hist, new Date(TODAY - 28 * 864e5)); return [sid, c.score - p.score]; }).filter(([, d]) => d !== 0).sort((a, b) => b[1] - a[1]);
+  const flat = cells.filter(([, c]) => c.trend === 0).length, nobase = cells.filter(([, c]) => c.trend === null).length;
+  const firstWk = me.findIndex(v => v != null);
+  const stagePanels = STAGES.map(st => { const ids = st.skills.map(s => s[0]); const s = weekly(t, ids); const tm = teamWeekly(ids); const fi = s.findIndex(v => v != null); const ch = fi >= 0 && s[WEEK - 1] != null ? s[WEEK - 1] - s[fi] : null;
+    return { st, s, tm, ch }; });
+  return `<section class="sec G"><div class="sec-head"><h2>צמיחה ומגמות</h2><span class="small muted">ממוצע הדירוגים בסוף כל שבוע · ימין = תחילת המחזור</span></div>
+    <div class="G-tiles">
+      <div class="G-tile"><span class="lbl">ממוצע כל המיומנויות</span><span class="val">${f1(now)}</span>
+        <span class="delta">${dlt == null ? 'אין בסיס להשוואה' : (dlt > 0 ? '↑ +' : dlt < 0 ? '↓ ' : '') + dlt.toFixed(1) + ' מול לפני 4 שבועות'} · צוות ${f1(team[WEEK - 1])}</span>
+        ${lineChart([{ name: 'צוות', color: 'var(--cmp)', vals: team }, { name: t.name, color: 'var(--s1)', vals: me, dot: true }], { W: 240, H: 46, axis: false })}</div>
+      <div class="G-tile"><span class="lbl">ב-4 השבועות האחרונים</span><span class="val">${movers.filter(m => m[1] > 0).length} <span class="small muted" style="font-weight:400">עלו</span> · ${movers.filter(m => m[1] < 0).length} <span class="small muted" style="font-weight:400">ירדו</span></span>
+        <span class="delta">${flat} ללא שינוי · ${nobase} חדשות (בלי בסיס)</span></div>
+      <div class="G-tile"><span class="lbl">מכוסות בתיעוד</span><span class="val">${cells.length}/${ALL_SKILLS.length}</span>
+        <span class="delta">דירוג ראשון בשבוע ${firstWk + 1} · ${cells.filter(([, c]) => c.stale).length} ישנים</span></div>
+    </div>
+    <div class="G-key"><span><i style="background:var(--s1)"></i>${esc(t.name)}</span><span><i style="background:var(--cmp)"></i>ממוצע הצוות</span></div>
+    <div class="G-mult">${stagePanels.map(p => `<div class="G-panel"><div class="t"><span>${p.st.name}</span><span class="num">${f1(p.s[WEEK - 1])}${p.ch ? ` (${p.ch > 0 ? '+' : ''}${p.ch.toFixed(1)} מתחילת המחזור)` : ''}</span></div>
+      ${lineChart([{ name: 'צוות', color: 'var(--cmp)', vals: p.tm }, { name: t.name, color: 'var(--s1)', vals: p.s, dot: true }])}</div>`).join('')}</div>
+    <details><summary class="small muted" style="cursor:pointer">הצג כטבלה</summary><div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>שבוע</th>${stagePanels.map(p => `<th>${p.st.short}</th>`).join('')}<th>הכל</th><th>צוות</th></tr></thead>
+      <tbody>${me.map((v, i) => `<tr><td>${i + 1}</td>${stagePanels.map(p => `<td>${f1(p.s[i])}</td>`).join('')}<td>${f1(v)}</td><td>${f1(team[i])}</td></tr>`).join('')}</tbody></table></div></details>
+    <div class="panel G-mv"><h3>מה זז ב-4 השבועות האחרונים</h3>
+      ${movers.length ? movers.map(([sid, d]) => `<div class="row" data-tip="${esc(SKILL[sid].name + ' · ' + SKILL[sid].stage.name + '|' + (d > 0 ? 'עלה' : 'ירד') + ' ' + Math.abs(d) + ' מול לפני 4 שבועות, עכשיו ' + cellOf(t, sid).score)}"><span>${esc(SKILL[sid].name)} <span class="small muted">${SKILL[sid].stage.short}</span></span>
+        <span class="track"><span class="bar ${d > 0 ? 'up' : 'dn'}" style="width:${Math.abs(d) / 4 * 50}%"></span></span><span class="v">${d > 0 ? '↑ +' + d : '↓ ' + d}</span></div>`).join('') : '<p class="muted small">אין שינויים ב-4 השבועות האחרונים.</p>'}
+    </div>
+  </section>`;
+}
+function fileC(t) {
+  const ev = evidenceOf(t);
+  return `<section class="C-hdr"><div class="meta"><h1>${esc(t.name)}</h1>${statusPill(t)}${evTag(t)}${daysChip(t)}</div>
+      <span class="small muted">${t.left ? 'עזב ב-' + fmt(t.left.date) + ' · ' + esc(t.left.reason) + ' · לקריאה בלבד, לא נכלל בסטטיסטיקה' : 'שיחה אחרונה ' + fmt(t.lastTalk)}</span>
+      <div><span class="assess">הערכה</span> <span class="small muted">תמונת מצב · ${fmt(t.snapshot.at)}</span><p class="C-snap" style="margin-top:4px">${redact(t.snapshot.text)}</p></div></section>
+    ${growthC(t)}
+    <section class="C-two">
+      <div class="panel"><h2>שיפור</h2><ul>${t.items.filter(i => i.k === 'improve').map(i => `<li>${esc(i.text)}${i.s ? ' <span class="assess">הצעה</span>' : ''}</li>`).join('') || '<li class="muted">—</li>'}</ul></div>
+      <div class="panel"><h2>שימור</h2><ul>${t.items.filter(i => i.k === 'keep').map(i => `<li>${esc(i.text)}${i.s ? ' <span class="assess">הצעה</span>' : ''}</li>`).join('') || '<li class="muted">—</li>'}</ul></div>
+    </section>
+    ${t.followups.length ? `<section class="panel"><h2>נקודות פתוחות</h2><ul class="C-fu" style="margin-top:6px">${t.followups.map(f => `<li>${esc(f.text)} <span class="small muted">מ-${fmt(f.at)}</span></li>`).join('')}</ul></section>` : ''}
+    <section class="sec"><div class="sec-head"><h2>מיומנויות לאורך המחזור</h2>${legend()}</div>
+      <div class="C-stages">${STAGES.map(st => { const v = stageAvg(t, st); return `<div class="C-stage"><h3>${st.name} <span class="num small muted">${v ? v.toFixed(1) : '—'}</span></h3>
+        ${st.skills.map(([sid, nm]) => { const c = cellOf(t, sid); return `<div class="C-sk"><span class="lbl">${esc(nm)}</span>${rc(c)}${c ? histSvg(c.hist) : '<span class="hist small muted">אין תיעוד</span>'}<span class="n">${c ? c.n + ' תיעוד' + (c.n > 1 ? 'ים' : '') : ''}</span></div>`; }).join('')}</div>`; }).join('')}</div>
+      <p class="small muted">קו הזמן: ימין = תחילת המחזור (${fmt(META.cycle.start)}), שמאל = היום. עיגול = הסוכן, ריבוע = מפקד.</p></section>
+    <section class="sec"><h2>ציר זמן</h2>${feedFilterChips(ev, 'c')}<div class="panel">${feedHTML(filtered(ev), false)}</div></section>`;
+}
+
+// ================= Variant D: Talk circles (Commander's design) =================
+// Continuous green → red by days since last Talk, anchored on the Commander's thresholds:
+// 0 days green, target lime, yellow threshold amber, +7 red, +14 deep red. Never talked = deepest.
+function talkColor(d) {
+  const T = META.settings.target, Y = META.settings.yellow;
+  const stops = [[0, 140, 55, 38], [T, 78, 62, 42], [Y, 38, 88, 48], [Y + 7, 6, 72, 46], [Y + 14, 355, 70, 30]];
+  const x = d === null ? Y + 14 : Math.min(d, Y + 14);
+  let i = 0; while (i < stops.length - 2 && x > stops[i + 1][0]) i++;
+  const [a, b] = [stops[i], stops[i + 1]], f = (x - a[0]) / (b[0] - a[0] || 1);
+  let h = a[1] + ((b[1] > 180 && a[1] < 180 ? b[1] - 360 : b[1]) - a[1]) * f; if (h < 0) h += 360;
+  const s = a[2] + (b[2] - a[2]) * f, l = a[3] + (b[3] - a[3]) * f;
+  return { bg: `hsl(${h.toFixed(0)} ${s.toFixed(0)}% ${l.toFixed(0)}%)`, ink: h > 30 && h < 100 && l > 40 ? '#1d1a0c' : '#ffffff' };
+}
+let dOpen = null;
+function VariantD() {
+  const A = active().slice().sort((a, b) => (talkDays(b) ?? 999) - (talkDays(a) ?? 999));
+  const Y = META.settings.yellow, max = Y + 14;
+  const grad = Array.from({ length: 11 }, (_, i) => talkColor(i / 10 * max).bg).join(', ');
+  const left = TRAINEES.filter(t => t.left);
+  return `<div class="D">
+    <header class="D-head"><span class="proto-banner">אב-טיפוס · נתוני דמה</span><h1>${META.cycle.name}</h1><span class="muted">שבוע ${WEEK} מתוך ${META.cycle.weeks} · ימים מאז השיחה האחרונה</span>
+      <div class="D-scale" aria-hidden="true"><div class="bar" style="background:linear-gradient(to left, ${grad})"></div>
+        <div class="ticks">${[0, META.settings.target, Y, Y + 7, max].map(v => `<span style="right:${v / max * 100}%">${v === max ? v + '+' : v}</span>`).join('')}</div></div></header>
+    <div class="D-ring">${A.map(t => { const d = talkDays(t), c = talkColor(d); return `<button class="D-c" data-dopen="${t.id}" style="background:${c.bg};color:${c.ink}" aria-label="${esc(t.name)}, ${d === null ? 'טרם נערכה שיחה' : d + ' ימים מאז שיחה'}">${t.evalStage ? `<i class="ev">${esc(t.evalStage)}</i>` : ''}<b>${esc(t.name)}</b><span>${d === null ? 'טרם' : d + ' ימים'}</span></button>`; }).join('')}</div>
+    ${left.length ? `<p class="D-left">עזבו: ${left.map(t => esc(t.name)).join(', ')}</p>` : ''}
+    ${dOpen ? modalD(TRAINEES.find(t => t.id === dOpen)) : ''}
+  </div>`;
+}
+function modalD(t) {
+  const ev = evidenceOf(t), d = talkDays(t), c = talkColor(d), x = EXTRA[t.id] || { q: [] };
+  const goal = ev.find(e => e.kind === 'goal'), bg = ev.find(e => e.kind === 'background');
+  return `<div class="D-bg" data-dclose="1"><div class="D-modal" role="dialog" aria-modal="true" aria-label="${esc(t.name)}">
+    <div class="top" style="background:${c.bg};color:${c.ink}"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h1>${esc(t.name)}</h1>${t.evalStage ? `<span class="evtag" style="background:var(--surface);color:var(--concern)">${esc(t.evalStage)}</span>` : ''}</div>
+      <span style="display:inline-flex;gap:8px"><button class="closeX" data-file="${t.id}" style="background:rgb(255 255 255 / .85);color:#1b201c">לתיק המלא</button><button class="closeX" data-dclose="1" style="background:rgb(255 255 255 / .85);color:#1b201c">סגירה</button></span></div>
+    <section><h2>תמונת מצב <span class="assess">הערכה</span></h2><p style="margin:0;max-width:65ch">${redact(t.snapshot.text)}</p></section>
+    <section><h2>מיומנויות</h2><div class="D-sk">${STAGES.map(st => { const rated = st.skills.filter(([sid]) => cellOf(t, sid)); const none = st.skills.length - rated.length; return `<div class="st"><span class="small muted">${st.name}</span><div class="row">${rated.map(([sid, nm]) => `<span class="one">${rc(cellOf(t, sid))}${esc(nm)}</span>`).join('')}${none ? `<span class="one muted small">${rated.length ? '+' : ''}${none} ללא תיעוד</span>` : ''}</div></div>`; }).join('')}</div>${legend()}</section>
+    <section><h2>פרטים</h2><dl class="D-info">
+      <dt>סטטוס</dt><dd>${statusPill(t)}</dd>
+      <dt>תהליך הערכה</dt><dd>${t.evalStage ? esc(t.evalStage) : '—'}</dd>
+      <dt>שיחה אחרונה</dt><dd>${t.lastTalk ? fmt(t.lastTalk) + ' · ' + d + ' ימים' : 'טרם נערכה'}</dd>
+      <dt>צוות פרויקט</dt><dd>${esc(x.team || '—')}</dd>
+      ${goal ? `<dt>שאיפות</dt><dd>${redact(goal.ex)}</dd>` : ''}
+      ${bg ? `<dt>רקע</dt><dd>${redact(bg.ex)}</dd>` : ''}
+      <dt>תיעודים</dt><dd>${ev.length}, האחרון ב-${ev.length ? fmt(ev[0].date) : '—'}</dd>
+    </dl></section>
+    <section><h2>לשיחה הבאה</h2><ul class="D-q">
+      ${t.followups.map(f => `<li><span>${esc(f.text)}</span><span class="src">נקודה פתוחה מ-${fmt(f.at)}</span></li>`).join('')}
+      ${x.q.map(q => `<li><span>${esc(q)}</span><span class="src">שאלה מוצעת <span class="assess">הצעה</span></span></li>`).join('')}
+      ${!t.followups.length && !x.q.length ? '<li class="muted">אין נקודות פתוחות.</li>' : ''}
+    </ul></section>
+  </div></div>`;
+}
+
+// ---------- switcher + wiring ----------
+// Winner (Commander, 2026-10-29): Talk circles → Trainee window → full Trainee file. Losing variants: dashboard-prototype-all-variants.html
+const VARIANTS = [['d', 'עיגולי שיחות', VariantD], ['c', 'תיק חניך', VariantC]];
+const cur = () => { const m = location.hash.match(/^#variant-([cd])$/); return m ? m[1] : 'd'; };
+function go(k) { feedFilter = 'all'; location.hash = 'variant-' + k; }
+function render() {
+  const v = VARIANTS.find(x => x[0] === cur());
+  document.getElementById('app').innerHTML = v[2]();
+  const i = VARIANTS.indexOf(v);
+  document.getElementById('switcher').hidden = true;
+}
+function step(d) { const i = VARIANTS.findIndex(x => x[0] === cur()); go(VARIANTS[(i + d + VARIANTS.length) % VARIANTS.length][0]); }
+document.addEventListener('click', e => {
+  const q = s => e.target.closest(s);
+  if (q('#sw-prev')) return step(-1);
+  if (q('#sw-next')) return step(1);
+  if (q('#sw-theme')) { const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme = dark ? 'light' : 'dark'; return; }
+  const ft = q('[data-feedfilter] .chip'); if (ft) { feedFilter = ft.dataset.k; return render(); }
+  if (cur() === 'd') {
+    const fl = q('[data-file]'); if (fl) { dOpen = null; cSel = fl.dataset.file; go('c'); window.scrollTo({ top: 0 }); return; }
+    if (q('.closeX[data-dclose]') || e.target.dataset.dclose) { dOpen = null; return render(); }
+    const o = q('[data-dopen]'); if (o) { dOpen = o.dataset.dopen; return render(); }
+  }
+  if (cur() === 'a') {
+    const tab = q('[data-atab]'); if (tab) { aTab = tab.dataset.atab; feedFilter = 'all'; return render(); }
+    if (q('[data-close]') && (e.target.dataset.close || q('.closeX'))) { aOpen = null; return render(); }
+    const o = q('[data-open]'); if (o) { aOpen = o.dataset.open; return render(); }
+  }
+  if (cur() === 'b') {
+    if (q('[data-bclose]')) { bSel = null; return render(); }
+    const c = q('[data-cell]'); if (c) { const [tid, sid] = c.dataset.cell.split('|'); bSel = { tid, sid }; return render(); }
+    const o = q('[data-open]'); if (o) { bSel = { tid: o.dataset.open }; return render(); }
+  }
+  if (cur() === 'c' && q('[data-home]')) { go('d'); window.scrollTo({ top: 0 }); return; }
+  if (cur() === 'c') { const c = q('[data-c]'); if (c) { cSel = c.dataset.c; feedFilter = 'all'; render(); window.scrollTo({ top: 0 }); return; } }
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'opt-cmd') { OPT.cmd = e.target.checked; render(); }
+  if (e.target.id === 'opt-thin') { OPT.thin = e.target.checked; render(); }
+});
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input, textarea, [contenteditable]')) return;
+  if (e.key === 'Escape') { aOpen = null; bSel = null; dOpen = null; render(); }
+});
+// one tooltip for every chart: crosshair on line charts, per-row on the movers bars
+const tip = document.getElementById('tip');
+function showTip(lines, cx, cy) {
+  tip.replaceChildren(...lines.map(([txt, color], i) => {
+    const s = document.createElement('span'); s.style.display = 'flex'; s.style.gap = '6px'; s.style.alignItems = 'center';
+    if (color) { const k = document.createElement('i'); k.style.cssText = `width:12px;height:2px;border-radius:1px;background:${color}`; s.append(k); }
+    s.append(document.createTextNode(txt)); if (i === 0) s.style.fontWeight = '600'; return s;
+  }));
+  tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(window.innerWidth - r.width - 8, Math.max(8, cx - r.width / 2)) + 'px';
+  tip.style.top = Math.max(8, cy - r.height - 14) + 'px';
+}
+function hideTip() { tip.hidden = true; document.querySelectorAll('.lc .xh').forEach(l => l.setAttribute('visibility', 'hidden')); }
+document.addEventListener('pointermove', e => {
+  const svg = e.target.closest && e.target.closest('svg[data-lc]');
+  const row = e.target.closest && e.target.closest('[data-tip]');
+  if (row) { const [a, b] = row.dataset.tip.split('|'); const r = row.getBoundingClientRect(); return showTip([[a], [b]], e.clientX, r.top); }
+  if (!svg) return hideTip();
+  const m = JSON.parse(svg.dataset.lc), r = svg.getBoundingClientRect(), k = m.W / r.width;
+  const px = (e.clientX - r.left) * k, pw = m.W - m.pl - m.pr;
+  const i = Math.max(0, Math.min(WEEK - 1, Math.round((m.W - m.pr - px) / pw * (WEEK - 1))));
+  const xx = m.W - m.pr - (WEEK > 1 ? i / (WEEK - 1) : 0) * pw;
+  const xh = svg.querySelector('.xh'); xh.setAttribute('x1', xx); xh.setAttribute('x2', xx); xh.setAttribute('visibility', 'visible');
+  showTip([['שבוע ' + (i + 1)], ...m.s.slice().reverse().map(s => [s.n + ': ' + f1(s.v[i]), s.c])], r.left + xx / k, r.top);
+});
+document.addEventListener('pointerleave', hideTip);
+window.addEventListener('scroll', hideTip, { passive: true });
+window.addEventListener('hashchange', render);
+render();
+</script>
