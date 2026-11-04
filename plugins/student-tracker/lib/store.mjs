@@ -155,7 +155,7 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
 
   // One Trainee's share of an Entry: its new records plus its card, in one version-pinned batch.
   function writeChunk(docs, { trainee, records }) {
-    const missing = records.filter((r) => !docs.get(r.path));
+    const missing = records.filter((r) => !docs.taken(r.path));
     if (!missing.length) {
       rebuildCard(docs, trainee); // written earlier; make sure the card caught up
       return;
@@ -276,7 +276,7 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
   // A free id for a change record outside an Entry, `c-YYYYMMDD-HHMM-<rand2>` at `d`.
   function changeId(docs, tid, d) {
     let id;
-    do id = `${stampOf('c', d)}-${rand(2)}`; while (docs.get(`trainees/${tid}/changes/${id}`));
+    do id = `${stampOf('c', d)}-${rand(2)}`; while (docs.taken(`trainees/${tid}/changes/${id}`));
     return id;
   }
 
@@ -548,7 +548,7 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
       const at = isoWithOffset(d);
       const stamp = stampOf('e', d);
       let id;
-      do id = `${stamp}-${rand(2)}`; while (docs.get(`entries/${id}`));
+      do id = `${stamp}-${rand(2)}`; while (docs.taken(`entries/${id}`));
 
       // Numbered in message order: the Evidence first, then the sensitive parts cut from it, then
       // the Follow-ups each of them opens.
@@ -705,7 +705,7 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
       const taken = new Set();
       const rated = checked.map((a) => {
         let id;
-        do id = `${stamp}-${rand(2)}`; while (taken.has(id) || docs.get(`trainees/${tid}/assessments/${id}`));
+        do id = `${stamp}-${rand(2)}`; while (taken.has(id) || docs.taken(`trainees/${tid}/assessments/${id}`));
         taken.add(id);
         return { id, path: `trainees/${tid}/assessments/${id}`, data: { entry: null, ...a, date: today(), at, retracted: false } };
       });
@@ -774,7 +774,7 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
         const name = freeName(docs, value.name, tid);
         if (kind === 'add') {
           let id;
-          do id = `t-${rand(6)}`; while (docs.get(`trainees/${id}`));
+          do id = `t-${rand(6)}`; while (docs.taken(`trainees/${id}`));
           const added = { type: 'added', name, by: 'commander', at, retracted: false };
           const card = deriveCard({ changes: [added], evidence: [] });
           docs.batch([
@@ -1162,8 +1162,9 @@ function wordForWord(text, excerpt) {
 // The Trainee's Evidence by that id, public or sensitive, as {id, date, kind}; null if there is none.
 function evidenceOf(docs, tid, id) {
   const pub = docs.get(`trainees/${tid}/evidence/${id}`)?.data;
-  const s = docs.get(`sensitive/${id}`)?.data;
-  const found = pub ?? (s?.record === 'evidence' && s.trainee === tid ? s : null);
+  // Among the Trainee's sensitive records, the reads the card needs anyway.
+  const s = pub ? null : sensitiveOf(docs, tid).find((x) => x.id === id);
+  const found = pub ?? (s?.record === 'evidence' ? s : null);
   return found?.retracted === false ? { id, date: found.date, kind: found.kind, sensitive: !pub } : null;
 }
 
@@ -1315,7 +1316,7 @@ const CYCLE_CHANGES = {
     const data = { project, name: name.trim(), members: [...new Set(members)], at };
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let teamId = id;
-      if (!teamId) do teamId = `tm-${rand(4)}`; while (docs.get(`teams/${teamId}`));
+      if (!teamId) do teamId = `tm-${rand(4)}`; while (docs.taken(`teams/${teamId}`));
       try {
         upsert(docs, `teams/${teamId}`, data, id ? docs.get(`teams/${id}`) : null);
         return { id: teamId, ...data };
@@ -1704,7 +1705,7 @@ const byDate = (a, b) => byDay(a, b) || byAt(a, b)
   || a.id.localeCompare(b.id, 'en', { numeric: true });
 
 const flat = (docs) => docs.map((d) => ({ id: d.id, ...d.data }));
-const sensitiveOf = (docs, tid) => flat(docs.list('sensitive')).filter((s) => s.trainee === tid);
+const sensitiveOf = (docs, tid) => flat(docs.query('sensitive', [['trainee', '==', tid]]));
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // Another session got there first; re-read and try again (or accept its work).
 const lostRace = (e) => e instanceof VersionConflict || e instanceof AlreadyExists;

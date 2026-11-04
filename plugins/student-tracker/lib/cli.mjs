@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
 import { boot } from './boot.mjs';
 import { isOperation, runOperation } from './operations.mjs';
-import { planOperation } from './plan.mjs';
+import { planOperation, readsFor } from './plan.mjs';
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <archived Cycle address>] <operation> [args]
   (--cycle: read a Cycle from the pointer's archived list; every write to it is refused)
@@ -55,11 +55,16 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <a
   resume-pending
   rebuild-card <tid>
 artifact backend (no --data):
-  plan <operation> --snapshot <out_dir read folder> --versions <file> --out <fresh plan folder> [args]
+  reads <operation> --snapshot <fresh snapshot folder> [args]
+                          < the operation's payload. Prints {reads}, one ArtifactData read per line
+                            (get, list or query, with out_dir): send them all in one message.
+  plan <operation> --snapshot <snapshot folder> --versions <file> --out <fresh plan folder> [args]
                           < the operation's payload. Runs it over the snapshot and prints {result, plan,
                             batches}: each batch is the "writes" of one ArtifactData batch, sent in order.
-                            --versions: one "<collection path>/<doc id> <version>" line per read document,
-                            or the read results' lines as printed. Operations: record-entry`;
+                            --versions: each read made, its line as "reads" printed it (one that found
+                            nothing too), and one "<collection path>/<doc id> <version>" line per document
+                            found, or the read results' lines as printed. Refuses "missing reads" with the
+                            reads still to make, one per line. Operations: record-entry`;
 
 export async function main(argv) {
   const args = [...argv];
@@ -89,6 +94,12 @@ export async function main(argv) {
   try {
     if (op === 'boot') {
       process.stdout.write(boot({ dataDir, route: rest[0], tracker }));
+      return 0;
+    }
+    if (op === 'reads') {
+      const [planned, ...args] = rest;
+      const reads = readsFor({ op: planned, args, input: stdin, snapshot });
+      process.stdout.write(`{"reads": [\n${reads.map((r) => JSON.stringify(r)).join(',\n')}\n]}\n`);
       return 0;
     }
     if (op === 'plan') {

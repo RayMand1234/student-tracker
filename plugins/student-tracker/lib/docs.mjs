@@ -64,7 +64,12 @@ export function openDocs(root) {
 // the snapshot plus the writes before them, so a later read sees them, but nothing is written to
 // `dir`: `writes()` gives what was written, per document in first-write order, as
 // {path, before: {version} | null, after: {version, data} | null}.
-export function openSnapshot(dir, versions = new Map()) {
+// `reads`: the keys (readKey) of the reads made. A document is read only through one of them, so
+// a get that found nothing is an absent document, while a get, list or query no read covers
+// gives nothing and is kept in `missing()`, to be refused. Without `reads`, every read counts as made.
+// `taken` (an id probe before a create) needs no read: the database refuses a create over an
+// existing document, so a probe that guessed wrong ends in a refused batch, not a lost write.
+export function openSnapshot(dir, versions = new Map(), reads = null) {
   const file = (docPath) => path.join(dir, `${docPath}.json`);
   const written = new Map(); // doc path → {version, data} | null (deleted)
   const base = (docPath) => {
@@ -88,8 +93,25 @@ export function openSnapshot(dir, versions = new Map()) {
       written.set(docPath, null);
     },
   });
+  const missing = new Map(); // read key → the read that would cover it
+  const made = (read) => !reads || reads.has(readKey(read));
+  const covered = (read, ...also) => [read, ...also].some(made) || (missing.set(readKey(read), read), false);
+  const collectionOf = (docPath) => docPath.slice(0, docPath.lastIndexOf('/'));
   return {
     ...docs,
+    get(docPath) {
+      return written.has(docPath) || covered(getRead(docPath), listRead(collectionOf(docPath))) ? docs.get(docPath) : null;
+    },
+    list(collection) {
+      return covered(listRead(collection)) ? docs.list(collection) : [];
+    },
+    query(collection, where) {
+      return covered(queryRead(collection, where), listRead(collection)) ? docs.query(collection, where) : [];
+    },
+    // The reads the operation needed and no read made, in the order it needed them.
+    missing() {
+      return [...missing.values()];
+    },
     batch(writes) {
       for (const w of writes) {
         const current = read(w.path);
@@ -142,14 +164,25 @@ export function docsOver(backing) {
     return { path: p.path, version: p.next.version };
   }
 
+  // Documents directly in a collection (not its subcollections), sorted by id.
+  const list = (collection) => backing.ids(collection).sort().map((id) => ({ id, ...read(`${collection}/${id}`) }));
+
   return {
     get(docPath) {
       return read(docPath);
     },
 
-    // Documents directly in a collection (not its subcollections), sorted by id.
-    list(collection) {
-      return backing.ids(collection).sort().map((id) => ({ id, ...read(`${collection}/${id}`) }));
+    list,
+
+    // The documents of a collection whose fields match every `where` triple [field, '==', value].
+    query(collection, where = []) {
+      for (const [, op] of where) if (op !== '==') throw new StoreError(`a query compares with ==, got ${op}`);
+      return list(collection).filter((d) => where.every(([field, , value]) => d.data[field] === value));
+    },
+
+    // Whether a document exists: an id probe before creating one.
+    taken(docPath) {
+      return Boolean(read(docPath));
     },
 
     // writes: [{op: 'create' | 'set' | 'update' | 'delete', path, data?, ifVersion?}]
@@ -159,6 +192,34 @@ export function docsOver(backing) {
       return writes.map((w) => apply(check(w)));
     },
   };
+}
+
+// The reads of the artifact backend, each one `ArtifactData` call: a get of one document, a list
+// of a collection, or a query of it with `where` triples. A list or query asks for one whole page.
+export const READ_PAGE = 1000;
+const split = (docPath) => [docPath.slice(0, docPath.lastIndexOf('/')), docPath.slice(docPath.lastIndexOf('/') + 1)];
+export const getRead = (docPath) => {
+  const [collection, docId] = split(docPath);
+  return { action: 'get', collection, doc_id: docId };
+};
+export const listRead = (collection) => ({ action: 'list', collection, query: { limit: READ_PAGE } });
+export const queryRead = (collection, where) => ({ action: 'query', collection, query: { where, limit: READ_PAGE } });
+
+// What a read reads, whatever its key order or page size: "get <doc path>", "list <collection>" or
+// "query <collection> <where as JSON>".
+export function readKey({ action, collection, doc_id: docId, query }) {
+  if (action === 'get') return `get ${collection}/${docId}`;
+  if (action === 'list') return `list ${collection}`;
+  if (action === 'query') return `query ${collection} ${JSON.stringify(query?.where ?? [])}`;
+  throw new StoreError(`a read is a get, list or query, got "${action}"`);
+}
+
+// Planning needed documents no read fetched: the reads to make, each as its `ArtifactData` call.
+export class MissingReads extends StoreError {
+  constructor(reads) {
+    super(`missing reads: send each with out_dir set to the snapshot folder, add its line and the versions it shows to the versions list, then plan again\n${reads.map((r) => JSON.stringify(r)).join('\n')}`);
+    this.reads = reads;
+  }
 }
 
 // The limits on one batch: 1–50 writes, each document once, ≤1 MiB.

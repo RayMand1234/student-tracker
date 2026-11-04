@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { openDocs, openSnapshot, VersionConflict, AlreadyExists } from '../lib/docs.mjs';
-import { readVersions } from '../lib/plan.mjs';
+import { openDocs, openSnapshot, VersionConflict, AlreadyExists, getRead, listRead, queryRead, readKey } from '../lib/docs.mjs';
+import { readVersions, readList } from '../lib/plan.mjs';
 
 const fresh = () => openDocs(fs.mkdtempSync(path.join(os.tmpdir(), 'st-docs-')));
 
@@ -121,4 +121,41 @@ test('the versions list takes "<path> <version>" lines or the lines an out_dir r
   assert.deepEqual([...readVersions(list, dir)], [['trainees/t-1', 3], ['trainees/t-1/evidence/e-1-1', 2]]);
   fs.writeFileSync(list, 'trainees/t-1 three\n');
   assert.throws(() => readVersions(list, dir), /unreadable versions line/);
+});
+
+test('a snapshot reads only through the reads made: a get that found nothing is absent, one never made is missing', () => {
+  const dir = snapshot({ 'trainees/t-1': { name: 'נועה' }, 'trainees/t-1/evidence/e-1-1': { kind: 'talk' }, 'sensitive/e-1-2': { trainee: 't-1' } });
+  const made = [getRead('trainees/t-1'), getRead('trainees/t-9'), listRead('trainees/t-1/evidence'), queryRead('sensitive', [['trainee', '==', 't-1']])];
+  const docs = openSnapshot(dir, new Map([['trainees/t-1', 2]]), new Set(made.map(readKey)));
+
+  assert.equal(docs.get('trainees/t-9'), null, 'read and absent');
+  assert.equal(docs.get('trainees/t-1/evidence/e-1-9'), null, 'absent from a collection listed whole');
+  assert.deepEqual(docs.list('trainees/t-1/evidence').map((d) => d.id), ['e-1-1']);
+  assert.deepEqual(docs.query('sensitive', [['trainee', '==', 't-1']]).map((d) => d.id), ['e-1-2']);
+  assert.deepEqual(docs.missing(), []);
+
+  assert.equal(docs.get('meta/cycle'), null);
+  assert.deepEqual(docs.list('trainees/t-1/items'), []);
+  assert.deepEqual(docs.query('sensitive', [['trainee', '==', 't-2']]), [], 'another filter is another read');
+  assert.equal(docs.get('sensitive/e-1-2'), null, 'a query covers its own filter, not a get in its collection');
+  assert.deepEqual(docs.missing(), [
+    getRead('meta/cycle'), listRead('trainees/t-1/items'), queryRead('sensitive', [['trainee', '==', 't-2']]), getRead('sensitive/e-1-2'),
+  ]);
+  assert.equal(docs.taken('entries/e-2'), false, 'an id probe needs no read');
+  assert.equal(docs.missing().length, 4);
+});
+
+test('the versions list also records the reads made, one JSON line each, whatever their key order or out_dir', () => {
+  const dir = snapshot({ 'trainees/t-1': {} });
+  const list = path.join(dir, '..', `${path.basename(dir)}-reads.txt`);
+  fs.writeFileSync(list, [
+    JSON.stringify({ ...getRead('trainees/t-1'), out_dir: dir }),
+    'trainees/t-1 3',
+    JSON.stringify({ query: { limit: 1000, where: [['trainee', '==', 't-1']] }, collection: 'sensitive', action: 'query' }),
+  ].join('\n'));
+  const { versions, reads } = readList(list, dir);
+  assert.deepEqual([...versions], [['trainees/t-1', 3]]);
+  assert.deepEqual([...reads], [readKey(getRead('trainees/t-1')), readKey(queryRead('sensitive', [['trainee', '==', 't-1']]))]);
+  fs.writeFileSync(list, '{"action":"get",\n');
+  assert.throws(() => readList(list, dir), /unreadable read line/);
 });

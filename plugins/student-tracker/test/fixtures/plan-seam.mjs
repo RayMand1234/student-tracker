@@ -62,21 +62,32 @@ export function copyDataDir(dataDir) {
   return to;
 }
 
-// What a full set of `out_dir` reads of a local store saves: data-only files at
-// <collection path>/<doc id>.json, plus the versions list the model copies from the read results.
-export function snapshotOf(root) {
-  const dir = tmp('st-seam-snap-');
-  const versions = [];
-  for (const f of fs.readdirSync(root, { recursive: true })) {
-    if (!f.endsWith('.json')) continue;
-    const doc = JSON.parse(fs.readFileSync(path.join(root, f), 'utf8'));
-    fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
-    fs.writeFileSync(path.join(dir, f), JSON.stringify(doc.data, null, 2));
-    versions.push(`${f.slice(0, -5).split(path.sep).join('/')} ${doc.version}`);
+// What `ArtifactData` reads with `out_dir` save from a local store, as a fake of the database:
+// each found document's data at <collection path>/<doc id>.json, and the reads list the model
+// writes: every read made, as the one-line JSON the manifest printed, then "<doc path> <version>"
+// for each document it found. A list or query returns at most its `limit` (default 100).
+export function fetchReads(root, reads, dir = tmp('st-seam-snap-')) {
+  const docs = openDocs(root);
+  const lines = [];
+  const matches = (data, where = []) => where.every(([field, op, value]) => {
+    if (op !== '==') throw new Error(`the fake database knows only ==, got ${op}`);
+    return data[field] === value;
+  });
+  for (const { out_dir: _, ...read } of reads) {
+    lines.push(JSON.stringify(read));
+    const found = read.action === 'get'
+      ? [docs.get(`${read.collection}/${read.doc_id}`)].filter(Boolean).map((d) => ({ id: read.doc_id, ...d }))
+      : docs.list(read.collection).filter((d) => read.action === 'list' || matches(d.data, read.query?.where)).slice(0, read.query?.limit ?? 100);
+    for (const doc of found) {
+      const file = path.join(dir, read.collection, `${doc.id}.json`);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc.data, null, 2));
+      lines.push(`${read.collection}/${doc.id} ${doc.version}`);
+    }
   }
-  const versionsFile = path.join(tmp('st-seam-versions-'), 'versions.txt');
-  fs.writeFileSync(versionsFile, `${versions.join('\n')}\n`);
-  return { dir, versions: versionsFile };
+  const versions = path.join(tmp('st-seam-versions-'), 'versions.txt');
+  fs.writeFileSync(versions, `${lines.join('\n')}\n`);
+  return { dir, versions };
 }
 
 // Sends a plan's batches, in order, to a local docs store, as `ArtifactData` `batch` would: a

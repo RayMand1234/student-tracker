@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { snapshotOf, storeRoot } from './fixtures/plan-seam.mjs';
+import { fetchReads, storeRoot } from './fixtures/plan-seam.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/student-tracker-store', import.meta.url));
 
@@ -566,13 +566,52 @@ test('start runs connect, resumePending, readCycle and readTeam in one call', ()
   assert.deepEqual(s.team.map((t) => t.name).sort(), ['דני', 'נועה כ.']);
 });
 
+test('reads record-entry prints the ArtifactData reads to send, one per line, each saving into the snapshot folder in its full long path', () => {
+  const { data, cwd } = fresh();
+  const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
+  run(['--data', data, 'finish-setup'], { cwd });
+  const snapshot = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'st-cli-snap-')), 'snapshot');
+  const input = `--- entry\nדיברתי עם נועה על הדיבאג.\n--- evidence ${noa.id} talk 2026-10-30\nדיברתי עם נועה על הדיבאג.\n`;
+
+  const printed = run(['reads', 'record-entry', '--snapshot', snapshot], { cwd, input });
+  assert.equal(printed.code, 0, printed.err);
+  const { reads } = JSON.parse(printed.out);
+  const lines = printed.out.trim().split('\n');
+  assert.equal(lines.length, reads.length + 2, 'one read per line, between the opening and closing lines');
+  for (const [i, read] of reads.entries()) {
+    assert.equal(read.out_dir, fs.realpathSync.native(snapshot));
+    assert.ok(!/~\d/.test(read.out_dir), `no short path: ${read.out_dir}`);
+    assert.equal(lines[i + 1].replace(/,$/, ''), JSON.stringify(read), 'each line is the read as sent');
+  }
+  assert.ok(reads.some((r) => r.action === 'get' && r.collection === 'trainees' && r.doc_id === noa.id));
+
+  // The reads made, all but one: planning refuses on stderr and names the one missing.
+  const [skipped, ...made] = reads;
+  const { versions } = fetchReads(storeRoot(data), made, snapshot);
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'st-cli-plan-')), 'plan');
+  const refused = run(['plan', 'record-entry', '--snapshot', snapshot, '--versions', versions, '--out', out], { cwd, input });
+  assert.equal(refused.code, 1);
+  const { out_dir: _, ...sent } = skipped;
+  const err = refused.err.trim().split('\n');
+  const head = err.findIndex((l) => l.startsWith('missing reads'));
+  assert.ok(head !== -1, refused.err);
+  assert.deepEqual(err.slice(head + 1), [JSON.stringify(sent)]);
+  assert.ok(!fs.existsSync(out), 'a refused plan writes no plan');
+
+  const other = run(['reads', 'read-team'], { cwd });
+  assert.equal(other.code, 1);
+  assert.match(other.err, /plan runs record-entry/);
+});
+
 test('plan record-entry runs over a snapshot and prints the batch to send, its files under the plan folder in full long paths', () => {
   const { data, cwd } = fresh();
   const [noa] = JSON.parse(run(['--data', data, 'create-cycle'], { cwd, input: SETUP }).out).trainees;
   run(['--data', data, 'finish-setup'], { cwd });
-  const { dir: snapshot, versions } = snapshotOf(storeRoot(data));
-  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'st-cli-plan-')), 'plan');
   const input = `--- entry\nדיברתי עם נועה על הדיבאג.\n--- evidence ${noa.id} talk 2026-10-30\nדיברתי עם נועה על הדיבאג.\n`;
+  const snapshotDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'st-cli-snap-')), 'snapshot');
+  const { reads } = JSON.parse(run(['reads', 'record-entry', '--snapshot', snapshotDir], { cwd, input }).out);
+  const { dir: snapshot, versions } = fetchReads(storeRoot(data), reads, snapshotDir);
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'st-cli-plan-')), 'plan');
 
   const planned = run(['plan', 'record-entry', '--snapshot', snapshot, '--versions', versions, '--out', out], { cwd, input });
   assert.equal(planned.code, 0, planned.err);
@@ -591,7 +630,9 @@ test('plan record-entry runs over a snapshot and prints the batch to send, its f
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(plan, 'plan.json'), 'utf8')).batches, batches);
   assert.equal(JSON.parse(run(['--data', data, 'read-trainee', noa.id], { cwd }).out).evidence.length, 0, 'planning writes nothing');
 
-  const refused = run(['plan', 'record-entry', '--snapshot', snapshot, '--versions', versions, '--out', `${out}-2`], { cwd, input: input.replace(noa.id, 't-nobody') });
+  const nobody = input.replace(noa.id, 't-nobody');
+  const nobodySnapshot = fetchReads(storeRoot(data), JSON.parse(run(['reads', 'record-entry'], { cwd, input: nobody }).out).reads);
+  const refused = run(['plan', 'record-entry', '--snapshot', nobodySnapshot.dir, '--versions', nobodySnapshot.versions, '--out', `${out}-2`], { cwd, input: nobody });
   assert.equal(refused.code, 1);
   assert.match(refused.err, /unknown Trainee t-nobody/);
   const other = run(['plan', 'read-team', '--snapshot', snapshot, '--out', `${out}-3`], { cwd });

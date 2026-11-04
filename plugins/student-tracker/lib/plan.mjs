@@ -3,23 +3,77 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { openStore, StoreError } from './store.mjs';
-import { openSnapshot, checkBatch } from './docs.mjs';
+import { openSnapshot, checkBatch, getRead, listRead, queryRead, readKey, MissingReads } from './docs.mjs';
 import { runOperation } from './operations.mjs';
+import { parseEntry } from './payload.mjs';
 
-// The operations the plan step runs so far.
-const PLANNED = new Set(['record-entry']);
+// What every write to the Cycle checks against: the Cycle, its Tests and Projects, its Skills, its teams.
+const CYCLE_READS = [getRead('meta/cycle'), getRead('meta/preset'), getRead('meta/skills'), listRead('teams')];
 
-// `snapshot`: the folder the reads saved with `out_dir`. `versions`: a file listing each read
-// document's version (see readVersions). `out`: a fresh folder for the plan.
+// What one Trainee's card is derived from: the card, its records and its sensitive records.
+const traineeReads = (tid) => [
+  getRead(`trainees/${tid}`),
+  ...['evidence', 'followups', 'items', 'assessments', 'changes'].map((kind) => listRead(`trainees/${tid}/${kind}`)),
+  queryRead('sensitive', [['trainee', '==', tid]]),
+];
+
+// The operations the plan step runs, each with its reads manifest: from the operation's
+// arguments and payload (`input()`), the reads it needs, each one `ArtifactData` call (getRead,
+// listRead, queryRead). Planning over a snapshot that lacks one of them refuses and names it.
+const PLANNED = {
+  'record-entry': {
+    reads: ({ input }) => {
+      const { evidence, assessments, items, changes } = parseEntry(input());
+      const trainees = [...evidence, ...assessments, ...items, ...changes].map((r) => r.trainee);
+      return [...CYCLE_READS, ...[...new Set(trainees)].flatMap(traineeReads)];
+    },
+  },
+};
+
+function planned(op) {
+  if (!Object.hasOwn(PLANNED, op)) throw new StoreError(`plan runs ${Object.keys(PLANNED).join(', ')}; got "${op ?? ''}"`);
+  return PLANNED[op];
+}
+
+// The reads manifest: the reads `op` needs for these arguments and payload, each once.
+// `snapshot`: the folder the reads save into; each read then carries it as `out_dir`, a full long path.
+export function readsFor({ op, args = [], input = '', snapshot }) {
+  const payload = typeof input === 'function' ? input : () => input;
+  const seen = new Set();
+  const reads = planned(op).reads({ args, input: payload }).filter((r) => !seen.has(readKey(r)) && seen.add(readKey(r)));
+  if (!snapshot) return reads;
+  fs.mkdirSync(snapshot, { recursive: true });
+  const outDir = fs.realpathSync.native(snapshot);
+  return reads.map((r) => ({ ...r, out_dir: outDir }));
+}
+
+// `snapshot`: the folder the reads saved with `out_dir`. `versions`: a file listing the reads made
+// and each read document's version (see readList). `out`: a fresh folder for the plan.
 // Gives {result, plan, batches}: the operation's result, the plan folder (full long path) and
 // the batches in order, each a list of `batch` writes {op, collection, doc_id, file_path, if_version?}.
+// Refuses with MissingReads when the operation needed a read the list does not hold.
 export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, now, rand }) {
-  if (!PLANNED.has(op)) throw new StoreError(`plan runs ${[...PLANNED].join(', ')}; got "${op ?? ''}"`);
+  planned(op);
   if (!snapshot || !out) throw new StoreError('plan needs --snapshot <folder> and --out <folder>');
   if (!fs.existsSync(snapshot)) throw new StoreError(`no snapshot folder ${snapshot}`);
-  const docs = openSnapshot(snapshot, versions ? readVersions(versions, snapshot) : new Map());
+  const list = versions ? readList(versions, snapshot) : { versions: new Map(), reads: new Set() };
+  // The payload is read once (it may be stdin), for the manifest and for the operation.
+  let text;
+  const payload = () => (text ??= typeof input === 'function' ? input() : input);
+  // Every read the manifest names is made first; reads it could not foresee are named as the run meets them.
+  const unmade = readsFor({ op, args, input: payload }).filter((r) => !list.reads.has(readKey(r)));
+  if (unmade.length) throw new MissingReads(unmade);
+  const docs = openSnapshot(snapshot, list.versions, list.reads);
   const store = openStore({ docs, ...(now ? { now } : {}), ...(rand ? { rand } : {}) });
-  const result = runOperation(store, op, { args, input, insist });
+  let result;
+  try {
+    result = runOperation(store, op, { args, input: payload, insist });
+  } catch (e) {
+    // It ran on documents it never got, so whatever went wrong after that is no answer.
+    if (docs.missing().length) throw new MissingReads(docs.missing());
+    throw e;
+  }
+  if (docs.missing().length) throw new MissingReads(docs.missing());
 
   const writes = docs.writes().flatMap(toWrite);
   if (!writes.length) return { result, plan: null, batches: [] };
@@ -65,11 +119,25 @@ function docPathIn(snapshot, file) {
   return rel.slice(0, -'.json'.length).split(path.sep).join('/');
 }
 
-// The versions list: one line per document, either "<collection path>/<doc id> <version>" or a
-// line of an `out_dir` read's result as the tool printed it (`… version 2  "<file path>"`).
-export function readVersions(file, snapshot) {
+// The versions list: the reads made, and the versions of the documents they found. One line per
+// read made, its JSON as the manifest printed it (a get that found nothing is still a read made),
+// and one per document found, either "<collection path>/<doc id> <version>" or a line of an
+// `out_dir` read's result as the tool printed it (`… version 2  "<file path>"`).
+// Gives {versions: doc path → version, reads: the reads' keys (readKey)}.
+export function readList(file, snapshot) {
   const versions = new Map();
+  const reads = new Set();
   for (const line of fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean)) {
+    if (line.startsWith('{')) {
+      let read;
+      try {
+        read = JSON.parse(line);
+      } catch {
+        throw new StoreError(`unreadable read line "${line}": copy the read's JSON as the manifest printed it`);
+      }
+      reads.add(readKey(read));
+      continue;
+    }
     const plain = line.match(/^([^\s"]+)\s+(\d+)$/);
     if (plain) {
       versions.set(plain[1], Number(plain[2]));
@@ -83,5 +151,7 @@ export function readVersions(file, snapshot) {
     }
     throw new StoreError(`unreadable versions line "${line}": give "<collection path>/<doc id> <version>"`);
   }
-  return versions;
+  return { versions, reads };
 }
+
+export const readVersions = (file, snapshot) => readList(file, snapshot).versions;
