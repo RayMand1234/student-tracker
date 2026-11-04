@@ -5,7 +5,7 @@ import path from 'node:path';
 import { openStore, StoreError } from './store.mjs';
 import { openSnapshot, checkBatch, getRead, listRead, queryRead, readKey, MissingReads } from './docs.mjs';
 import { runOperation } from './operations.mjs';
-import { parseEntry } from './payload.mjs';
+import { parseEntry, parseTraineeChange, parseCycleChange, parsePlaybookItem, parseCycle } from './payload.mjs';
 
 // What every write to the Cycle checks against: the Cycle, its Tests and Projects, its Skills, its teams.
 const CYCLE_READS = [getRead('meta/cycle'), getRead('meta/preset'), getRead('meta/skills'), listRead('teams')];
@@ -29,6 +29,19 @@ const PLANNED = {
     },
   },
 };
+
+// Roster, settings, Playbook and Cycle lifecycle (lean-turns 06).
+Object.assign(PLANNED, {
+  'update-settings': { reads: () => [getRead('meta/cycle'), getRead('commander/settings')] },
+  // Adding and renaming check the name against every Trainee's; a change rebuilds the card.
+  'update-trainee': {
+    reads: ({ args: [tid], input }) => {
+      const kind = Object.keys(parseTraineeChange(input()))[0];
+      const names = ['add', 'rename'].includes(kind) ? [listRead('trainees')] : [];
+      return [getRead('meta/cycle'), ...names, ...(kind === 'add' ? [] : traineeReads(tid))];
+    },
+  },
+});
 
 function planned(op) {
   if (!Object.hasOwn(PLANNED, op)) throw new StoreError(`plan runs ${Object.keys(PLANNED).join(', ')}; got "${op ?? ''}"`);
