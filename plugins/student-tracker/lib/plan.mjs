@@ -67,6 +67,7 @@ export function readsFor({ op, args = [], input = '', snapshot }) {
 // and each read document's version (see readList). `out`: a fresh folder for the plan.
 // Gives {result, plan, batches}: the operation's result, the plan folder (full long path) and
 // the batches in order, each a list of `batch` writes {op, collection, doc_id, file_path, if_version?}.
+// A plan of several batches also gives `if_refused` (IF_REFUSED).
 // Refuses with MissingReads when the operation needed a read the list does not hold.
 export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, category, now, rand }) {
   planned(op);
@@ -91,32 +92,47 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
   }
   if (docs.missing().length) throw new MissingReads(docs.missing());
 
-  const writes = docs.writes().flatMap(toWrite);
-  if (!writes.length) return { result, plan: null, batches: [] };
-  // One pinned, all-or-nothing batch. An Entry too big for one is ADR 0002's chunked write, not planned yet.
-  checkBatch(writes.map((w) => ({ path: w.path, data: w.data })));
+  const folded = docs.writes().flatMap(toWrite);
+  if (!folded.length) return { result, plan: null, batches: [] };
+  // One pinned, all-or-nothing batch when everything fits in one. Otherwise the batches the store
+  // sent, in order (ADR 0002: the Entry or mark at `writing`, one batch per Trainee, then the
+  // close), each pinned to the versions the batches before it leave.
+  const sends = fits(folded) ? [folded] : docs.steps().map((step) => step.flatMap(toWrite));
 
   fs.mkdirSync(out, { recursive: true });
   const dir = fs.realpathSync.native(out);
-  const batch = writes.map((w) => {
+  const batches = sends.map((writes, k) => writes.map((w) => {
     const slash = w.path.lastIndexOf('/');
     const entry = { op: w.op, collection: w.path.slice(0, slash), doc_id: w.path.slice(slash + 1) };
     if (w.data) {
-      const file = path.join(dir, 'batch-1', `${w.path}.json`);
+      const file = path.join(dir, `batch-${k + 1}`, `${w.path}.json`);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, `${JSON.stringify(w.data, null, 2)}\n`);
       entry.file_path = file;
     }
     if (w.ifVersion !== undefined) entry.if_version = w.ifVersion;
     return entry;
-  });
-  const batches = [batch];
+  }));
   fs.writeFileSync(path.join(dir, 'plan.json'), `${JSON.stringify({ batches }, null, 2)}\n`);
-  return { result, plan: dir, batches };
+  return { result, plan: dir, batches, ...(batches.length > 1 ? { if_refused: IF_REFUSED } : {}) };
 }
 
-// A document's writes folded into the one write that takes it from its snapshot state to its
-// final one: a create is a `set` with no pin; a change or delete pins the snapshot's version.
+// What to do when a batch of a plan of several is refused: the batches before it stand, and the
+// first one left a mark at `writing` that resume-pending finishes.
+export const IF_REFUSED = 'batch 1 refused: nothing was written; read again, plan again, send again. A later batch refused: the batches before it stand; read again for resume-pending, plan it and send its batches.';
+
+function fits(writes) {
+  try {
+    checkBatch(writes.map((w) => ({ path: w.path, data: w.data })));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A document's writes folded into the one write that takes it from its state before (the
+// snapshot's, or what earlier batches left) to its final one: a create is a `set` with no pin; a
+// change or delete pins the version before.
 function toWrite({ path: p, before, after }) {
   if (!before && !after) return [];
   if (!after) return [{ op: 'delete', path: p, ifVersion: before.version }];

@@ -5,7 +5,7 @@
 // are applied one at a time, in order, each against the state the ones before it left.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openStore, StoreError } from '../lib/store.mjs';
+import { openStore, StoreError, VersionConflict } from '../lib/store.mjs';
 import { MissingReads, MAX_BATCH_WRITES } from '../lib/docs.mjs';
 import { runOperation } from '../lib/operations.mjs';
 import { planOperation, readsFor } from '../lib/plan.mjs';
@@ -135,6 +135,103 @@ test('retract-entry and hard-delete: the last Entry or a named one, sensitive re
   assertSame(dataDir, 'hard-delete', { args: [earlier.entry] }); // a retracted Entry can still be deleted
 });
 
+// An Entry too big for one batch: each Trainee gets a Talk opening `followups` Follow-ups.
+function bigEntry(tids, followups = 17) {
+  const blocks = tids.map((tid, i) => {
+    const tasks = Array.from({ length: followups }, (_, j) => `משימה ${i}.${j} לשבוע הבא.`);
+    return { sentence: `דיברתי עם חניך ${i}. ${tasks.join(' ')}`, block: `--- evidence ${tid} talk 2026-10-30\nדיברתי עם חניך ${i}.\n${tasks.map((t) => `--- followup\n${t}\n`).join('')}` };
+  });
+  return `--- entry\n${blocks.map((b) => b.sentence).join(' ')}\n${blocks.map((b) => b.block).join('')}`;
+}
+const TEAM = ['נועה', 'דני', 'יעל'];
+
+test('an Entry too big for one batch: the Entry at writing, one batch per Trainee, then done, each batch pinned to what the ones before it left', () => {
+  const { dataDir, id } = fixture(TEAM);
+  const input = bigEntry(TEAM.map((n) => id[n]));
+  const r = assertSame(dataDir, 'record-entry', { input });
+  assert.equal(r.batches.length, TEAM.length + 2, 'the Entry, a batch per Trainee, the Entry done');
+  for (const b of r.batches) assert.ok(b.length >= 1 && b.length <= MAX_BATCH_WRITES);
+  const [first, ...rest] = r.batches;
+  const entry = (b) => b.find((w) => w.collection === 'entries');
+  assert.deepEqual(first.map((w) => w.collection), ['entries']);
+  assert.equal(entry(first).if_version, undefined, 'the Entry is created');
+  assert.equal(entry(rest.at(-1)).if_version, 1, 'marking it done pins the version its creation gave');
+  // A refusal of a big Entry is the same refusal, and nothing is planned.
+  assertSame(dataDir, 'record-entry', { input: bigEntry([id['נועה'], 't-nobody']), refuses: true });
+});
+
+// Stops a planned run after its first `n` batches, then plans resume-pending over a fresh
+// snapshot and sends that: the store it leaves, and what resume-pending finished.
+function interruptThenResume(dataDir, op, opts, n) {
+  const root = storeRoot(copyDataDir(dataDir));
+  const { plan } = planOver(root, op, opts);
+  applyPlan(root, plan.batches.slice(0, n));
+  const resume = planOver(root, 'resume-pending').plan;
+  applyPlan(root, resume.batches);
+  return { store: contents(root), finished: resume.result.finished, batches: plan.batches };
+}
+
+test('interrupted after any batch, a big Entry, Retraction or Hard delete is finished by resume-pending\'s plan', () => {
+  const { dataDir, id } = fixture(TEAM);
+  const record = { input: bigEntry(TEAM.map((n) => id[n])) };
+  // Withdrawals of an Entry about the whole team, too big for one batch.
+  const recorded = fixture(TEAM);
+  const { entry } = runOperation(recorded.store, 'record-entry', { input: bigEntry(TEAM.map((n) => recorded.id[n])) });
+  const cases = [
+    { dataDir, op: 'record-entry', opts: record },
+    { dataDir: recorded.dataDir, op: 'retract-entry', opts: { args: [entry] } },
+    { dataDir: recorded.dataDir, op: 'hard-delete', opts: { args: [entry] } },
+  ];
+  for (const c of cases) {
+    const whole = bothWays(c.dataDir, c.op, c.opts);
+    assert.deepEqual(whole.plannedStore, whole.localStore, c.op);
+    assert.ok(whole.batches.length > 2, `${c.op} takes several batches`);
+    const finished = whole.local.result.entry;
+    for (let n = 1; n < whole.batches.length; n++) {
+      const r = interruptThenResume(c.dataDir, c.op, c.opts, n);
+      assert.deepEqual(r.finished, [finished], `${c.op} stopped after batch ${n}`);
+      assert.deepEqual(r.store, whole.localStore, `${c.op} stopped after batch ${n}, then resumed`);
+    }
+  }
+});
+
+test('a later batch refused (another session moved a card): the ones before it stand, and resume-pending finishes the Entry', () => {
+  const { dataDir, id } = fixture(TEAM);
+  const root = storeRoot(dataDir);
+  const tids = TEAM.map((n) => id[n]);
+  const { plan } = planOver(root, 'record-entry', { input: bigEntry(tids) });
+  applyPlan(root, plan.batches.slice(0, 3));
+  // Another session writes about the last Trainee before their batch goes out.
+  openStore({ dataDir, ...clock, rand: seededRand(11) }).recordNextTalk(tids[2], ['איך הולך?', 'מה למדת?']);
+  const moved = contents(root);
+  assert.throws(() => applyPlan(root, plan.batches.slice(3)), VersionConflict);
+  assert.deepEqual(contents(root), moved, 'the refused batch wrote nothing');
+
+  // Resuming reads the Entries, then the cards and records of the Entry's Trainees.
+  assertReadsNeeded(root, { op: 'resume-pending', took: tids });
+  const resume = planOver(root, 'resume-pending').plan;
+  assert.deepEqual(resume.result.finished, [plan.result.entry]);
+  applyPlan(root, resume.batches);
+  const after = openStore({ dataDir });
+  for (const tid of tids) {
+    const { evidence, card } = after.readTrainee(tid);
+    assert.equal(evidence.length, 1, `${tid}'s Talk is recorded once`);
+    assert.equal(card.followups.length, 17);
+    assert.deepEqual(after.rebuildCard(tid), { id: tid, ...card }, 'the card matches its records');
+  }
+  assert.deepEqual(after.readTrainee(tids[2]).card.nextTalk.questions, ['איך הולך?', 'מה למדת?'], 'the other session\'s write stands');
+  assert.equal(contents(root)[`entries/${plan.result.entry}`].status, 'done');
+});
+
+test('a plan of several batches says what to do when one of them is refused', () => {
+  const { dataDir, id } = fixture(TEAM);
+  const { plan } = planOver(storeRoot(dataDir), 'record-entry', { input: bigEntry(TEAM.map((n) => id[n])) });
+  assert.match(plan.if_refused, /resume-pending/);
+  const small = planOver(storeRoot(dataDir), 'record-entry', { input: bigEntry([id['נועה']], 1) }).plan;
+  assert.equal(small.batches.length, 1);
+  assert.equal(small.if_refused, undefined, 'one batch: the usual re-read, re-plan, resend');
+});
+
 // The reads of one Trainee's card and records, as the manifests name them.
 const traineeReads = (tid) => [
   { action: 'get', collection: 'trainees', doc_id: tid },
@@ -159,17 +256,21 @@ test('reads: each operation plans over exactly the reads it took, and without an
     { op: 'hard-delete', args: [earlier.entry], took: [noa, dani] },
     { op: 'resume-pending', took: [] },
   ];
-  for (const { took, ...c } of cases) {
-    const { reads } = planOver(root, c.op, c);
-    const manifest = readsFor(c);
-    if (took) {
-      const allowed = new Set(keys([...manifest, ...took.flatMap(traineeReads)]));
-      assert.deepEqual(keys(reads).filter((k) => !allowed.has(k)), [], `${c.op} reads no record one by one`);
-    }
-    for (const [i, read] of reads.entries()) {
-      const snapshot = fetchReads(root, reads.filter((_, j) => j !== i));
-      const plan = () => planOperation({ snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), ...c, ...clock, rand: seededRand(3) });
-      assert.throws(plan, (e) => e instanceof MissingReads && e.message.includes(JSON.stringify(read)), `${c.op} without ${JSON.stringify(read)}`);
-    }
-  }
+  for (const c of cases) assertReadsNeeded(root, c);
 });
+
+// Plans `op` over `root`, fetching what it asks for; every read it took is needed (without any
+// one, planning refuses and names it). `took`: the Trainees whose card reads it may add to its
+// manifest, and nothing else.
+function assertReadsNeeded(root, { took, ...c }) {
+  const { reads } = planOver(root, c.op, c);
+  if (took) {
+    const allowed = new Set(keys([...readsFor(c), ...took.flatMap(traineeReads)]));
+    assert.deepEqual(keys(reads).filter((k) => !allowed.has(k)), [], `${c.op} reads no record one by one`);
+  }
+  for (const [i, read] of reads.entries()) {
+    const snapshot = fetchReads(root, reads.filter((_, j) => j !== i));
+    const plan = () => planOperation({ snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), ...c, ...clock, rand: seededRand(3) });
+    assert.throws(plan, (e) => e instanceof MissingReads && e.message.includes(JSON.stringify(read)), `${c.op} without ${JSON.stringify(read)}`);
+  }
+}

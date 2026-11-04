@@ -93,6 +93,7 @@ export function openSnapshot(dir, versions = new Map(), reads = null) {
       written.set(docPath, null);
     },
   });
+  const steps = []; // each batch the store sent, as written: [{path, before, after}]
   const missing = new Map(); // read key → the read that would cover it
   const made = (read) => !reads || reads.has(readKey(read));
   const covered = (read, ...also) => [read, ...also].some(made) || (missing.set(readKey(read), read), false);
@@ -119,7 +120,15 @@ export function openSnapshot(dir, versions = new Map(), reads = null) {
           throw new StoreError(`no version for ${w.path} in the versions list: copy it from the read's result`);
         }
       }
-      return docs.batch(writes);
+      const before = writes.map((w) => read(w.path));
+      const applied = docs.batch(writes);
+      steps.push(writes.map((w, i) => ({ path: w.path, before: before[i] && { version: before[i].version }, after: read(w.path) })));
+      return applied;
+    },
+    // The batches the store sent, in order, each as its writes {path, before: {version} | null,
+    // after: {version, data} | null}: `before` is the version the batches before it left.
+    steps() {
+      return steps;
     },
     writes() {
       return [...written.keys()].map((p) => {
