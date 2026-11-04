@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const BIN = fileURLToPath(new URL('../bin/student-tracker-store', import.meta.url));
 
 function run(args, { cwd, input } = {}) {
-  const r = spawnSync(BIN, args, { cwd, input, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [BIN, ...args], { cwd, input, encoding: 'utf8' });
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
