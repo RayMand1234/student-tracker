@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **What to build:**
 - The store runs over a docs layer it is given.
@@ -19,3 +19,14 @@
 - [ ] Equivalence test: the same `recordEntry` cases, run on the local backend and through snapshot → plan → apply, give identical stores and identical refusals (fixed clock and random source). Cases include sensitive parts, Assessments, changes and refusals.
 - [ ] Stale-pin case: apply refuses and writes nothing; a new snapshot → re-plan → apply succeeds
 - [ ] CLI tests spawn the CLI through `node`, so they run on Windows
+
+## Comments
+
+- 2026-11-04: Built in 46b5bfc and db67d86 (333/333 tests). Decisions later tickets must follow:
+  - **CLI:** `plan record-entry --snapshot <dir> --versions <file> --out <dir> [--insist]` prints `{result, plan, batches}`. `batches[i]` is ready to use as `ArtifactData batch` `writes`.
+  - **Folded plan:** each document's writes fold into one entry: a create is `set` with no pin, a change is `set` pinned to the snapshot version, a delete is a pinned `delete`. The Entry is written straight at `done`. Anything over 50 writes or 1 MiB is refused for now, and ticket 05 must replace that with ADR 0002's chunk order.
+  - **Equivalence compares data, not versions.** Results and refusal messages must match exactly.
+  - **A missing snapshot file reads as an absent document,** until ticket 03 adds "never read".
+  - **A pinned write with no listed version is refused.**
+  - **New plannable operations** go into `PLANNED` in `lib/plan.mjs`. They must already be in `lib/operations.mjs`.
+  - **Operations that need the pointer or another Cycle** (`createCycle`, `copyCommanderScope`, `archiveCycle`, `connect`) still need `dataDir`. Ticket 06 has to solve this.
