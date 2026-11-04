@@ -5,7 +5,7 @@ import path from 'node:path';
 import { openStore, StoreError } from './store.mjs';
 import { openSnapshot, checkBatch, getRead, listRead, queryRead, readKey, MissingReads } from './docs.mjs';
 import { runOperation } from './operations.mjs';
-import { parseEntry, parseTraineeChange, parseCycleChange, parsePlaybookItem, parseCycle } from './payload.mjs';
+import { parseEntry, parseAssessments, parseNextTalk, parseSnapshot, parseTraineeChange, parseCycleChange, parsePlaybookItem, parseCycle } from './payload.mjs';
 
 // What every write to the Cycle checks against: the Cycle, its Tests and Projects, its Skills, its teams.
 const CYCLE_READS = [getRead('meta/cycle'), getRead('meta/preset'), getRead('meta/skills'), listRead('teams')];
@@ -16,6 +16,21 @@ const traineeReads = (tid) => [
   ...['evidence', 'followups', 'items', 'assessments', 'changes'].map((kind) => listRead(`trainees/${tid}/${kind}`)),
   queryRead('sensitive', [['trainee', '==', tid]]),
 ];
+
+// Records outside an Entry, Retraction, Hard delete and resume (lean-turns 05). An Entry's
+// Trainees are known only once the Entry is read, so these name the Entry reads; planning then
+// asks for the Trainees' reads as "missing reads".
+const tidOf = (parse) => ({ input }) => parse(input()).trainee;
+const RECORD_AND_UNDO = {
+  'record-assessments': { reads: (a) => [getRead('meta/cycle'), getRead('meta/skills'), ...traineeReads(tidOf(parseAssessments)(a))] },
+  'record-next-talk': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseNextTalk)(a))] },
+  'record-snapshot': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseSnapshot)(a))] },
+  // The record's id names its Entry (`<entry id>-<n>`), and the Entry names its Trainees.
+  'flip-sensitive': { reads: ({ args }) => [getRead('meta/cycle'), getRead(`sensitive/${args[0]}`), getRead(`entries/${String(args[0]).replace(/-\d+$/, '')}`)] },
+  'retract-entry': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
+  'hard-delete': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
+  'resume-pending': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
+};
 
 // Reads, status, Playbook selection and alerts (lean-turns 04). A read plans to no batches; its
 // result is the plan's result. Reads of an archived Cycle are the same reads, sent to its address.
@@ -51,6 +66,7 @@ const PLANNED = {
       return [...CYCLE_READS, ...[...new Set(trainees)].flatMap(traineeReads)];
     },
   },
+  ...RECORD_AND_UNDO,
 
   // Reads, status, Playbook selection and alerts (lean-turns 04). A read plans to no batches.
   ...READ_OPERATIONS,
@@ -174,6 +190,7 @@ function readPointerFile(file) {
 // and each read document's version (see readList). `out`: a fresh folder for the plan.
 // Gives {result, plan, batches}: the operation's result, the plan folder (full long path) and
 // the batches in order, each a list of `batch` writes {op, collection, doc_id, file_path, if_version?}.
+// A plan of several batches also gives `if_refused` (IF_REFUSED).
 // Refuses with MissingReads when the operation needed a read the list does not hold.
 // `pointer`: the pointer file, read only. The plan never writes it: when the operation changes
 // it, the plan gives `pointer`, the whole file to write before sending the batches. Another
@@ -181,7 +198,7 @@ function readPointerFile(file) {
 // Cycle a refused write on an archived one names) is read from the second snapshot
 // (otherSnapshot). An operation with a `target` writes to that address, not the current
 // Cycle: the plan then gives it as `url`, where the batches go.
-export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, since, retracted = false, pointer, now, rand }) {
+export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, since, retracted = false, category, pointer, now, rand }) {
   const entry = planned(op);
   if (!snapshot || !out) throw new StoreError('plan needs --snapshot <folder> and --out <folder>');
   if (!fs.existsSync(snapshot)) throw new StoreError(`no snapshot folder ${snapshot}`);
@@ -224,7 +241,7 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
   });
   let result;
   try {
-    result = runOperation(store, op, { args, input: payload, insist, since, retracted });
+    result = runOperation(store, op, { args, input: payload, insist, since, retracted, category });
   } catch (e) {
     // It ran on documents it never got, so whatever went wrong after that is no answer.
     if (missing().length) throw new MissingReads(missing());
@@ -234,32 +251,47 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
   // Where the batches go and the pointer to write first, when either is not as usual.
   const extra = { ...(target ? { url: target } : {}), ...(pointerWrite ? { pointer: pointerWrite } : {}) };
 
-  const writes = docs.writes().flatMap(toWrite);
-  if (!writes.length) return { result, plan: null, batches: [], ...extra };
-  // One pinned, all-or-nothing batch. An Entry too big for one is ADR 0002's chunked write, not planned yet.
-  checkBatch(writes.map((w) => ({ path: w.path, data: w.data })));
+  const folded = docs.writes().flatMap(toWrite);
+  if (!folded.length) return { result, plan: null, batches: [], ...extra };
+  // One pinned, all-or-nothing batch when everything fits in one. Otherwise the batches the store
+  // sent, in order (ADR 0002: the Entry or mark at `writing`, one batch per Trainee, then the
+  // close), each pinned to the versions the batches before it leave.
+  const sends = fits(folded) ? [folded] : docs.steps().map((step) => step.flatMap(toWrite));
 
   fs.mkdirSync(out, { recursive: true });
   const dir = fs.realpathSync.native(out);
-  const batch = writes.map((w) => {
+  const batches = sends.map((writes, k) => writes.map((w) => {
     const slash = w.path.lastIndexOf('/');
     const entry = { op: w.op, collection: w.path.slice(0, slash), doc_id: w.path.slice(slash + 1) };
     if (w.data) {
-      const file = path.join(dir, 'batch-1', `${w.path}.json`);
+      const file = path.join(dir, `batch-${k + 1}`, `${w.path}.json`);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, `${JSON.stringify(w.data, null, 2)}\n`);
       entry.file_path = file;
     }
     if (w.ifVersion !== undefined) entry.if_version = w.ifVersion;
     return entry;
-  });
-  const batches = [batch];
+  }));
   fs.writeFileSync(path.join(dir, 'plan.json'), `${JSON.stringify({ batches }, null, 2)}\n`);
-  return { result, plan: dir, batches, ...extra };
+  return { result, plan: dir, batches, ...(batches.length > 1 ? { if_refused: IF_REFUSED } : {}), ...extra };
 }
 
-// A document's writes folded into the one write that takes it from its snapshot state to its
-// final one: a create is a `set` with no pin; a change or delete pins the snapshot's version.
+// What to do when a batch of a plan of several is refused: the batches before it stand, and the
+// first one left a mark at `writing` that resume-pending finishes.
+export const IF_REFUSED = 'batch 1 refused: nothing was written; read again, plan again, send again. A later batch refused: the batches before it stand; read again for resume-pending, plan it and send its batches.';
+
+function fits(writes) {
+  try {
+    checkBatch(writes.map((w) => ({ path: w.path, data: w.data })));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A document's writes folded into the one write that takes it from its state before (the
+// snapshot's, or what earlier batches left) to its final one: a create is a `set` with no pin; a
+// change or delete pins the version before.
 function toWrite({ path: p, before, after }) {
   if (!before && !after) return [];
   if (!after) return [{ op: 'delete', path: p, ifVersion: before.version }];

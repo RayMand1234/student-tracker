@@ -70,6 +70,8 @@ artifact backend (no --data):
                             refused. A read with a "url" is of another Cycle: send it to that address. When the
                             plan prints "pointer", write it as the pointer file before sending the batches; when
                             it prints "url", send the batches to that address, not the current Cycle.
+                            Several batches come with "if_refused": what to do when one after the first is
+                            refused (plan resume-pending).
                             Operations: ${plannedOperations().join(', ')}`;
 
 export async function main(argv) {
@@ -111,7 +113,7 @@ export async function main(argv) {
     }
     if (op === 'plan') {
       const [planned, ...args] = rest;
-      const plan = planOperation({ snapshot, versions, out, op: planned, args, input: stdin, insist, since, retracted, pointer });
+      const plan = planOperation({ snapshot, versions, out, op: planned, args, input: stdin, insist, since, retracted, category, pointer });
       process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
       return 0;
     }
