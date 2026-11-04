@@ -13,7 +13,8 @@ const REF = path.join(TRACKER, 'references');
 const NO_ALERT = ['brief', 'status', 'research', 'alerts'];
 const INJECT = /^!`student-tracker-store [^`]* boot`$/m;
 
-const read = (f) => fs.readFileSync(f, 'utf8').trimEnd();
+// CRLF (a Windows checkout) would hide the **Load:** line, the frontmatter and the inject line.
+const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').trimEnd();
 const section = (rel, text) => `<!-- ${rel} -->\n${text}`;
 
 function pointer(dataDir) {
