@@ -908,17 +908,23 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
       const docs = open();
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const sensitiveDoc = docs.get(`sensitive/${evidenceId}`);
-        const tids = docs.list('trainees').map((t) => t.id);
-        if (sensitiveDoc?.data.record === 'followup' || tids.some((t) => docs.get(`trainees/${t}/followups/${evidenceId}`))) {
+        // A record cut from an Entry is about one of the Entry's Trainees; its id names the Entry.
+        const tids = docs.get(`entries/${entryOfRecord(evidenceId)}`)?.data.trainees ?? [];
+        // Found through the Trainee's lists, the reads their card is derived from anyway.
+        // Every one of them is looked at, so the reads a flip needs don't hang on what they find.
+        const inList = (t, kind) => docs.list(`trainees/${t}/${kind}`).find((d) => d.id === evidenceId);
+        const holding = (kind) => tids.filter((t) => inList(t, kind));
+        const [followup, item, evidenceOwner] = ['followups', 'items', 'evidence'].map(holding);
+        if (sensitiveDoc?.data.record === 'followup' || followup.length) {
           throw new StoreError(`${evidenceId} is a Follow-up; flip the Evidence it was opened from`);
         }
-        if (sensitiveDoc?.data.record === 'item' || tids.some((t) => docs.get(`trainees/${t}/items/${evidenceId}`))) {
+        if (sensitiveDoc?.data.record === 'item' || item.length) {
           throw new StoreError(`${evidenceId} is an improve/keep item; flip the Evidence it was taken from`);
         }
-        const tid = sensitiveDoc?.data.trainee ?? tids.find((t) => docs.get(`trainees/${t}/evidence/${evidenceId}`));
+        const tid = sensitiveDoc?.data.trainee ?? evidenceOwner[0];
         if (!tid) throw new StoreError(`no Evidence ${evidenceId}`);
         // An Entry still being written would recreate the record at its old place: finish it first.
-        const { entry } = (sensitiveDoc ?? docs.get(`trainees/${tid}/evidence/${evidenceId}`)).data;
+        const { entry } = (sensitiveDoc ?? inList(tid, 'evidence')).data;
         if (docs.get(`entries/${entry}`)?.data.status === 'writing') {
           finishEntry(docs, entry);
           continue;
@@ -931,7 +937,7 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
         }
         // The Follow-ups opened from it and the improve/keep items taken from it move with it.
         const followers = Object.entries(RECORD_OF).flatMap(([kind, record]) => (toPublic
-          ? docs.list('sensitive').filter((d) => d.data.record === record && d.data.from === evidenceId)
+          ? docs.query('sensitive', [['trainee', '==', tid]]).filter((d) => d.data.record === record && d.data.from === evidenceId)
           : docs.list(`trainees/${tid}/${kind}`).filter((d) => d.data.from === evidenceId)
         ).map((d) => ({ id: d.id, kind, doc: d })));
         const from = (rid, kind) => (toPublic ? `sensitive/${rid}` : `trainees/${tid}/${kind}/${rid}`);
@@ -1191,15 +1197,20 @@ const CHILD_KINDS = ['evidence', 'followups', 'assessments', 'items', 'changes']
 
 // Where each of `ids` that belongs to this Trainee is now, as {path, version, data}: in their
 // subcollections, or in `sensitive/` wherever a flip has moved it.
+// Looked up among the reads the card is derived from anyway (lists and the sensitive query).
 function childrenOf(docs, tid, ids) {
+  const found = [
+    ...CHILD_KINDS.flatMap((k) => docs.list(`trainees/${tid}/${k}`).map((d) => ({ path: `trainees/${tid}/${k}/${d.id}`, ...d }))),
+    ...docs.query('sensitive', [['trainee', '==', tid]]).map((d) => ({ path: `sensitive/${d.id}`, ...d })),
+  ];
   return ids.flatMap((cid) => {
-    for (const p of [...CHILD_KINDS.map((k) => `trainees/${tid}/${k}/${cid}`), `sensitive/${cid}`]) {
-      const doc = docs.get(p);
-      if (doc?.data.trainee === tid) return [{ path: p, ...doc }];
-    }
-    return [];
+    const doc = found.find((d) => d.id === cid && d.data.trainee === tid);
+    return doc ? [{ path: doc.path, version: doc.version, data: doc.data }] : [];
   });
 }
+
+// The Entry a record cut from it belongs to: its id less the record's number (`<entry id>-<n>`).
+const entryOfRecord = (id) => String(id).replace(/-\d+$/, '');
 
 // The changes `updateCycle` makes, each (docs, value, {rand, at}) → the changed document.
 const CYCLE_CHANGES = {

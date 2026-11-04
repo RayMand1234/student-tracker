@@ -5,7 +5,7 @@ import path from 'node:path';
 import { openStore, StoreError } from './store.mjs';
 import { openSnapshot, checkBatch, getRead, listRead, queryRead, readKey, MissingReads } from './docs.mjs';
 import { runOperation } from './operations.mjs';
-import { parseEntry } from './payload.mjs';
+import { parseEntry, parseAssessments, parseNextTalk, parseSnapshot } from './payload.mjs';
 
 // What every write to the Cycle checks against: the Cycle, its Tests and Projects, its Skills, its teams.
 const CYCLE_READS = [getRead('meta/cycle'), getRead('meta/preset'), getRead('meta/skills'), listRead('teams')];
@@ -16,6 +16,21 @@ const traineeReads = (tid) => [
   ...['evidence', 'followups', 'items', 'assessments', 'changes'].map((kind) => listRead(`trainees/${tid}/${kind}`)),
   queryRead('sensitive', [['trainee', '==', tid]]),
 ];
+
+// Records outside an Entry, Retraction, Hard delete and resume (lean-turns 05). An Entry's
+// Trainees are known only once the Entry is read, so these name the Entry reads; planning then
+// asks for the Trainees' reads as "missing reads".
+const tidOf = (parse) => ({ input }) => parse(input()).trainee;
+const RECORD_AND_UNDO = {
+  'record-assessments': { reads: (a) => [getRead('meta/cycle'), getRead('meta/skills'), ...traineeReads(tidOf(parseAssessments)(a))] },
+  'record-next-talk': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseNextTalk)(a))] },
+  'record-snapshot': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseSnapshot)(a))] },
+  // The record's id names its Entry (`<entry id>-<n>`), and the Entry names its Trainees.
+  'flip-sensitive': { reads: ({ args }) => [getRead('meta/cycle'), getRead(`sensitive/${args[0]}`), getRead(`entries/${String(args[0]).replace(/-\d+$/, '')}`)] },
+  'retract-entry': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
+  'hard-delete': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
+  'resume-pending': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
+};
 
 // The operations the plan step runs, each with its reads manifest: from the operation's
 // arguments and payload (`input()`), the reads it needs, each one `ArtifactData` call (getRead,
@@ -28,6 +43,7 @@ const PLANNED = {
       return [...CYCLE_READS, ...[...new Set(trainees)].flatMap(traineeReads)];
     },
   },
+  ...RECORD_AND_UNDO,
 };
 
 function planned(op) {
@@ -52,7 +68,7 @@ export function readsFor({ op, args = [], input = '', snapshot }) {
 // Gives {result, plan, batches}: the operation's result, the plan folder (full long path) and
 // the batches in order, each a list of `batch` writes {op, collection, doc_id, file_path, if_version?}.
 // Refuses with MissingReads when the operation needed a read the list does not hold.
-export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, now, rand }) {
+export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, category, now, rand }) {
   planned(op);
   if (!snapshot || !out) throw new StoreError('plan needs --snapshot <folder> and --out <folder>');
   if (!fs.existsSync(snapshot)) throw new StoreError(`no snapshot folder ${snapshot}`);
@@ -67,7 +83,7 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
   const store = openStore({ docs, ...(now ? { now } : {}), ...(rand ? { rand } : {}) });
   let result;
   try {
-    result = runOperation(store, op, { args, input: payload, insist });
+    result = runOperation(store, op, { args, input: payload, insist, category });
   } catch (e) {
     // It ran on documents it never got, so whatever went wrong after that is no answer.
     if (docs.missing().length) throw new MissingReads(docs.missing());
