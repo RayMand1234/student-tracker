@@ -45,9 +45,11 @@ const SENSITIVE_KINDS = KINDS.filter((k) => !Object.keys(KIND_FIELDS[k]).length)
 // `base(framework)` gives the base Playbook items (the shipped ones by default; tests pass a fixture).
 // `cycle`: the address of an archived Cycle (one in the pointer's `archived`) to read instead of
 // the current one. Archived Cycles are read-only: every write on one is refused.
-export function openStore({ dataDir, cycle: address, now = () => new Date(), rand = randomChars, interrupt = () => {}, base = basePlaybook } = {}) {
-  if (!dataDir) throw new StoreError('missing plugin data dir');
-  const pointerPath = path.join(dataDir, POINTER);
+// `docs`: a docs layer to run over instead of the Cycle's local one (the plan step's snapshot
+// layer); the operations that work on the pointer or other Cycles still need `dataDir`.
+export function openStore({ dataDir, docs: given, cycle: address, now = () => new Date(), rand = randomChars, interrupt = () => {}, base = basePlaybook } = {}) {
+  if (!dataDir && !given) throw new StoreError('missing plugin data dir');
+  const pointerPath = dataDir && path.join(dataDir, POINTER);
   const readPointer = () => ({ current: null, archived: [], ...readJson(pointerPath) });
 
   function storeRoot() {
@@ -59,11 +61,11 @@ export function openStore({ dataDir, cycle: address, now = () => new Date(), ran
     if (!url) throw new StoreError(NOT_SET_UP);
     return rootOf(url);
   }
-  const openRead = () => openDocs(storeRoot());
+  const openRead = () => given ?? openDocs(storeRoot());
   // Writes go to the current Cycle only, and never to one marked archived.
   function open() {
     const docs = openRead();
-    const { current } = readPointer();
+    const { current } = given ? { current: address } : readPointer();
     const cycle = docs.get('meta/cycle')?.data;
     if ((address && address !== current) || cycle?.archived === true) {
       const currentName = current && current !== address ? openDocs(rootOf(current)).get('meta/cycle')?.data?.name : null;

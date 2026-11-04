@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { openDocs, VersionConflict, AlreadyExists } from '../lib/docs.mjs';
+import { openDocs, openSnapshot, VersionConflict, AlreadyExists } from '../lib/docs.mjs';
+import { readVersions } from '../lib/plan.mjs';
 
 const fresh = () => openDocs(fs.mkdtempSync(path.join(os.tmpdir(), 'st-docs-')));
 
@@ -73,4 +74,51 @@ test('a batch with no pinned write applies in order and keeps what it wrote befo
     AlreadyExists,
   );
   assert.deepEqual(docs.list('c').map((d) => d.id), ['a', 'b']);
+});
+
+// The plan step's snapshot layer: an `out_dir` read folder (data only) plus the versions list.
+function snapshot(files) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'st-snap-'));
+  for (const [p, data] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, `${p}.json`)), { recursive: true });
+    fs.writeFileSync(path.join(dir, `${p}.json`), JSON.stringify(data));
+  }
+  return dir;
+}
+
+test('a snapshot reads data-only files with their listed versions, and records writes without applying them', () => {
+  const dir = snapshot({ 'trainees/t-1': { name: 'נועה' }, 'entries/e-1': { text: 'א' } });
+  const docs = openSnapshot(dir, new Map([['trainees/t-1', 4], ['entries/e-1', 2]]));
+  assert.deepEqual(docs.get('trainees/t-1'), { version: 4, data: { name: 'נועה' } });
+  assert.equal(docs.get('trainees/t-2'), null);
+
+  docs.batch([
+    { op: 'create', path: 'trainees/t-1/evidence/e-2-1', data: { kind: 'talk' } },
+    { op: 'set', path: 'trainees/t-1', data: { name: 'נועה', lastTalk: '2026-10-30' }, ifVersion: 4 },
+  ]);
+  assert.deepEqual(docs.get('trainees/t-1'), { version: 5, data: { name: 'נועה', lastTalk: '2026-10-30' } }, 'a later read sees the write');
+  assert.deepEqual(docs.list('trainees/t-1/evidence').map((d) => d.id), ['e-2-1']);
+  assert.throws(() => docs.batch([{ op: 'set', path: 'trainees/t-1', data: {}, ifVersion: 4 }]), VersionConflict);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'trainees/t-1.json'), 'utf8')), { name: 'נועה' }, 'nothing written to the snapshot');
+  assert.ok(!fs.existsSync(path.join(dir, 'trainees/t-1/evidence')));
+
+  assert.deepEqual(docs.writes(), [
+    { path: 'trainees/t-1/evidence/e-2-1', before: null, after: { version: 1, data: { kind: 'talk' } } },
+    { path: 'trainees/t-1', before: { version: 4 }, after: { version: 5, data: { name: 'נועה', lastTalk: '2026-10-30' } } },
+  ]);
+});
+
+test('a snapshot refuses to pin a write to a document whose version was not listed', () => {
+  const docs = openSnapshot(snapshot({ 'trainees/t-1': {} }));
+  assert.throws(() => docs.batch([{ op: 'set', path: 'trainees/t-1', data: {}, ifVersion: undefined }]), /no version for trainees\/t-1/);
+});
+
+test('the versions list takes "<path> <version>" lines or the lines an out_dir read printed', () => {
+  const dir = snapshot({ 'trainees/t-1': {}, 'trainees/t-1/evidence/e-1-1': {} });
+  const list = path.join(dir, '..', `${path.basename(dir)}-versions.txt`);
+  const printed = path.join(dir, 'trainees', 't-1', 'evidence', 'e-1-1.json');
+  fs.writeFileSync(list, `trainees/t-1 3\n- "e-1-1"  96 bytes  version 2  "${printed}"\n`);
+  assert.deepEqual([...readVersions(list, dir)], [['trainees/t-1', 3], ['trainees/t-1/evidence/e-1-1', 2]]);
+  fs.writeFileSync(list, 'trainees/t-1 three\n');
+  assert.throws(() => readVersions(list, dir), /unreadable versions line/);
 });

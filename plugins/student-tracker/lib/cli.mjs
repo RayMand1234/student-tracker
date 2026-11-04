@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
 import { boot } from './boot.mjs';
-import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings, parsePlaybookItem, parseNextTalk, parseSnapshot } from './payload.mjs';
+import { isOperation, runOperation } from './operations.mjs';
+import { planOperation } from './plan.mjs';
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <archived Cycle address>] <operation> [args]
   (--cycle: read a Cycle from the pointer's archived list; every write to it is refused)
@@ -52,7 +53,13 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <a
                             "remove-week: <last week>" | "add-skill: <name>" | "archive-skill: <id>" |
                             "restore-skill: <id>" | "team: <name>", then its field lines (store/local/roster.md)
   resume-pending
-  rebuild-card <tid>`;
+  rebuild-card <tid>
+artifact backend (no --data):
+  plan <operation> --snapshot <out_dir read folder> --versions <file> --out <fresh plan folder> [args]
+                          < the operation's payload. Runs it over the snapshot and prints {result, plan,
+                            batches}: each batch is the "writes" of one ArtifactData batch, sent in order.
+                            --versions: one "<collection path>/<doc id> <version>" line per read document,
+                            or the read results' lines as printed. Operations: record-entry`;
 
 export async function main(argv) {
   const args = [...argv];
@@ -65,6 +72,9 @@ export async function main(argv) {
   const cycle = opt('--cycle');
   const since = opt('--since');
   const category = opt('--category');
+  const snapshot = opt('--snapshot');
+  const versions = opt('--versions');
+  const out = opt('--out');
   const flag = (name) => {
     const i = args.indexOf(name);
     if (i !== -1) args.splice(i, 1);
@@ -81,56 +91,19 @@ export async function main(argv) {
       process.stdout.write(boot({ dataDir, route: rest[0], tracker }));
       return 0;
     }
+    if (op === 'plan') {
+      const [planned, ...args] = rest;
+      const plan = planOperation({ snapshot, versions, out, op: planned, args, input: stdin, insist });
+      process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
+      return 0;
+    }
     const store = openStore({ dataDir, cycle });
-    const ops = {
-      connect: () => store.connect(),
-      start: () => {
-        const connect = store.connect();
-        if (connect.setup !== 'done') return { connect };
-        const resumed = connect.archived ? {} : { resumePending: store.resumePending() };
-        return { connect, ...resumed, cycle: store.readCycle(), team: store.readTeam() };
-      },
-      'create-cycle': () => store.createCycle(parseCycle(stdin())),
-      'finish-setup': () => store.finishSetup(),
-      'read-cycle': () => store.readCycle(),
-      'read-team': () => store.readTeam(),
-      'read-trainee': () => store.readTrainee(rest[0], { since, retracted }),
-      'record-entry': () => store.recordEntry({ ...parseEntry(stdin()), insist }),
-      'read-playbook': () => store.readPlaybook(rest[0], { skills: rest.slice(1) }),
-      'read-status': () => store.readStatus(),
-      'take-alert': () => store.takeAlert(rest.length ? { pattern: { trainee: rest[0], theme: rest.slice(1).join(' ') } } : {}),
-      'record-next-talk': () => {
-        const { trainee, questions } = parseNextTalk(stdin());
-        return store.recordNextTalk(trainee, questions);
-      },
-      'record-snapshot': () => {
-        const { trainee, text } = parseSnapshot(stdin());
-        return store.recordSnapshot(trainee, text);
-      },
-      'record-assessments': () => {
-        const { trainee, assessments, nextTalk } = parseAssessments(stdin());
-        return store.recordAssessments(trainee, assessments, { insist, nextTalk });
-      },
-      'update-trainee': () => store.updateTrainee(rest[0] ?? null, parseTraineeChange(stdin())),
-      'update-settings': () => store.updateSettings(parseSettings(stdin())),
-      'update-cycle': () => store.updateCycle(parseCycleChange(stdin())),
-      'save-playbook-item': () => store.savePlaybookItem({ ...(rest[0] ? { id: rest[0] } : {}), ...parsePlaybookItem(stdin()) }),
-      'retire-playbook-item': () => store.retirePlaybookItem(rest[0]),
-      'hide-playbook-item': () => store.hidePlaybookItem(rest[0], true),
-      'unhide-playbook-item': () => store.hidePlaybookItem(rest[0], false),
-      'flip-sensitive': () => store.flipSensitive(rest[0], { category }),
-      'retract-entry': () => store.retractEntry(rest[0]),
-      'hard-delete': () => store.hardDelete(rest[0]),
-      'resume-pending': () => store.resumePending(),
-      'copy-commander-scope': () => store.copyCommanderScope(rest[0]),
-      'archive-cycle': () => store.archiveCycle(rest[0]),
-      'rebuild-card': () => store.rebuildCard(rest[0]),
-    };
-    if (!ops[op]) {
+    if (!isOperation(op)) {
       process.stderr.write(`${USAGE}\n`);
       return 2;
     }
-    process.stdout.write(`${JSON.stringify(ops[op](), null, 2)}\n`);
+    const result = runOperation(store, op, { args: rest, input: stdin, since, retracted, insist, category });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return 0;
   } catch (e) {
     if (!(e instanceof StoreError)) throw e;
