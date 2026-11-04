@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { openStore, StoreError } from './store.mjs';
 import { boot } from './boot.mjs';
 import { isOperation, runOperation } from './operations.mjs';
-import { planOperation, readsFor } from './plan.mjs';
+import { planOperation, readsFor, plannedOperations } from './plan.mjs';
 
 const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <archived Cycle address>] <operation> [args]
   (--cycle: read a Cycle from the pointer's archived list; every write to it is refused)
@@ -64,10 +64,10 @@ artifact backend (no --data):
                             --versions: each read made, its line as "reads" printed it (one that found
                             nothing too), and one "<collection path>/<doc id> <version>" line per document
                             found, or the read results' lines as printed. Refuses "missing reads" with the
-                            reads still to make, one per line. Several batches come with "if_refused": what
-                            to do when one after the first is refused (plan resume-pending).
-                            Operations: record-entry, record-assessments, record-next-talk, record-snapshot,
-                            flip-sensitive, retract-entry, hard-delete, resume-pending`;
+                            reads still to make, one per line. A read writes nothing: its plan is null, batches [].
+                            Several batches come with "if_refused": what to do when one after the first is
+                            refused (plan resume-pending).
+                            Operations: ${plannedOperations().join(', ')}`;
 
 export async function main(argv) {
   const args = [...argv];
@@ -107,7 +107,7 @@ export async function main(argv) {
     }
     if (op === 'plan') {
       const [planned, ...args] = rest;
-      const plan = planOperation({ snapshot, versions, out, op: planned, args, input: stdin, insist, category });
+      const plan = planOperation({ snapshot, versions, out, op: planned, args, input: stdin, insist, since, retracted, category });
       process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
       return 0;
     }
