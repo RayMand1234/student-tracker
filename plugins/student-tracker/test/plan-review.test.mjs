@@ -69,6 +69,16 @@ test('a list read with more pages is asked for again with its cursor, then plans
   assert.equal(plan().result.length, 2);
 });
 
+// The line exactly as a live ArtifactData out_dir list prints it (probed 2026-11-04): prose follows the cursor.
+test('a next_cursor line as the real tool prints it yields just the cursor', () => {
+  const { dataDir } = fixture();
+  const reads = readsFor({ op: 'read-team' });
+  const snapshot = fetchReads(storeRoot(dataDir), reads);
+  fs.appendFileSync(snapshot.versions, 'next_cursor: "ayEHo33Z-uRPig_gdb8G" — more documents exist; pass this as `query.cursor` to read the next page.\n');
+  const [next] = missingReads(() => planOperation({ snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), op: 'read-team', ...clock }));
+  assert.equal(next.query.cursor, 'ayEHo33Z-uRPig_gdb8G');
+});
+
 test('a list page that came back full with no next_cursor in the versions list is refused, not taken as whole', () => {
   const { dataDir } = fixture();
   const reads = readsFor({ op: 'read-team' });

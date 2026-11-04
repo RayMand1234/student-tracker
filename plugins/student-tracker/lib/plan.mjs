@@ -375,7 +375,8 @@ export function readList(file, snapshot, { main = [] } = {}) {
       page = { line, read, key, found: 0, next: undefined };
       continue;
     }
-    const cursor = line.match(/^\W*next_cursor\W+(.*?)[\s",}]*$/);
+    // The cursor is one token; the real tool prints prose after it (`next_cursor: "…" — more documents exist; …`).
+    const cursor = line.match(/^\W*next_cursor[\s":=]*([^\s"',}]*)/);
     if (cursor) {
       if (!page) throw new StoreError(`next_cursor line "${line}" with no read line before it`);
       page.next = ['', 'null', 'none'].includes(cursor[1]) ? null : cursor[1];
