@@ -17,6 +17,29 @@ const traineeReads = (tid) => [
   queryRead('sensitive', [['trainee', '==', tid]]),
 ];
 
+// Reads, status, Playbook selection and alerts (lean-turns 04). A read plans to no batches; its
+// result is the plan's result. Reads of an archived Cycle are the same reads, sent to its address.
+// What team status and alerts are computed from: the cards, the Cycle, its Skills, the Talk settings.
+const STATUS_READS = [listRead('trainees'), getRead('meta/cycle'), getRead('meta/skills'), getRead('commander/settings')];
+const READ_OPERATIONS = {
+  'read-cycle': {
+    reads: () => [
+      ...['meta/cycle', 'meta/skills', 'meta/preset', 'commander/settings', 'commander/hides'].map(getRead),
+      listRead('playbook'), listRead('teams'),
+    ],
+  },
+  'read-team': { reads: () => [listRead('trainees')] },
+  'read-trainee': { reads: ({ args }) => [...traineeReads(args[0]), listRead('entries')] },
+  'read-playbook': {
+    reads: ({ args }) => [getRead(`trainees/${args[0]}`), getRead('meta/skills'), listRead('playbook'), getRead('commander/hides')],
+  },
+  'read-status': { reads: () => STATUS_READS },
+  // Writes `meta/alerts` when an alert is due. A pattern's Trainee is among the cards.
+  'take-alert': { reads: () => [...STATUS_READS, getRead('meta/alerts')] },
+  // Writes the card when it is out of step with its records. meta/cycle: no write to an archived Cycle.
+  'rebuild-card': { reads: ({ args }) => [getRead('meta/cycle'), ...traineeReads(args[0])] },
+};
+
 // The operations the plan step runs, each with its reads manifest: from the operation's
 // arguments and payload (`input()`), the reads it needs, each one `ArtifactData` call (getRead,
 // listRead, queryRead). Planning over a snapshot that lacks one of them refuses and names it.
@@ -28,7 +51,12 @@ const PLANNED = {
       return [...CYCLE_READS, ...[...new Set(trainees)].flatMap(traineeReads)];
     },
   },
+
+  // Reads, status, Playbook selection and alerts (lean-turns 04). A read plans to no batches.
+  ...READ_OPERATIONS,
 };
+
+export const plannedOperations = () => Object.keys(PLANNED);
 
 function planned(op) {
   if (!Object.hasOwn(PLANNED, op)) throw new StoreError(`plan runs ${Object.keys(PLANNED).join(', ')}; got "${op ?? ''}"`);
@@ -52,7 +80,7 @@ export function readsFor({ op, args = [], input = '', snapshot }) {
 // Gives {result, plan, batches}: the operation's result, the plan folder (full long path) and
 // the batches in order, each a list of `batch` writes {op, collection, doc_id, file_path, if_version?}.
 // Refuses with MissingReads when the operation needed a read the list does not hold.
-export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, now, rand }) {
+export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, since, retracted = false, now, rand }) {
   planned(op);
   if (!snapshot || !out) throw new StoreError('plan needs --snapshot <folder> and --out <folder>');
   if (!fs.existsSync(snapshot)) throw new StoreError(`no snapshot folder ${snapshot}`);
@@ -67,7 +95,7 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
   const store = openStore({ docs, ...(now ? { now } : {}), ...(rand ? { rand } : {}) });
   let result;
   try {
-    result = runOperation(store, op, { args, input: payload, insist });
+    result = runOperation(store, op, { args, input: payload, insist, since, retracted });
   } catch (e) {
     // It ran on documents it never got, so whatever went wrong after that is no answer.
     if (docs.missing().length) throw new MissingReads(docs.missing());
