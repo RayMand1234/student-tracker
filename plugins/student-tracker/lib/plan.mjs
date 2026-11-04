@@ -67,6 +67,30 @@ Object.assign(PLANNED, {
       return [getRead('meta/cycle'), ...names, ...(kind === 'add' ? [] : traineeReads(tid))];
     },
   },
+  'update-cycle': {
+    reads: ({ input }) => {
+      const [[kind, change]] = Object.entries(parseCycleChange(input()));
+      if (['addSkill', 'archiveSkill', 'restoreSkill'].includes(kind)) return [getRead('meta/cycle'), getRead('meta/skills')];
+      const teams = ['removeProject', 'setTeam'].includes(kind) ? [listRead('teams')] : [];
+      const members = kind === 'setTeam' ? change.members.map((tid) => getRead(`trainees/${tid}`)) : [];
+      return [getRead('meta/cycle'), getRead('meta/preset'), ...teams, ...members];
+    },
+  },
+  // A new item takes a free id (a list of the Playbook); one taken from an Entry is checked
+  // against that Entry and its sensitive parts.
+  'save-playbook-item': {
+    reads: ({ args: [id], input }) => {
+      if (id) return [getRead('meta/cycle'), getRead('meta/skills'), getRead(`playbook/${id}`)];
+      const { source } = parsePlaybookItem(input());
+      const from = source ? [getRead(`entries/${source}`), queryRead('sensitive', [['entry', '==', source]])] : [];
+      return [getRead('meta/cycle'), getRead('meta/skills'), listRead('playbook'), ...from];
+    },
+  },
+  'retire-playbook-item': { reads: ({ args: [id] }) => [getRead('meta/cycle'), getRead(`playbook/${id}`)] },
+  // Hiding checks the item against the base Playbook of the Cycle's Skills.
+  'hide-playbook-item': { reads: () => [getRead('meta/cycle'), getRead('meta/skills'), getRead('commander/hides')] },
+  'unhide-playbook-item': { reads: () => [getRead('meta/cycle'), getRead('commander/hides')] },
+  'finish-setup': { reads: () => [getRead('meta/cycle')] },
 });
 
 export const plannedOperations = () => Object.keys(PLANNED);

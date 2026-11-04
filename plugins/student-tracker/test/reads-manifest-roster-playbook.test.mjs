@@ -1,6 +1,7 @@
 // The reads manifest (lean-turns spec, Testing Decisions) for the roster, settings, Cycle-change
 // and Playbook operations: a snapshot holding exactly the manifest's reads plans; without any one
 // of them, planning refuses and names it.
+import fs from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreError } from '../lib/store.mjs';
@@ -50,4 +51,30 @@ test('update-settings and update-trainee: exactly the manifest\'s reads plan', (
   assertManifest(root, 'update-trainee', { args: [noa], input: `status: watch\nreason: צריכה ליווי\nevidence: ${entry.evidence[0]}\n` });
   assertManifest(root, 'update-trainee', { args: [noa], input: 'leave: 2026-10-30\nhow: other\nreason: סיימה\n' });
   assertManifest(root, 'update-trainee', { args: [dani], input: 'rejoin\n' });
+});
+
+const BASE_ID = JSON.parse(fs.readFileSync(new URL('../data/playbook.json', import.meta.url), 'utf8')).items[0].id;
+const SKILL = 'learn.self-awareness';
+
+test('Playbook items: exactly the manifest\'s reads plan', () => {
+  const { root, entry, store } = withHistory();
+  const own = store.savePlaybookItem({ kind: 'tip', skills: [SKILL], text: 'לשאול מה ניסתה' });
+  assertManifest(root, 'save-playbook-item', { input: `+kind: tip\n+skills: ${SKILL}\nטיפ חדש\n` });
+  assertManifest(root, 'save-playbook-item', { input: `+kind: tip\n+skills: general\n+source: ${entry.entry}\nנועה פתרה את הבאג לבד.\n` });
+  assertManifest(root, 'save-playbook-item', { args: [own.id], input: '+band: mid\n' });
+  assertManifest(root, 'retire-playbook-item', { args: [own.id] });
+  assertManifest(root, 'hide-playbook-item', { args: [BASE_ID] });
+  store.hidePlaybookItem(BASE_ID, true);
+  assertManifest(root, 'unhide-playbook-item', { args: [BASE_ID] });
+});
+
+test('update-cycle and finish-setup: exactly the manifest\'s reads plan', () => {
+  const { root, noa, store } = withHistory();
+  const { preset, skills } = store.readCycle();
+  const [subject, project] = [preset.subjects[0].id, preset.projects[0].id];
+  assertManifest(root, 'update-cycle', { input: `add-test: מבחן חדש\nsubject: ${subject}\n` });
+  assertManifest(root, 'update-cycle', { input: `remove-project: ${project}\n` });
+  assertManifest(root, 'update-cycle', { input: `add-skill: הקשבה\ngroup: ${skills.groups[0].id}\n` });
+  assertManifest(root, 'update-cycle', { input: `team: הנמרים\nproject: ${project}\nmember: ${noa}\n` });
+  assertManifest(root, 'finish-setup');
 });

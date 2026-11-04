@@ -46,11 +46,28 @@ const SENSITIVE_KINDS = KINDS.filter((k) => !Object.keys(KIND_FIELDS[k]).length)
 // `cycle`: the address of an archived Cycle (one in the pointer's `archived`) to read instead of
 // the current one. Archived Cycles are read-only: every write on one is refused.
 // `docs`: a docs layer to run over instead of the Cycle's local one (the plan step's snapshot
-// layer); the operations that work on the pointer or other Cycles still need `dataDir`.
-export function openStore({ dataDir, docs: given, cycle: address, now = () => new Date(), rand = randomChars, interrupt = () => {}, base = basePlaybook } = {}) {
+// layer). With `docs`, the pointer is not the store's to write: `pointer` is the pointer as its
+// owner keeps it ({current, archived}), `writePointer(next)` is told each change to it, and
+// `cycles(url)` gives the docs layer of another Cycle (createCycle's previous, copyCommanderScope's
+// source, archiveCycle's Cycle, the current Cycle a refusal names), or null when there is none.
+export function openStore({ dataDir, docs: given, cycles = () => null, pointer: shown, writePointer, cycle: address, now = () => new Date(), rand = randomChars, interrupt = () => {}, base = basePlaybook } = {}) {
   if (!dataDir && !given) throw new StoreError('missing plugin data dir');
   const pointerPath = dataDir && path.join(dataDir, POINTER);
-  const readPointer = () => ({ current: null, archived: [], ...readJson(pointerPath) });
+  let kept = shown;
+  const readPointer = () => ({ current: null, archived: [], ...(given ? kept : readJson(pointerPath)) });
+  const savePointer = (next) => {
+    if (!given) return writeJson(pointerPath, next);
+    if (sameJson(next, readPointer())) return;
+    if (!writePointer) throw new StoreError('this changes the pointer: give the pointer file (--pointer)');
+    kept = next;
+    writePointer(next);
+  };
+  // Another Cycle's docs by its address; null when it has no store.
+  const cycleDocs = (url) => {
+    if (given) return url ? cycles(url) : null;
+    const root = localRoot(url);
+    return root && fs.existsSync(root) ? openDocs(root) : null;
+  };
 
   function storeRoot() {
     const { current, archived } = readPointer();
@@ -65,18 +82,21 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
   // Writes go to the current Cycle only, and never to one marked archived.
   function open() {
     const docs = openRead();
-    const { current } = given ? { current: address } : readPointer();
+    // A docs layer given with no pointer cannot tell which Cycle is current.
+    const unknown = given && !shown;
+    const { current } = unknown ? { current: address } : readPointer();
     const cycle = docs.get('meta/cycle')?.data;
     if ((address && address !== current) || cycle?.archived === true) {
-      const currentName = current && current !== address ? openDocs(rootOf(current)).get('meta/cycle')?.data?.name : null;
-      throw new StoreError(`המחזור ${cycle?.name ?? address} בארכיון — אפשר רק לקרוא ממנו. ${currentName ? `עדכונים נרשמים במחזור הנוכחי, ${currentName}.` : 'אין מחזור נוכחי: הרץ `/student-tracker:setup`.'}`);
+      const currentName = current && current !== address ? cycleDocs(current)?.get('meta/cycle')?.data?.name : null;
+      const where = currentName ? `עדכונים נרשמים במחזור הנוכחי, ${currentName}.`
+        : unknown ? 'עדכונים נרשמים במחזור הנוכחי.' : 'אין מחזור נוכחי: הרץ `/student-tracker:setup`.';
+      throw new StoreError(`המחזור ${cycle?.name ?? address} בארכיון — אפשר רק לקרוא ממנו. ${where}`);
     }
     return docs;
   }
   // A Cycle's store by its address, which must hold a Cycle.
   function cycleAt(url, what) {
-    const root = localRoot(url);
-    const docs = root && fs.existsSync(root) ? openDocs(root) : null;
+    const docs = cycleDocs(url);
     if (!docs?.get('meta/cycle')) throw new StoreError(`no Cycle at ${url} to ${what}`);
     return docs;
   }
@@ -319,33 +339,49 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
       names.forEach((n, i) => names.slice(i + 1).forEach((m) => checkNames(n, m)));
 
       const pointer = readPointer();
-      let existing = localRoot(pointer.current);
-      const existingCycle = existing && openDocs(existing).get('meta/cycle')?.data;
+      const wrongPrevious = 'previous must be the Cycle this new one follows (the current Cycle), set up and done';
+      // The store to seed: the current Cycle's (an interrupted setup resumes it), or a fresh one.
+      // Given a docs layer, the owner of the pointer has already made the new Cycle's store
+      // current (setup publishes its page and writes the pointer first): that is the docs layer.
+      if (given && !pointer.current) throw new StoreError('no current Cycle in the pointer: write the new Cycle\'s address as its current first');
+      if (given && previous !== undefined && previous === pointer.current) {
+        throw new StoreError('the pointer\'s current is still the previous Cycle: write the new Cycle\'s address as its current, the previous one added to archived, first');
+      }
+      let existing = given ? null : localRoot(pointer.current);
+      let existingDocs = given ?? (existing && openDocs(existing));
+      const existingCycle = existingDocs?.get('meta/cycle')?.data;
       const resuming = existingCycle?.setup === 'in-progress';
       if (previous !== undefined && !(resuming && existingCycle.previous === previous)) {
-        if (previous !== pointer.current || existingCycle?.setup !== 'done') {
-          throw new StoreError(`previous must be the current Cycle (${pointer.current ?? 'none'}), set up and done`);
+        if (given) {
+          if (existingCycle?.setup === 'done') throw new StoreError(`כבר קיים מעקב למחזור ${existingCycle.name} (a new Cycle names it as previous)`);
+          const theirs = cycleDocs(previous)?.get('meta/cycle')?.data;
+          if (theirs?.setup !== 'done' || theirs.archived === true) throw new StoreError(wrongPrevious);
+        } else {
+          if (previous !== pointer.current || existingCycle?.setup !== 'done') throw new StoreError(wrongPrevious);
+          existing = null; // a fresh store for the new Cycle
+          existingDocs = null;
         }
-        existing = null; // a fresh store for the new Cycle
       } else if (existingCycle?.setup === 'done') {
         throw new StoreError(`כבר קיים מעקב למחזור ${existingCycle.name} (a new Cycle names it as previous)`);
       }
-      const follows = previous ?? (existing ? existingCycle?.previous : undefined);
+      const follows = previous ?? (existingDocs ? existingCycle?.previous : undefined);
       // Resuming keeps what the interrupted setup stored; answers given again replace it. A new
       // Cycle starts from the previous Cycle's settings.
-      const prior = (existing && openDocs(existing).get('commander/settings')?.data)
-        ?? (localRoot(follows) && openDocs(localRoot(follows)).get('commander/settings')?.data);
+      const prior = existingDocs?.get('commander/settings')?.data
+        ?? (follows ? cycleDocs(follows)?.get('commander/settings')?.data : undefined);
       const talk = talkSettings(prior?.talk ?? DEFAULT_TALK, commander.talk);
-      const r = existing ?? path.join(dataDir, 'local', `c-${rand(6)}`);
+      const r = given ? null : existing ?? path.join(dataDir, 'local', `c-${rand(6)}`);
+      const url = given ? pointer.current : `${LOCAL}${r}`;
       // Pointer first, so an interrupted seed is found and resumed instead of duplicated.
-      const archived = previous && !existing ? [...pointer.archived.filter((u) => u !== previous), previous] : pointer.archived;
-      writeJson(pointerPath, { ...pointer, current: `${LOCAL}${r}`, archived });
-      const docs = openDocs(r);
+      const fresh = previous && !(resuming && existingCycle.previous === previous);
+      const archived = fresh ? [...pointer.archived.filter((u) => u !== previous), previous] : pointer.archived;
+      savePointer({ ...pointer, current: url, archived });
+      const docs = given ?? openDocs(r);
 
       const at = isoWithOffset(now());
       upsert(docs, 'meta/cycle', {
         name: cycle.name,
-        start: cycle.start ?? (existing && existingCycle?.start) ?? today(),
+        start: cycle.start ?? (existingDocs && existingCycle?.start) ?? today(),
         setup: 'in-progress',
         schema: 1,
         archived: false,
@@ -377,7 +413,7 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
         return { id, name };
       });
       interrupt('seeded');
-      return { url: `${LOCAL}${r}`, trainees: all };
+      return { url, trainees: all };
     },
 
     // Setup only, last: after the seed and everything setup records into it (preset changes,
@@ -1069,7 +1105,7 @@ export function openStore({ dataDir, docs: given, cycle: address, now = () => ne
       const pointer = readPointer();
       if (url === pointer.current) throw new StoreError('the current Cycle cannot be archived; archive the previous one once the new Cycle is the current Cycle');
       const docs = cycleAt(url, 'archive');
-      if (!pointer.archived.includes(url)) writeJson(pointerPath, { ...pointer, archived: [...pointer.archived, url] });
+      if (!pointer.archived.includes(url)) savePointer({ ...pointer, archived: [...pointer.archived, url] });
       finishPending(docs);
       const cycle = docs.get('meta/cycle').data;
       if (cycle.archived === true) return cycle;
@@ -1339,7 +1375,7 @@ function checkSource(docs, item) {
   if (!entry || entry.deletion) throw new StoreError(`no Entry ${item.source}`);
   if (entry.retracted !== false) throw new StoreError(`Entry ${item.source} is retracted`);
   if (!entry.text.includes(item.text)) throw new StoreError(`the text is not word-for-word from Entry ${item.source}`);
-  const parts = flat(docs.list('sensitive')).filter((x) => x.entry === item.source && x.record === 'evidence').map((x) => x.excerpt);
+  const parts = flat(docs.query('sensitive', [['entry', '==', item.source]])).filter((x) => x.record === 'evidence').map((x) => x.excerpt);
   const spans = parts.flatMap((p) => spansOf(entry.text, p));
   const at = spansOf(entry.text, item.text);
   if (repeatsSensitive(entry.text, parts, spans)(item.text) || spans.some((sp) => at.some((t) => overlaps(sp, t)))) {
