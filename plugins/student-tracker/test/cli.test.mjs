@@ -598,9 +598,9 @@ test('reads record-entry prints the ArtifactData reads to send, one per line, ea
   assert.deepEqual(err.slice(head + 1), [JSON.stringify(sent)]);
   assert.ok(!fs.existsSync(out), 'a refused plan writes no plan');
 
-  const other = run(['reads', 'read-team'], { cwd });
+  const other = run(['reads', 'no-such-op'], { cwd });
   assert.equal(other.code, 1);
-  assert.match(other.err, /plan runs record-entry/);
+  assert.match(other.err, /plan runs .*record-entry.*; got "no-such-op"/);
 });
 
 test('plan record-entry runs over a snapshot and prints the batch to send, its files under the plan folder in full long paths', () => {
@@ -635,7 +635,7 @@ test('plan record-entry runs over a snapshot and prints the batch to send, its f
   const refused = run(['plan', 'record-entry', '--snapshot', nobodySnapshot.dir, '--versions', nobodySnapshot.versions, '--out', `${out}-2`], { cwd, input: nobody });
   assert.equal(refused.code, 1);
   assert.match(refused.err, /unknown Trainee t-nobody/);
-  const other = run(['plan', 'read-team', '--snapshot', snapshot, '--out', `${out}-3`], { cwd });
+  const other = run(['plan', 'no-such-op', '--snapshot', snapshot, '--out', `${out}-3`], { cwd });
   assert.equal(other.code, 1);
-  assert.match(other.err, /plan runs record-entry/);
+  assert.match(other.err, /plan runs .*record-entry.*; got "no-such-op"/);
 });
