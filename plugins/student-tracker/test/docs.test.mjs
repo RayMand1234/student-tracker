@@ -145,6 +145,17 @@ test('a snapshot reads only through the reads made: a get that found nothing is 
   assert.equal(docs.missing().length, 4);
 });
 
+test('a snapshot file is parsed once, however often a plan gets or lists it: a snapshot does not change during a plan', (t) => {
+  const dir = snapshot({ 'trainees/t-1': { name: 'נועה' }, 'trainees/t-2': { name: 'דני' } });
+  const docs = openSnapshot(dir, new Map([['trainees/t-1', 2], ['trainees/t-2', 1]]));
+  const reads = t.mock.method(fs, 'readFileSync');
+  for (let i = 0; i < 5; i++) {
+    assert.equal(docs.get('trainees/t-1').data.name, 'נועה');
+    assert.equal(docs.list('trainees').length, 2);
+  }
+  assert.equal(reads.mock.callCount(), 2, 'one parse per file');
+});
+
 test('the versions list also records the reads made, one JSON line each, whatever their key order or out_dir', () => {
   const dir = snapshot({ 'trainees/t-1': {} });
   const list = path.join(dir, '..', `${path.basename(dir)}-reads.txt`);

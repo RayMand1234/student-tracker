@@ -72,17 +72,28 @@ export function openDocs(root) {
 export function openSnapshot(dir, versions = new Map(), reads = null) {
   const file = (docPath) => path.join(dir, `${docPath}.json`);
   const written = new Map(); // doc path → {version, data} | null (deleted)
+  // The snapshot does not change during a plan: each file is parsed, each folder listed, once.
+  const parsed = new Map(); // doc path → {version, data} | null (no file)
   const base = (docPath) => {
-    const f = file(docPath);
-    if (!fs.existsSync(f)) return null;
-    return { version: versions.get(docPath), data: JSON.parse(fs.readFileSync(f, 'utf8')) };
+    if (!parsed.has(docPath)) {
+      const f = file(docPath);
+      parsed.set(docPath, fs.existsSync(f) ? { version: versions.get(docPath), data: JSON.parse(fs.readFileSync(f, 'utf8')) } : null);
+    }
+    return parsed.get(docPath);
+  };
+  const listed = new Map(); // collection → the ids of its files
+  const onDiskIds = (collection) => {
+    if (!listed.has(collection)) {
+      const d = path.join(dir, collection);
+      listed.set(collection, fs.existsSync(d) ? fs.readdirSync(d).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)) : []);
+    }
+    return listed.get(collection);
   };
   const read = (docPath) => (written.has(docPath) ? written.get(docPath) : base(docPath));
   const docs = docsOver({
     read,
     ids(collection) {
-      const d = path.join(dir, collection);
-      const onDisk = fs.existsSync(d) ? fs.readdirSync(d).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)) : [];
+      const onDisk = onDiskIds(collection);
       const inPlan = [...written.keys()].filter((p) => p.startsWith(`${collection}/`) && !p.slice(collection.length + 1).includes('/'));
       return [...new Set([...onDisk, ...inPlan.map((p) => p.slice(collection.length + 1))])].filter((id) => read(`${collection}/${id}`));
     },
