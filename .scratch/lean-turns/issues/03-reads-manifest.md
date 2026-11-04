@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **What to build:**
 - For an operation and its arguments, the CLI prints the `ArtifactData` reads it needs (get/list/query with filters and limits), in a form the model sends in one message.
@@ -15,3 +15,22 @@
 - [ ] The snapshot records which reads were made, so a missing document can be told apart from one never fetched
 - [ ] Test: a snapshot holding exactly the manifest's reads plans successfully, and removing any one read refuses and names it
 - [ ] Output stays short: paths, versions and results only, no document contents
+
+## Comments
+
+- 2026-11-04: Built in 597be8f (340/340 tests). Decisions tickets 04–06 must follow:
+  - **CLI:** `reads <op> --snapshot <dir> [args] < payload` prints `{"reads": [...]}`, one `ArtifactData` read per line without `url`, with `out_dir` set to the full long snapshot path. The `--versions` file given to `plan` holds the read lines that were made (a get that found nothing included) plus the version lines.
+  - **Missing reads:** planning refuses with `missing reads:` followed by the reads to send. The model sends them into the same snapshot, appends their lines and plans again.
+  - **The store reads only through** `docs.get`, `docs.list`, `docs.query(collection, [[field,'==',value]])` and `docs.taken(path)`.
+    - A get is covered by a get of that path or a list of its collection.
+    - A list is covered only by a list.
+    - A query is covered by the same query, or by a list.
+    - Look records up through the same query rather than with a get.
+  - **`taken`** is for id probes before a create and needs no read.
+    - Resume paths (ticket 05) must read the pending Trainees' subcollections and their `sensitive` query.
+  - **A Trainee's sensitive records** are `query sensitive where trainee == tid`.
+  - **Lists and queries fetch one page of 1000.** Truncation isn't detected yet.
+  - **Adding an operation** takes three things:
+    1. a `PLANNED` entry with `reads` (helpers: `getRead`, `listRead`, `queryRead`, `CYCLE_READS`, `traineeReads(tid)`)
+    2. equivalence cases built through `fetchReads` in `test/fixtures/plan-seam.mjs`
+    3. a row in the manifest test that drops each read in turn
