@@ -65,3 +65,43 @@ test('plan create-cycle without the pointer file is refused', () => {
   assert.equal(r.code, 1);
   assert.match(r.err, /--pointer/);
 });
+
+// Plans `op` over a snapshot of the Cycle at `cycle` with --cycle, as a read of an archived Cycle
+// runs: the manifest's reads sent there, then any missing reads the plan names, and plan again.
+function planAt(cycle, op, { dataDir, input = '' }) {
+  const pointer = path.join(dataDir, 'cycles.json');
+  const snapshot = path.join(tmp('st-cli-snap-'), 'snapshot');
+  const printed = run(['reads', op, '--snapshot', snapshot], { input });
+  assert.equal(printed.code, 0, printed.err);
+  const versions = path.join(tmp('st-cli-versions-'), 'versions.txt');
+  send(JSON.parse(printed.out).reads, cycle, versions);
+  const out = path.join(tmp('st-cli-plan-'), 'plan');
+  const plan = () => run(['plan', op, '--cycle', cycle, '--snapshot', snapshot, '--versions', versions, '--out', out, '--pointer', pointer], { input });
+  let r = plan();
+  const lines = r.err.trim().split('\n');
+  const head = lines.findIndex((l) => l.startsWith('missing reads'));
+  if (head !== -1) {
+    send(lines.slice(head + 1).map((l) => JSON.parse(l)), cycle, versions);
+    r = plan();
+  }
+  return { out, ...r };
+}
+
+// Mid-setup the previous Cycle is in the pointer's archived but not yet marked archived, so only
+// --cycle tells the plan its snapshot is not the current Cycle.
+test('plan --cycle <an archived Cycle> refuses a write even before the Cycle is marked archived', () => {
+  const { dataDir, previous } = newCycle();
+  const r = planAt(previous, 'update-settings', { dataDir, input: 'role: מ"פ\n' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.err, /בארכיון/);
+  assert.ok(!fs.existsSync(r.out), 'no batches for the archived Cycle');
+});
+
+test('plan --cycle <an archived Cycle> still reads it', () => {
+  const { dataDir, previous } = newCycle();
+  const r = planAt(previous, 'read-team', { dataDir });
+  assert.equal(r.code, 0, r.err);
+  const { result, batches } = JSON.parse(r.out);
+  assert.deepEqual(result.map((t) => t.name).sort(), ['דני', 'נועה']);
+  assert.deepEqual(batches, []);
+});

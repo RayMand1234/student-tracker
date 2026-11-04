@@ -42,6 +42,14 @@ test('the test apply refuses an unpinned set on an existing document, as the dat
   assert.deepEqual(contents(root), before);
 });
 
+test('a write planned over a Cycle read with --cycle is refused, even without the pointer file', () => {
+  const { dataDir } = fixture();
+  const input = 'role: מ"פ\n';
+  const snapshot = fetchReads(storeRoot(dataDir), readsFor({ op: 'update-settings', input }));
+  const plan = () => planOperation({ snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), op: 'update-settings', input, cycle: 'https://claude.ai/artifact/old', ...clock });
+  assert.throws(plan, /בארכיון/);
+});
+
 // A Cycle with one Entry about נועה, recorded on the local backend.
 function withEntry() {
   const f = fixture();

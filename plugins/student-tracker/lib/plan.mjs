@@ -205,7 +205,9 @@ function readPointerFile(file) {
 // Cycle a refused write on an archived one names) is read from the second snapshot
 // (otherSnapshot). An operation with a `target` writes to that address, not the current
 // Cycle: the plan then gives it as `url`, where the batches go.
-export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, since, retracted = false, category, pointer, now, rand }) {
+// `cycle`: the address the snapshot was read from when it is an archived Cycle (--cycle), as on
+// the local backend: reads run, and every write is refused unless it is the pointer's current.
+export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, since, retracted = false, category, pointer, cycle, now, rand }) {
   const entry = planned(op);
   if (!snapshot || !out) throw new StoreError('plan needs --snapshot <folder> and --out <folder>');
   if (!fs.existsSync(snapshot)) throw new StoreError(`no snapshot folder ${snapshot}`);
@@ -216,7 +218,7 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
   const payload = () => (text ??= typeof input === 'function' ? input() : input);
   const target = entry.target?.({ args, input: payload });
   const list = versions
-    ? readList(versions, snapshot, { main: [target, shown?.current] })
+    ? readList(versions, snapshot, { main: [target, cycle, shown?.current] })
     : { versions: new Map(), reads: new Set(), other: { versions: new Map(), reads: new Set() } };
   const isOther = (r) => r.url !== undefined && r.url !== target;
   // Every read to make saves into its snapshot folder: the second one for another Cycle's.
@@ -237,13 +239,14 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
     return other;
   };
   const missing = () => [
-    ...docs.missing().map((r) => toMain(target ? { ...r, url: target } : r)),
+    ...docs.missing().map((r) => toMain(target ?? cycle ? { ...r, url: target ?? cycle } : r)),
     ...(other?.missing() ?? []).map((r) => toOther({ ...r, url: otherUrl })),
   ];
   let pointerWrite;
   const store = openStore({
     docs,
     cycles,
+    ...(cycle ? { cycle } : {}),
     ...(shown ? { pointer: shown, writePointer: (next) => (pointerWrite = next) } : {}),
     ...(now ? { now } : {}),
     ...(rand ? { rand } : {}),

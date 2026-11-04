@@ -82,9 +82,10 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
   // Writes go to the current Cycle only, and never to one marked archived.
   function open() {
     const docs = openRead();
-    // A docs layer given with no pointer cannot tell which Cycle is current.
+    // A docs layer given with no pointer cannot tell which Cycle is current: one read from an
+    // archived Cycle's address (`cycle`) is taken for not the current one.
     const unknown = given && !shown;
-    const { current } = unknown ? { current: address } : readPointer();
+    const { current } = unknown ? { current: undefined } : readPointer();
     const cycle = docs.get('meta/cycle')?.data;
     if ((address && address !== current) || cycle?.archived === true) {
       const currentName = current && current !== address ? cycleDocs(current)?.get('meta/cycle')?.data?.name : null;

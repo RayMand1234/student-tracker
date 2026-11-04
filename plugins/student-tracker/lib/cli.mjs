@@ -67,7 +67,8 @@ artifact backend (no --data):
                             reads still to make, one per line. A read writes nothing: its plan is null, batches [].
                             --pointer <the pointer file>: read only; needed by create-cycle, copy-commander-scope
                             and archive-cycle, and to name the current Cycle when a write to an archived one is
-                            refused. A read with a "url" is of another Cycle: send it to that address. When the
+                            refused. --cycle <archived Cycle address>: the snapshot was read there; its writes
+                            are refused. A read with a "url" is of another Cycle: send it to that address. When the
                             plan prints "pointer", write it as the pointer file before sending the batches; when
                             it prints "url", send the batches to that address, not the current Cycle.
                             Several batches come with "if_refused": what to do when one after the first is
@@ -113,7 +114,7 @@ export async function main(argv) {
     }
     if (op === 'plan') {
       const [planned, ...args] = rest;
-      const plan = planOperation({ snapshot, versions, out, op: planned, args, input: stdin, insist, since, retracted, category, pointer });
+      const plan = planOperation({ snapshot, versions, out, op: planned, args, input: stdin, insist, since, retracted, category, pointer, cycle });
       process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
       return 0;
     }

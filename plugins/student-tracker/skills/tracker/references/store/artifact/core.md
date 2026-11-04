@@ -24,5 +24,5 @@ The pointer has no `current`, or the reads say the page is gone: find the Cycle 
 
 ## Archived Cycle, dashboard
 
-- Reads of an archived Cycle: the same three steps with `url` = its address on every read; never send a batch there (only a plan that prints that `url`).
+- Reads of an archived Cycle: the same three steps with `url` = its address on every read and `--cycle <its address>` on `plan`; never send a batch there (only a plan that prints that `url`).
 - Dashboard: Artifact tool `action: "open"` with the page address. Unpinning a Cycle's page: `action: "unpin"` with its address.
