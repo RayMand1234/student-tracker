@@ -93,6 +93,41 @@ Object.assign(PLANNED, {
   'finish-setup': { reads: () => [getRead('meta/cycle')] },
 });
 
+// The Cycle lifecycle (lean-turns 06): operations on two Cycles. Each reads the pointer file
+// (`pointer`). `from`: the other Cycle it reads, whose reads carry its address as `url` and
+// save into the second snapshot. `target`: the Cycle it writes to when that is not the current one.
+const atUrl = (url, reads) => reads.map((r) => ({ ...r, url }));
+const SCOPE = ['commander/settings', 'meta/skills', 'commander/hides'];
+Object.assign(PLANNED, {
+  // Settings, Skills, items and hides of the previous Cycle, copied into the new one.
+  'copy-commander-scope': {
+    pointer: true,
+    from: ({ args: [url] }) => url,
+    reads: ({ args: [url] }) => {
+      const scope = [getRead('meta/cycle'), ...SCOPE.map(getRead), listRead('playbook')];
+      return [...scope, ...atUrl(url, scope)];
+    },
+  },
+  // Seeds the current Cycle: setup has published its page and written the pointer, current =
+  // the page. A new Cycle reads the previous one: is it done, and its settings to start from.
+  'create-cycle': {
+    pointer: true,
+    from: ({ input }) => parseCycle(input()).previous,
+    reads: ({ input }) => {
+      const { previous } = parseCycle(input());
+      const here = [...['meta/cycle', 'meta/skills', 'meta/preset', 'commander/settings', 'commander/hides'].map(getRead), listRead('trainees')];
+      return [...here, ...(previous ? atUrl(previous, [getRead('meta/cycle'), getRead('commander/settings')]) : [])];
+    },
+  },
+  // Writes to the archived Cycle itself: its Entries left at `writing` are finished (the reads
+  // their records need are named as missing reads), then its meta/cycle is marked archived.
+  'archive-cycle': {
+    pointer: true,
+    target: ({ args: [url] }) => url,
+    reads: ({ args: [url] }) => atUrl(url, [getRead('meta/cycle'), listRead('entries')]),
+  },
+});
+
 export const plannedOperations = () => Object.keys(PLANNED);
 
 function planned(op) {
@@ -102,14 +137,37 @@ function planned(op) {
 
 // The reads manifest: the reads `op` needs for these arguments and payload, each once.
 // `snapshot`: the folder the reads save into; each read then carries it as `out_dir`, a full long path.
+// A read of another Cycle (one with a `url` other than the operation's target) saves into that
+// folder's OTHER subfolder instead: the second snapshot.
 export function readsFor({ op, args = [], input = '', snapshot }) {
   const payload = typeof input === 'function' ? input : () => input;
+  const entry = planned(op);
+  const target = entry.target?.({ args, input: payload });
   const seen = new Set();
-  const reads = planned(op).reads({ args, input: payload }).filter((r) => !seen.has(readKey(r)) && seen.add(readKey(r)));
+  const key = (r) => `${r.url ?? ''} ${readKey(r)}`;
+  const reads = entry.reads({ args, input: payload }).filter((r) => !seen.has(key(r)) && seen.add(key(r)));
   if (!snapshot) return reads;
-  fs.mkdirSync(snapshot, { recursive: true });
-  const outDir = fs.realpathSync.native(snapshot);
-  return reads.map((r) => ({ ...r, out_dir: outDir }));
+  const isOther = (r) => r.url !== undefined && r.url !== target;
+  return reads.map((r) => ({ ...r, out_dir: longDir(isOther(r) ? otherSnapshot(snapshot) : snapshot) }));
+}
+
+// The second snapshot, of another Cycle than the one the plan writes to: a subfolder of the
+// snapshot that no collection is named.
+export const OTHER = '@other';
+export const otherSnapshot = (snapshot) => path.join(snapshot, OTHER);
+
+function longDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  return fs.realpathSync.native(dir);
+}
+
+function readPointerFile(file) {
+  if (!fs.existsSync(file)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    throw new StoreError(`unreadable pointer file ${file}`);
+  }
 }
 
 // `snapshot`: the folder the reads saved with `out_dir`. `versions`: a file listing the reads made
@@ -117,31 +175,67 @@ export function readsFor({ op, args = [], input = '', snapshot }) {
 // Gives {result, plan, batches}: the operation's result, the plan folder (full long path) and
 // the batches in order, each a list of `batch` writes {op, collection, doc_id, file_path, if_version?}.
 // Refuses with MissingReads when the operation needed a read the list does not hold.
-export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, since, retracted = false, now, rand }) {
-  planned(op);
+// `pointer`: the pointer file, read only. The plan never writes it: when the operation changes
+// it, the plan gives `pointer`, the whole file to write before sending the batches. Another
+// Cycle the operation reads (createCycle's previous, copyCommanderScope's source, the current
+// Cycle a refused write on an archived one names) is read from the second snapshot
+// (otherSnapshot). An operation with a `target` writes to that address, not the current
+// Cycle: the plan then gives it as `url`, where the batches go.
+export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, since, retracted = false, pointer, now, rand }) {
+  const entry = planned(op);
   if (!snapshot || !out) throw new StoreError('plan needs --snapshot <folder> and --out <folder>');
   if (!fs.existsSync(snapshot)) throw new StoreError(`no snapshot folder ${snapshot}`);
-  const list = versions ? readList(versions, snapshot) : { versions: new Map(), reads: new Set() };
+  if (entry.pointer && !pointer) throw new StoreError(`plan ${op} needs --pointer <the pointer file>`);
+  const shown = pointer ? { current: null, archived: [], ...readPointerFile(pointer) } : undefined;
   // The payload is read once (it may be stdin), for the manifest and for the operation.
   let text;
   const payload = () => (text ??= typeof input === 'function' ? input() : input);
+  const target = entry.target?.({ args, input: payload });
+  const list = versions
+    ? readList(versions, snapshot, { main: [target, shown?.current] })
+    : { versions: new Map(), reads: new Set(), other: { versions: new Map(), reads: new Set() } };
+  const isOther = (r) => r.url !== undefined && r.url !== target;
+  const toOther = (r) => ({ ...r, out_dir: longDir(otherSnapshot(snapshot)) });
   // Every read the manifest names is made first; reads it could not foresee are named as the run meets them.
-  const unmade = readsFor({ op, args, input: payload }).filter((r) => !list.reads.has(readKey(r)));
-  if (unmade.length) throw new MissingReads(unmade);
+  const unmade = readsFor({ op, args, input: payload }).filter((r) => !(isOther(r) ? list.other.reads : list.reads).has(readKey(r)));
+  if (unmade.length) throw new MissingReads(unmade.map((r) => (isOther(r) ? toOther(r) : r)));
   const docs = openSnapshot(snapshot, list.versions, list.reads);
-  const store = openStore({ docs, ...(now ? { now } : {}), ...(rand ? { rand } : {}) });
+  // The one other Cycle a run may read: the operation's own (`from`), else the first it asks for.
+  let otherUrl = entry.from?.({ args, input: payload }) ?? list.other.url;
+  let other;
+  const cycles = (url) => {
+    if (url === target) return docs;
+    otherUrl ??= url;
+    if (url !== otherUrl) throw new StoreError(`planning reads one other Cycle (${otherUrl}), not also ${url}`);
+    other ??= openSnapshot(otherSnapshot(snapshot), list.other.versions, list.other.reads);
+    return other;
+  };
+  const missing = () => [
+    ...docs.missing().map((r) => (target ? { ...r, url: target } : r)),
+    ...(other?.missing() ?? []).map((r) => toOther({ ...r, url: otherUrl })),
+  ];
+  let pointerWrite;
+  const store = openStore({
+    docs,
+    cycles,
+    ...(shown ? { pointer: shown, writePointer: (next) => (pointerWrite = next) } : {}),
+    ...(now ? { now } : {}),
+    ...(rand ? { rand } : {}),
+  });
   let result;
   try {
     result = runOperation(store, op, { args, input: payload, insist, since, retracted });
   } catch (e) {
     // It ran on documents it never got, so whatever went wrong after that is no answer.
-    if (docs.missing().length) throw new MissingReads(docs.missing());
+    if (missing().length) throw new MissingReads(missing());
     throw e;
   }
-  if (docs.missing().length) throw new MissingReads(docs.missing());
+  if (missing().length) throw new MissingReads(missing());
+  // Where the batches go and the pointer to write first, when either is not as usual.
+  const extra = { ...(target ? { url: target } : {}), ...(pointerWrite ? { pointer: pointerWrite } : {}) };
 
   const writes = docs.writes().flatMap(toWrite);
-  if (!writes.length) return { result, plan: null, batches: [] };
+  if (!writes.length) return { result, plan: null, batches: [], ...extra };
   // One pinned, all-or-nothing batch. An Entry too big for one is ADR 0002's chunked write, not planned yet.
   checkBatch(writes.map((w) => ({ path: w.path, data: w.data })));
 
@@ -161,7 +255,7 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
   });
   const batches = [batch];
   fs.writeFileSync(path.join(dir, 'plan.json'), `${JSON.stringify({ batches }, null, 2)}\n`);
-  return { result, plan: dir, batches };
+  return { result, plan: dir, batches, ...extra };
 }
 
 // A document's writes folded into the one write that takes it from its snapshot state to its
@@ -189,9 +283,16 @@ function docPathIn(snapshot, file) {
 // and one per document found, either "<collection path>/<doc id> <version>" or a line of an
 // `out_dir` read's result as the tool printed it (`… version 2  "<file path>"`).
 // Gives {versions: doc path → version, reads: the reads' keys (readKey)}.
-export function readList(file, snapshot) {
-  const versions = new Map();
-  const reads = new Set();
+// Reads of another Cycle, and the versions they show, go to `other` ({versions, reads, url}): a
+// read line whose `out_dir` is the second snapshot (otherSnapshot), or with no `out_dir` and a
+// `url` that is none of `main` (the addresses of the Cycle the plan writes to); a printed
+// result line of a file in the second snapshot; a plain line after a read of another Cycle.
+export function readList(file, snapshot, { main = [] } = {}) {
+  const here = { versions: new Map(), reads: new Set() };
+  const other = { versions: new Map(), reads: new Set(), url: undefined };
+  const otherDir = otherSnapshot(snapshot);
+  const inOther = (dir) => docPathIn(otherDir, path.join(dir, 'x.json')) !== null;
+  let last = here; // the Cycle of the last read line: a plain version line belongs to it
   for (const line of fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean)) {
     if (line.startsWith('{')) {
       let read;
@@ -200,23 +301,27 @@ export function readList(file, snapshot) {
       } catch {
         throw new StoreError(`unreadable read line "${line}": copy the read's JSON as the manifest printed it`);
       }
-      reads.add(readKey(read));
+      const isOther = read.out_dir !== undefined ? inOther(read.out_dir) : read.url !== undefined && !main.includes(read.url);
+      last = isOther ? other : here;
+      if (isOther) other.url ??= read.url;
+      last.reads.add(readKey(read));
       continue;
     }
     const plain = line.match(/^([^\s"]+)\s+(\d+)$/);
     if (plain) {
-      versions.set(plain[1], Number(plain[2]));
+      last.versions.set(plain[1], Number(plain[2]));
       continue;
     }
     const printed = line.match(/\bversion\s+(\d+)\s+"([^"]+\.json)"\s*$/);
-    const docPath = printed && docPathIn(snapshot, printed[2]);
-    if (docPath) {
-      versions.set(docPath, Number(printed[1]));
+    const otherPath = printed && docPathIn(otherDir, printed[2]);
+    const docPath = printed && !otherPath && docPathIn(snapshot, printed[2]);
+    if (otherPath || docPath) {
+      (otherPath ? other : here).versions.set(otherPath || docPath, Number(printed[1]));
       continue;
     }
     throw new StoreError(`unreadable versions line "${line}": give "<collection path>/<doc id> <version>"`);
   }
-  return { versions, reads };
+  return { ...here, other };
 }
 
 export const readVersions = (file, snapshot) => readList(file, snapshot).versions;

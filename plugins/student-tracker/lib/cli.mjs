@@ -65,6 +65,11 @@ artifact backend (no --data):
                             nothing too), and one "<collection path>/<doc id> <version>" line per document
                             found, or the read results' lines as printed. Refuses "missing reads" with the
                             reads still to make, one per line. A read writes nothing: its plan is null, batches [].
+                            --pointer <the pointer file>: read only; needed by create-cycle, copy-commander-scope
+                            and archive-cycle, and to name the current Cycle when a write to an archived one is
+                            refused. A read with a "url" is of another Cycle: send it to that address. When the
+                            plan prints "pointer", write it as the pointer file before sending the batches; when
+                            it prints "url", send the batches to that address, not the current Cycle.
                             Operations: ${plannedOperations().join(', ')}`;
 
 export async function main(argv) {
@@ -81,6 +86,7 @@ export async function main(argv) {
   const snapshot = opt('--snapshot');
   const versions = opt('--versions');
   const out = opt('--out');
+  const pointer = opt('--pointer');
   const flag = (name) => {
     const i = args.indexOf(name);
     if (i !== -1) args.splice(i, 1);
@@ -105,7 +111,7 @@ export async function main(argv) {
     }
     if (op === 'plan') {
       const [planned, ...args] = rest;
-      const plan = planOperation({ snapshot, versions, out, op: planned, args, input: stdin, insist, since, retracted });
+      const plan = planOperation({ snapshot, versions, out, op: planned, args, input: stdin, insist, since, retracted, pointer });
       process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
       return 0;
     }
