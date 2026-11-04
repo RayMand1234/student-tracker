@@ -14,7 +14,7 @@ Every command runs in three steps, each one turn with its calls sent together. P
    - A refusal → as for any refusal; nothing was written.
 3. **Send.** `batches` empty → done: reply from `result`. Otherwise, if the plan printed `pointer`, write it as the pointer file (Write tool) first. Send each batch as one `ArtifactData` `batch` call (`writes` = that batch as printed; `url` = the plan's `url` if it printed one, else `current`), one at a time, in order, each after the previous succeeded.
 
-**A batch refused with `version_mismatch`** wrote nothing. The first batch → start again at step 1 with a new `<S>`, at most 10 times. A later batch → do what the plan's `if_refused` says (`resume-pending`, through the same three steps), then reply from the first plan's `result`.
+**A batch refused with `version_mismatch`** wrote nothing. The first batch → start again at step 1 with a new `<S>`, at most 10 times. A later batch → do what the plan's `if_refused` says (`resume-pending`, through the same three steps), then reply from the first plan's `result`; no `if_refused` → start again at step 1 too.
 
 ## Start
 

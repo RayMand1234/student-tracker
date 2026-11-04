@@ -71,8 +71,9 @@ artifact backend (no --data):
                             are refused. A read with a "url" is of another Cycle: send it to that address. When the
                             plan prints "pointer", write it as the pointer file before sending the batches; when
                             it prints "url", send the batches to that address, not the current Cycle.
-                            Several batches come with "if_refused": what to do when one after the first is
-                            refused (plan resume-pending).
+                            Several batches of an Entry, Retraction or Hard delete come with "if_refused": what
+                            to do when one after the first is refused (plan resume-pending); any other plan
+                            cut off is finished by reading, planning and sending it again.
                             Operations: ${plannedOperations().join(', ')} (start: connect, resume-pending, read-cycle and read-team over one snapshot)`;
 
 export async function main(argv) {

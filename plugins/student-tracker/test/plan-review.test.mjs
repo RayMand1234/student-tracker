@@ -4,11 +4,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { AlreadyExists, MissingReads } from '../lib/docs.mjs';
 import { openStore } from '../lib/store.mjs';
 import { runOperation } from '../lib/operations.mjs';
 import { planOperation, readsFor } from '../lib/plan.mjs';
 import { NOW, seededRand, fixture, storeRoot, contents, fetchReads, applyPlan, planDir } from './fixtures/plan-seam.mjs';
+import { createInput, publishPage } from './fixtures/cycle-seam.mjs';
 
 const clock = { now: () => NOW };
 
@@ -76,6 +79,29 @@ test('a list page that came back full with no next_cursor in the versions list i
     () => planOperation({ snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), op: 'read-team', ...clock }),
     /next_cursor/,
   );
+});
+
+// A setup seeding many Trainees takes several batches. Re-planning create-cycle resumes an
+// interrupted seed, so that is its recovery: no resume-pending advice, which cannot repair it.
+test('a create-cycle cut off after some of its batches is finished by planning it again, and says nothing of resume-pending', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'st-review-setup-'));
+  publishPage()(dataDir);
+  const pointer = path.join(dataDir, 'cycles.json');
+  const root = storeRoot(dataDir);
+  const names = Array.from({ length: 30 }, (_, i) => `חניך ${i + 1}`);
+  const input = createInput({ trainees: names });
+  const plan = (seed) => {
+    const snapshot = fetchReads(root, readsFor({ op: 'create-cycle', input }));
+    return planOperation({ snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), op: 'create-cycle', input, pointer, ...clock, rand: seededRand(seed) });
+  };
+  const first = plan(3);
+  assert.ok(first.batches.length > 1, 'several batches');
+  assert.equal(first.if_refused, undefined, 'a later batch refused: read, plan and send create-cycle again');
+
+  applyPlan(root, first.batches.slice(0, Math.ceil(first.batches.length / 2)));
+  applyPlan(root, plan(4).batches); // a later turn: other random ids
+  const team = openStore({ dataDir }).readTeam().map((t) => t.name).sort();
+  assert.deepEqual(team, [...names].sort(), 'every Trainee seeded once');
 });
 
 // A Cycle with one Entry about נועה, recorded on the local backend.

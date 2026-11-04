@@ -27,8 +27,8 @@ const RECORD_AND_UNDO = {
   'record-snapshot': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseSnapshot)(a))] },
   // The record's id names its Entry (`<entry id>-<n>`), and the Entry names its Trainees.
   'flip-sensitive': { reads: ({ args }) => [getRead('meta/cycle'), getRead(`sensitive/${args[0]}`), getRead(`entries/${String(args[0]).replace(/-\d+$/, '')}`)] },
-  'retract-entry': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
-  'hard-delete': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
+  'retract-entry': { resume: true, reads: () => [getRead('meta/cycle'), listRead('entries')] },
+  'hard-delete': { resume: true, reads: () => [getRead('meta/cycle'), listRead('entries')] },
   'resume-pending': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
 };
 
@@ -60,6 +60,7 @@ const READ_OPERATIONS = {
 // listRead, queryRead). Planning over a snapshot that lacks one of them refuses and names it.
 const PLANNED = {
   'record-entry': {
+    resume: true,
     reads: ({ input }) => {
       const { evidence, assessments, items, changes } = parseEntry(input());
       const trainees = [...evidence, ...assessments, ...items, ...changes].map((r) => r.trainee);
@@ -197,7 +198,9 @@ function readPointerFile(file) {
 // and each read document's version (see readList). `out`: a fresh folder for the plan.
 // Gives {result, plan, batches}: the operation's result, the plan folder (full long path) and
 // the batches in order, each a list of `batch` writes {op, collection, doc_id, file_path, if_version?}.
-// A plan of several batches also gives `if_refused` (IF_REFUSED).
+// A plan of several batches of an operation that leaves a mark at `writing` (`resume`: an Entry,
+// a Retraction, a Hard delete) also gives `if_refused` (IF_REFUSED). Any other plan cut off
+// after some of its batches is finished by reading, planning and sending it again.
 // Refuses with MissingReads when the operation needed a read the list does not hold.
 // `pointer`: the pointer file, read only. The plan never writes it: when the operation changes
 // it, the plan gives `pointer`, the whole file to write before sending the batches. Another
@@ -276,18 +279,18 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
   const dir = fs.realpathSync.native(out);
   const batches = sends.map((writes, k) => writes.map((w) => {
     const slash = w.path.lastIndexOf('/');
-    const entry = { op: w.op, collection: w.path.slice(0, slash), doc_id: w.path.slice(slash + 1) };
+    const sent = { op: w.op, collection: w.path.slice(0, slash), doc_id: w.path.slice(slash + 1) };
     if (w.data) {
       const file = path.join(dir, `batch-${k + 1}`, `${w.path}.json`);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, `${JSON.stringify(w.data, null, 2)}\n`);
-      entry.file_path = file;
+      sent.file_path = file;
     }
-    if (w.ifVersion !== undefined) entry.if_version = w.ifVersion;
-    return entry;
+    if (w.ifVersion !== undefined) sent.if_version = w.ifVersion;
+    return sent;
   }));
   fs.writeFileSync(path.join(dir, 'plan.json'), `${JSON.stringify({ batches }, null, 2)}\n`);
-  return { result, plan: dir, batches, ...(batches.length > 1 ? { if_refused: IF_REFUSED } : {}), ...extra };
+  return { result, plan: dir, batches, ...(batches.length > 1 && entry.resume ? { if_refused: IF_REFUSED } : {}), ...extra };
 }
 
 // What to do when a batch of a plan of several is refused: the batches before it stand, and the
