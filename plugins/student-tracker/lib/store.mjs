@@ -1272,7 +1272,7 @@ function childrenOf(records, tid, ids) {
 }
 
 // The Entry a record cut from it belongs to: its id less the record's number (`<entry id>-<n>`).
-const entryOfRecord = (id) => String(id).replace(/-\d+$/, '');
+export const entryOfRecord = (id) => String(id).replace(/-\d+$/, '');
 
 // The changes `updateCycle` makes, each (docs, value, {rand, at}) → the changed document.
 const CYCLE_CHANGES = {

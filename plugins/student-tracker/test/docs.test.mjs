@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openDocs, openSnapshot, VersionConflict, AlreadyExists, getRead, listRead, queryRead, readKey } from '../lib/docs.mjs';
-import { readVersions, readList } from '../lib/plan.mjs';
+import { readList } from '../lib/plan.mjs';
 
 const fresh = () => openDocs(fs.mkdtempSync(path.join(os.tmpdir(), 'st-docs-')));
 
@@ -118,9 +118,9 @@ test('the versions list takes "<path> <version>" lines or the lines an out_dir r
   const list = path.join(dir, '..', `${path.basename(dir)}-versions.txt`);
   const printed = path.join(dir, 'trainees', 't-1', 'evidence', 'e-1-1.json');
   fs.writeFileSync(list, `trainees/t-1 3\n- "e-1-1"  96 bytes  version 2  "${printed}"\n`);
-  assert.deepEqual([...readVersions(list, dir)], [['trainees/t-1', 3], ['trainees/t-1/evidence/e-1-1', 2]]);
+  assert.deepEqual([...readList(list, dir).versions], [['trainees/t-1', 3], ['trainees/t-1/evidence/e-1-1', 2]]);
   fs.writeFileSync(list, 'trainees/t-1 three\n');
-  assert.throws(() => readVersions(list, dir), /unreadable versions line/);
+  assert.throws(() => readList(list, dir), /unreadable versions line/);
 });
 
 test('a snapshot reads only through the reads made: a get that found nothing is absent, one never made is missing', () => {

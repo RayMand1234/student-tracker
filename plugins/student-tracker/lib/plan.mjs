@@ -2,10 +2,13 @@
 // reads, giving the writes to send as `ArtifactData` `batch` calls instead of applying them.
 import fs from 'node:fs';
 import path from 'node:path';
-import { openStore, StoreError } from './store.mjs';
+import { openStore, StoreError, entryOfRecord } from './store.mjs';
 import { openSnapshot, checkBatch, getRead, listRead, queryRead, readKey, MissingReads } from './docs.mjs';
 import { runOperation } from './operations.mjs';
 import { parseEntry, parseAssessments, parseNextTalk, parseSnapshot, parseTraineeChange, parseCycleChange, parsePlaybookItem, parseCycle } from './payload.mjs';
+
+// The Cycle's own documents: what read-cycle shows, what a new Cycle's seed starts from.
+const CYCLE_DOCS = () => ['meta/cycle', 'meta/skills', 'meta/preset', 'commander/settings', 'commander/hides'].map(getRead);
 
 // What every write to the Cycle checks against: the Cycle, its Tests and Projects, its Skills, its teams.
 const CYCLE_READS = [getRead('meta/cycle'), getRead('meta/preset'), getRead('meta/skills'), listRead('teams')];
@@ -17,49 +20,27 @@ const traineeReads = (tid) => [
   queryRead('sensitive', [['trainee', '==', tid]]),
 ];
 
-// Records outside an Entry, Retraction, Hard delete and resume (lean-turns 05). An Entry's
-// Trainees are known only once the Entry is read, so these name the Entry reads; planning then
-// asks for the Trainees' reads as "missing reads".
-const tidOf = (parse) => ({ input }) => parse(input()).trainee;
-const RECORD_AND_UNDO = {
-  'record-assessments': { reads: (a) => [getRead('meta/cycle'), getRead('meta/skills'), ...traineeReads(tidOf(parseAssessments)(a))] },
-  'record-next-talk': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseNextTalk)(a))] },
-  'record-snapshot': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseSnapshot)(a))] },
-  // The record's id names its Entry (`<entry id>-<n>`), and the Entry names its Trainees.
-  'flip-sensitive': { needs: '<evidence id>', reads: ({ args }) => [getRead('meta/cycle'), getRead(`sensitive/${args[0]}`), getRead(`entries/${String(args[0]).replace(/-\d+$/, '')}`)] },
-  'retract-entry': { resume: true, reads: () => [getRead('meta/cycle'), listRead('entries')] },
-  'hard-delete': { resume: true, reads: () => [getRead('meta/cycle'), listRead('entries')] },
-  'resume-pending': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
-};
-
-// Reads, status, Playbook selection and alerts (lean-turns 04). A read plans to no batches; its
-// result is the plan's result. Reads of an archived Cycle are the same reads, sent to its address.
 // What team status and alerts are computed from: the cards, the Cycle, its Skills, the Talk settings.
 const STATUS_READS = [listRead('trainees'), getRead('meta/cycle'), getRead('meta/skills'), getRead('commander/settings')];
-const READ_OPERATIONS = {
-  'read-cycle': {
-    reads: () => [
-      ...['meta/cycle', 'meta/skills', 'meta/preset', 'commander/settings', 'commander/hides'].map(getRead),
-      listRead('playbook'), listRead('teams'),
-    ],
-  },
-  'read-team': { reads: () => [listRead('trainees')] },
-  'read-trainee': { needs: '<tid>', reads: ({ args }) => [...traineeReads(args[0]), listRead('entries')] },
-  'read-playbook': {
-    needs: '<tid>',
-    reads: ({ args }) => [getRead(`trainees/${args[0]}`), getRead('meta/skills'), listRead('playbook'), getRead('commander/hides')],
-  },
-  'read-status': { reads: () => STATUS_READS },
-  // Writes `meta/alerts` when an alert is due. A pattern's Trainee is among the cards.
-  'take-alert': { reads: () => [...STATUS_READS, getRead('meta/alerts')] },
-  // Writes the card when it is out of step with its records. meta/cycle: no write to an archived Cycle.
-  'rebuild-card': { needs: '<tid>', reads: ({ args }) => [getRead('meta/cycle'), ...traineeReads(args[0])] },
-};
+
+const tidOf = (parse) => ({ input }) => parse(input()).trainee;
+const kindOf = (parse) => (input) => Object.keys(parse(input()))[0];
+// Reads of another Cycle: each carries its address as `url`.
+const atUrl = (url, reads) => reads.map((r) => ({ ...r, url }));
+const SCOPE = ['commander/settings', 'meta/skills', 'commander/hides'];
 
 // The operations the plan step runs, each with its reads manifest: from the operation's
 // arguments and payload (`input()`), the reads it needs, each one `ArtifactData` call (getRead,
 // listRead, queryRead). Planning over a snapshot that lacks one of them refuses and names it.
+// `needs`: the first argument it cannot do without (or a function of the payload giving it).
+// `resume`: it leaves a mark at `writing` that resume-pending finishes (IF_REFUSED).
+// `pointer`: it reads the pointer file. `from`: the other Cycle it reads, whose reads carry its
+// address as `url` and save into the second snapshot. `target`: the Cycle it writes to when that
+// is not the current one.
 const PLANNED = {
+  // Records (lean-turns 02, 05). An Entry's Trainees are known only once the Entry is read, so
+  // a Retraction, Hard delete or resume names the Entry reads; planning then asks for the
+  // Trainees' reads as "missing reads".
   'record-entry': {
     resume: true,
     reads: ({ input }) => {
@@ -68,20 +49,40 @@ const PLANNED = {
       return [...CYCLE_READS, ...[...new Set(trainees)].flatMap(traineeReads)];
     },
   },
-  ...RECORD_AND_UNDO,
+  'record-assessments': { reads: (a) => [getRead('meta/cycle'), getRead('meta/skills'), ...traineeReads(tidOf(parseAssessments)(a))] },
+  'record-next-talk': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseNextTalk)(a))] },
+  'record-snapshot': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseSnapshot)(a))] },
+  // The record's id names its Entry, and the Entry names its Trainees.
+  'flip-sensitive': {
+    needs: '<evidence id>',
+    reads: ({ args: [id] }) => [getRead('meta/cycle'), getRead(`sensitive/${id}`), getRead(`entries/${entryOfRecord(id)}`)],
+  },
+  'retract-entry': { resume: true, reads: () => [getRead('meta/cycle'), listRead('entries')] },
+  'hard-delete': { resume: true, reads: () => [getRead('meta/cycle'), listRead('entries')] },
+  'resume-pending': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
 
-  // Reads, status, Playbook selection and alerts (lean-turns 04). A read plans to no batches.
-  ...READ_OPERATIONS,
-};
+  // Reads, status, Playbook selection and alerts (lean-turns 04). A read plans to no batches; its
+  // result is the plan's result. Reads of an archived Cycle are the same reads, sent to its address.
+  'read-cycle': { reads: () => [...CYCLE_DOCS(), listRead('playbook'), listRead('teams')] },
+  'read-team': { reads: () => [listRead('trainees')] },
+  'read-trainee': { needs: '<tid>', reads: ({ args: [tid] }) => [...traineeReads(tid), listRead('entries')] },
+  'read-playbook': {
+    needs: '<tid>',
+    reads: ({ args: [tid] }) => [getRead(`trainees/${tid}`), getRead('meta/skills'), listRead('playbook'), getRead('commander/hides')],
+  },
+  'read-status': { reads: () => STATUS_READS },
+  // Writes `meta/alerts` when an alert is due. A pattern's Trainee is among the cards.
+  'take-alert': { reads: () => [...STATUS_READS, getRead('meta/alerts')] },
+  // Writes the card when it is out of step with its records. meta/cycle: no write to an archived Cycle.
+  'rebuild-card': { needs: '<tid>', reads: ({ args: [tid] }) => [getRead('meta/cycle'), ...traineeReads(tid)] },
 
-// Roster, settings, Playbook and Cycle lifecycle (lean-turns 06).
-Object.assign(PLANNED, {
+  // Roster, settings and Playbook (lean-turns 06).
   'update-settings': { reads: () => [getRead('meta/cycle'), getRead('commander/settings')] },
   // Adding and renaming check the name against every Trainee's; a change rebuilds the card.
   'update-trainee': {
-    needs: ({ input }) => Object.keys(parseTraineeChange(input()))[0] !== 'add' && '<tid>',
-    reads:({ args: [tid], input }) => {
-      const kind = Object.keys(parseTraineeChange(input()))[0];
+    needs: ({ input }) => kindOf(parseTraineeChange)(input) !== 'add' && '<tid>',
+    reads: ({ args: [tid], input }) => {
+      const kind = kindOf(parseTraineeChange)(input);
       const names = ['add', 'rename'].includes(kind) ? [listRead('trainees')] : [];
       return [getRead('meta/cycle'), ...names, ...(kind === 'add' ? [] : traineeReads(tid))];
     },
@@ -110,21 +111,12 @@ Object.assign(PLANNED, {
   'hide-playbook-item': { needs: '<base item id>', reads: () => [getRead('meta/cycle'), getRead('meta/skills'), getRead('commander/hides')] },
   'unhide-playbook-item': { needs: '<base item id>', reads: () => [getRead('meta/cycle'), getRead('commander/hides')] },
   'finish-setup': { reads: () => [getRead('meta/cycle')] },
-});
 
-// A turn's first step (lean-turns 07): connect, resumePending, readCycle and readTeam over one
-// snapshot, so the turn sends one read message. Reads the pointer for the Cycle's address.
-const READ_CYCLE = READ_OPERATIONS['read-cycle'].reads;
-Object.assign(PLANNED, {
-  start: { pointer: true, reads: () => [...READ_CYCLE(), listRead('entries'), listRead('trainees')] },
-});
+  // A turn's first step (lean-turns 07): connect, resumePending, readCycle and readTeam over one
+  // snapshot, so the turn sends one read message. Reads the pointer for the Cycle's address.
+  start: { pointer: true, reads: () => [...PLANNED['read-cycle'].reads(), listRead('entries'), listRead('trainees')] },
 
-// The Cycle lifecycle (lean-turns 06): operations on two Cycles. Each reads the pointer file
-// (`pointer`). `from`: the other Cycle it reads, whose reads carry its address as `url` and
-// save into the second snapshot. `target`: the Cycle it writes to when that is not the current one.
-const atUrl = (url, reads) => reads.map((r) => ({ ...r, url }));
-const SCOPE = ['commander/settings', 'meta/skills', 'commander/hides'];
-Object.assign(PLANNED, {
+  // The Cycle lifecycle (lean-turns 06): operations on two Cycles.
   // Settings, Skills, items and hides of the previous Cycle, copied into the new one.
   'copy-commander-scope': {
     pointer: true,
@@ -142,8 +134,7 @@ Object.assign(PLANNED, {
     from: ({ input }) => parseCycle(input()).previous,
     reads: ({ input }) => {
       const { previous } = parseCycle(input());
-      const here = [...['meta/cycle', 'meta/skills', 'meta/preset', 'commander/settings', 'commander/hides'].map(getRead), listRead('trainees')];
-      return [...here, ...(previous ? atUrl(previous, [getRead('meta/cycle'), getRead('commander/settings')]) : [])];
+      return [...CYCLE_DOCS(), listRead('trainees'), ...(previous ? atUrl(previous, [getRead('meta/cycle'), getRead('commander/settings')]) : [])];
     },
   },
   // Writes to the archived Cycle itself: its Entries left at `writing` are finished (the reads
@@ -154,7 +145,7 @@ Object.assign(PLANNED, {
     target: ({ args: [url] }) => url,
     reads: ({ args: [url] }) => atUrl(url, [getRead('meta/cycle'), listRead('entries')]),
   },
-});
+};
 
 export const plannedOperations = () => Object.keys(PLANNED);
 
@@ -180,9 +171,12 @@ export function readsFor({ op, args = [], input = '', snapshot }) {
   const key = (r) => `${r.url ?? ''} ${readKey(r)}`;
   const reads = entry.reads({ args, input: payload }).filter((r) => !seen.has(key(r)) && seen.add(key(r)));
   if (!snapshot) return reads;
-  const isOther = (r) => r.url !== undefined && r.url !== target;
+  const isOther = ofOtherCycle(target);
   return reads.map((r) => ({ ...r, out_dir: longDir(isOther(r) ? otherSnapshot(snapshot) : snapshot) }));
 }
+
+// Whether a read is of another Cycle than `target` (the one the operation writes to; none: the current one).
+const ofOtherCycle = (target) => (r) => r.url !== undefined && r.url !== target;
 
 // The second snapshot, of another Cycle than the one the plan writes to: a subfolder of the
 // snapshot that no collection is named.
@@ -232,7 +226,7 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
   const list = versions
     ? readList(versions, snapshot, { main: [target, cycle, shown?.current] })
     : { versions: new Map(), reads: new Set(), more: new Map(), other: { versions: new Map(), reads: new Set(), more: new Map() } };
-  const isOther = (r) => r.url !== undefined && r.url !== target;
+  const isOther = ofOtherCycle(target);
   // Every read to make saves into its snapshot folder: the second one for another Cycle's. A
   // list or query with a page still unread is asked for again from that page (its cursor).
   const nextPage = (side, r) => (side.more.has(readKey(r)) ? { ...r, query: { ...r.query, cursor: side.more.get(readKey(r)) } } : r);
@@ -415,5 +409,3 @@ export function readList(file, snapshot, { main = [] } = {}) {
   }
   return { ...here, other };
 }
-
-export const readVersions = (file, snapshot) => readList(file, snapshot).versions;
