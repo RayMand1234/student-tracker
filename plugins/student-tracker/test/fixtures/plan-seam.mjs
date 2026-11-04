@@ -65,7 +65,8 @@ export function copyDataDir(dataDir) {
 // What `ArtifactData` reads with `out_dir` save from a local store, as a fake of the database:
 // each found document's data at <collection path>/<doc id>.json, and the reads list the model
 // writes: every read made, as the one-line JSON the manifest printed, then "<doc path> <version>"
-// for each document it found. A list or query returns at most its `limit` (default 100).
+// for each document it found. A list or query returns at most its `limit` (default 100) from its
+// `cursor`, and a `next_cursor` line when more are left.
 export function fetchReads(root, reads, dir = tmp('st-seam-snap-')) {
   const docs = openDocs(root);
   const lines = [];
@@ -75,15 +76,20 @@ export function fetchReads(root, reads, dir = tmp('st-seam-snap-')) {
   });
   for (const { out_dir: _, ...read } of reads) {
     lines.push(JSON.stringify(read));
-    const found = read.action === 'get'
+    // A page starts at its cursor (here, an offset) and gives the next one when more are left.
+    const from = Number(read.query?.cursor ?? 0);
+    const limit = read.query?.limit ?? 100;
+    const all = read.action === 'get'
       ? [docs.get(`${read.collection}/${read.doc_id}`)].filter(Boolean).map((d) => ({ id: read.doc_id, ...d }))
-      : docs.list(read.collection).filter((d) => read.action === 'list' || matches(d.data, read.query?.where)).slice(0, read.query?.limit ?? 100);
+      : docs.list(read.collection).filter((d) => read.action === 'list' || matches(d.data, read.query?.where));
+    const found = read.action === 'get' ? all : all.slice(from, from + limit);
     for (const doc of found) {
       const file = path.join(dir, read.collection, `${doc.id}.json`);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, JSON.stringify(doc.data, null, 2));
       lines.push(`${read.collection}/${doc.id} ${doc.version}`);
     }
+    if (read.action !== 'get' && all.length > from + limit) lines.push(`next_cursor: "${from + limit}"`);
   }
   const versions = path.join(tmp('st-seam-versions-'), 'versions.txt');
   fs.writeFileSync(versions, `${lines.join('\n')}\n`);

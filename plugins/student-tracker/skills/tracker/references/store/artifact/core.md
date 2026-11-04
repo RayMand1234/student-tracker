@@ -7,7 +7,7 @@ The store is the database of the Cycle's private claude.ai page; its address is 
 Every command runs in three steps, each one turn with its calls sent together. Pass the same args and payload to `reads` and `plan`.
 
 1. **Reads.** `student-tracker-store reads <command> --snapshot <S> [args] <<'X' … X`, where `<S>` is a new folder under your scratchpad (a new name every time, never under `~/.claude`). It prints `{"reads": [...]}`. Then send every read as its own `ArtifactData` call, all in one message, exactly as printed (`out_dir` included), with `url` = the pointer's `current` unless the read carries its own `url`.
-2. **Plan.** Write `<S>.versions` (Write tool): each read's line as `reads` printed it, followed by the lines its result listed (`- "e-1"  96 bytes  version 2  "<path>"`), copied as is. Then:
+2. **Plan.** Write `<S>.versions` (Write tool): each read's line as `reads` printed it, followed by the lines its result listed (`- "e-1"  96 bytes  version 2  "<path>"`, and any `next_cursor`), copied as is. Then:
    `student-tracker-store plan <command> --snapshot <S> --versions <S>.versions --out <S>-plan --pointer "<pointer file>" [args] <<'X' … X`
    It prints `{result, plan, batches}`.
    - `missing reads:` and reads → send those the same way into the same `<S>`, append their lines to the versions file, plan again. Normal for retractions, deletes, flips and resuming.

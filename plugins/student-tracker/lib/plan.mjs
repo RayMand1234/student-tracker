@@ -219,11 +219,13 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
   const target = entry.target?.({ args, input: payload });
   const list = versions
     ? readList(versions, snapshot, { main: [target, cycle, shown?.current] })
-    : { versions: new Map(), reads: new Set(), other: { versions: new Map(), reads: new Set() } };
+    : { versions: new Map(), reads: new Set(), more: new Map(), other: { versions: new Map(), reads: new Set(), more: new Map() } };
   const isOther = (r) => r.url !== undefined && r.url !== target;
-  // Every read to make saves into its snapshot folder: the second one for another Cycle's.
-  const toOther = (r) => ({ ...r, out_dir: longDir(otherSnapshot(snapshot)) });
-  const toMain = (r) => ({ ...r, out_dir: longDir(snapshot) });
+  // Every read to make saves into its snapshot folder: the second one for another Cycle's. A
+  // list or query with a page still unread is asked for again from that page (its cursor).
+  const nextPage = (side, r) => (side.more.has(readKey(r)) ? { ...r, query: { ...r.query, cursor: side.more.get(readKey(r)) } } : r);
+  const toOther = (r) => ({ ...nextPage(list.other, r), out_dir: longDir(otherSnapshot(snapshot)) });
+  const toMain = (r) => ({ ...nextPage(list, r), out_dir: longDir(snapshot) });
   // Every read the manifest names is made first; reads it could not foresee are named as the run meets them.
   const unmade = readsFor({ op, args, input: payload }).filter((r) => !(isOther(r) ? list.other.reads : list.reads).has(readKey(r)));
   if (unmade.length) throw new MissingReads(unmade.map((r) => (isOther(r) ? toOther(r) : toMain(r))));
@@ -325,18 +327,30 @@ function docPathIn(snapshot, file) {
 // The versions list: the reads made, and the versions of the documents they found. One line per
 // read made, its JSON as the manifest printed it (a get that found nothing is still a read made),
 // and one per document found, either "<collection path>/<doc id> <version>" or a line of an
-// `out_dir` read's result as the tool printed it (`… version 2  "<file path>"`).
-// Gives {versions: doc path → version, reads: the reads' keys (readKey)}.
-// Reads of another Cycle, and the versions they show, go to `other` ({versions, reads, url}): a
-// read line whose `out_dir` is the second snapshot (otherSnapshot), or with no `out_dir` and a
+// `out_dir` read's result as the tool printed it (`… version 2  "<file path>"`). A list or query
+// whose result gave a `next_cursor` has another page: that line as printed (`next_cursor: "…"`)
+// follows the read's lines, and the next page is a read of its own, with that `cursor`.
+// Gives {versions: doc path → version, reads: the reads' keys (readKey), more: read key → the
+// cursor of its first page not yet read}. A read with a page left is not a read made.
+// Reads of another Cycle, and the versions they show, go to `other` ({versions, reads, more, url}):
+// a read line whose `out_dir` is the second snapshot (otherSnapshot), or with no `out_dir` and a
 // `url` that is none of `main` (the addresses of the Cycle the plan writes to); a printed
 // result line of a file in the second snapshot; a plain line after a read of another Cycle.
+// A page that came back full with no `next_cursor` line after it is refused: more may exist.
 export function readList(file, snapshot, { main = [] } = {}) {
-  const here = { versions: new Map(), reads: new Set() };
-  const other = { versions: new Map(), reads: new Set(), url: undefined };
+  const side = () => ({ versions: new Map(), reads: new Set(), more: new Map(), pages: new Map() });
+  const here = side();
+  const other = { ...side(), url: undefined };
   const otherDir = otherSnapshot(snapshot);
   const inOther = (dir) => docPathIn(otherDir, path.join(dir, 'x.json')) !== null;
   let last = here; // the Cycle of the last read line: a plain version line belongs to it
+  let page = null; // the last read line's page: {line, read, key, found, next}
+  const close = () => {
+    if (!page || page.read.action === 'get' || page.next !== undefined) return;
+    if (page.found >= (page.read.query?.limit ?? 100)) {
+      throw new StoreError(`the read ${page.line} came back full (${page.found} documents): add the next_cursor line its result gave after its lines in the versions list`);
+    }
+  };
   for (const line of fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean)) {
     if (line.startsWith('{')) {
       let read;
@@ -345,15 +359,27 @@ export function readList(file, snapshot, { main = [] } = {}) {
       } catch {
         throw new StoreError(`unreadable read line "${line}": copy the read's JSON as the manifest printed it`);
       }
+      close();
       const isOther = read.out_dir !== undefined ? inOther(read.out_dir) : read.url !== undefined && !main.includes(read.url);
       last = isOther ? other : here;
       if (isOther) other.url ??= read.url;
-      last.reads.add(readKey(read));
+      const key = readKey(read);
+      if (!last.pages.has(key)) last.pages.set(key, { made: new Set(), next: new Set() });
+      last.pages.get(key).made.add(read.query?.cursor ?? '');
+      page = { line, read, key, found: 0, next: undefined };
+      continue;
+    }
+    const cursor = line.match(/^\W*next_cursor\W+(.*?)[\s",}]*$/);
+    if (cursor) {
+      if (!page) throw new StoreError(`next_cursor line "${line}" with no read line before it`);
+      page.next = ['', 'null', 'none'].includes(cursor[1]) ? null : cursor[1];
+      if (page.next !== null) last.pages.get(page.key).next.add(page.next);
       continue;
     }
     const plain = line.match(/^([^\s"]+)\s+(\d+)$/);
     if (plain) {
       last.versions.set(plain[1], Number(plain[2]));
+      if (page) page.found += 1;
       continue;
     }
     const printed = line.match(/\bversion\s+(\d+)\s+"([^"]+\.json)"\s*$/);
@@ -361,9 +387,19 @@ export function readList(file, snapshot, { main = [] } = {}) {
     const docPath = printed && !otherPath && docPathIn(snapshot, printed[2]);
     if (otherPath || docPath) {
       (otherPath ? other : here).versions.set(otherPath || docPath, Number(printed[1]));
+      if (page) page.found += 1;
       continue;
     }
     throw new StoreError(`unreadable versions line "${line}": give "<collection path>/<doc id> <version>"`);
+  }
+  close();
+  for (const s of [here, other]) {
+    for (const [key, { made, next }] of s.pages) {
+      const left = [...next].find((c) => !made.has(c));
+      if (left === undefined) s.reads.add(key);
+      else s.more.set(key, left);
+    }
+    delete s.pages;
   }
   return { ...here, other };
 }

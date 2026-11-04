@@ -50,6 +50,34 @@ test('a write planned over a Cycle read with --cycle is refused, even without th
   assert.throws(plan, /בארכיון/);
 });
 
+// A list whose result says more pages exist (`next_cursor`) is not a whole collection.
+test('a list read with more pages is asked for again with its cursor, then plans', () => {
+  const { dataDir } = fixture();
+  const reads = readsFor({ op: 'read-team' });
+  const snapshot = fetchReads(storeRoot(dataDir), reads);
+  fs.appendFileSync(snapshot.versions, 'next_cursor: "c2"\n');
+  const plan = () => planOperation({ snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), op: 'read-team', ...clock });
+  const [next] = missingReads(plan);
+  assert.deepEqual(next, { ...reads[0], query: { ...reads[0].query, cursor: 'c2' }, out_dir: fs.realpathSync.native(snapshot.dir) });
+
+  // The next page sent, its line added: the read is whole.
+  const { out_dir: _, ...line } = next;
+  fs.appendFileSync(snapshot.versions, `${JSON.stringify(line)}\n`);
+  assert.equal(plan().result.length, 2);
+});
+
+test('a list page that came back full with no next_cursor in the versions list is refused, not taken as whole', () => {
+  const { dataDir } = fixture();
+  const reads = readsFor({ op: 'read-team' });
+  const snapshot = fetchReads(storeRoot(dataDir), reads);
+  const full = Array.from({ length: 1000 }, (_, i) => `trainees/t-${i} 1`);
+  fs.writeFileSync(snapshot.versions, `${JSON.stringify(reads[0])}\n${full.join('\n')}\n`);
+  assert.throws(
+    () => planOperation({ snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), op: 'read-team', ...clock }),
+    /next_cursor/,
+  );
+});
+
 // A Cycle with one Entry about נועה, recorded on the local backend.
 function withEntry() {
   const f = fixture();

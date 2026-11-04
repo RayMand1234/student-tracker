@@ -204,7 +204,8 @@ export function docsOver(backing) {
 }
 
 // The reads of the artifact backend, each one `ArtifactData` call: a get of one document, a list
-// of a collection, or a query of it with `where` triples. A list or query asks for one whole page.
+// of a collection, or a query of it with `where` triples. A list or query asks for a page of up to
+// READ_PAGE; when its result gives a `next_cursor`, planning asks for the next page (readList).
 export const READ_PAGE = 1000;
 const split = (docPath) => [docPath.slice(0, docPath.lastIndexOf('/')), docPath.slice(docPath.lastIndexOf('/') + 1)];
 export const getRead = (docPath) => {
@@ -226,7 +227,8 @@ export function readKey({ action, collection, doc_id: docId, query }) {
 // Planning needed documents no read fetched: the reads to make, each as its `ArtifactData` call.
 export class MissingReads extends StoreError {
   constructor(reads) {
-    super(`missing reads: send each with out_dir set to the snapshot folder, add its line and the versions it shows to the versions list, then plan again\n${reads.map((r) => JSON.stringify(r)).join('\n')}`);
+    const page = reads.some((r) => r.query?.cursor !== undefined) ? ' (one with a "cursor" reads the next page of a read made)' : '';
+    super(`missing reads${page}: send each with out_dir set to the snapshot folder, add its line and the versions it shows to the versions list, then plan again\n${reads.map((r) => JSON.stringify(r)).join('\n')}`);
     this.reads = reads;
   }
 }
