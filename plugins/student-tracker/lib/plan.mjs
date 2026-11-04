@@ -26,7 +26,7 @@ const RECORD_AND_UNDO = {
   'record-next-talk': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseNextTalk)(a))] },
   'record-snapshot': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseSnapshot)(a))] },
   // The record's id names its Entry (`<entry id>-<n>`), and the Entry names its Trainees.
-  'flip-sensitive': { reads: ({ args }) => [getRead('meta/cycle'), getRead(`sensitive/${args[0]}`), getRead(`entries/${String(args[0]).replace(/-\d+$/, '')}`)] },
+  'flip-sensitive': { needs: '<evidence id>', reads: ({ args }) => [getRead('meta/cycle'), getRead(`sensitive/${args[0]}`), getRead(`entries/${String(args[0]).replace(/-\d+$/, '')}`)] },
   'retract-entry': { resume: true, reads: () => [getRead('meta/cycle'), listRead('entries')] },
   'hard-delete': { resume: true, reads: () => [getRead('meta/cycle'), listRead('entries')] },
   'resume-pending': { reads: () => [getRead('meta/cycle'), listRead('entries')] },
@@ -44,15 +44,16 @@ const READ_OPERATIONS = {
     ],
   },
   'read-team': { reads: () => [listRead('trainees')] },
-  'read-trainee': { reads: ({ args }) => [...traineeReads(args[0]), listRead('entries')] },
+  'read-trainee': { needs: '<tid>', reads: ({ args }) => [...traineeReads(args[0]), listRead('entries')] },
   'read-playbook': {
+    needs: '<tid>',
     reads: ({ args }) => [getRead(`trainees/${args[0]}`), getRead('meta/skills'), listRead('playbook'), getRead('commander/hides')],
   },
   'read-status': { reads: () => STATUS_READS },
   // Writes `meta/alerts` when an alert is due. A pattern's Trainee is among the cards.
   'take-alert': { reads: () => [...STATUS_READS, getRead('meta/alerts')] },
   // Writes the card when it is out of step with its records. meta/cycle: no write to an archived Cycle.
-  'rebuild-card': { reads: ({ args }) => [getRead('meta/cycle'), ...traineeReads(args[0])] },
+  'rebuild-card': { needs: '<tid>', reads: ({ args }) => [getRead('meta/cycle'), ...traineeReads(args[0])] },
 };
 
 // The operations the plan step runs, each with its reads manifest: from the operation's
@@ -78,7 +79,8 @@ Object.assign(PLANNED, {
   'update-settings': { reads: () => [getRead('meta/cycle'), getRead('commander/settings')] },
   // Adding and renaming check the name against every Trainee's; a change rebuilds the card.
   'update-trainee': {
-    reads: ({ args: [tid], input }) => {
+    needs: ({ input }) => Object.keys(parseTraineeChange(input()))[0] !== 'add' && '<tid>',
+    reads:({ args: [tid], input }) => {
       const kind = Object.keys(parseTraineeChange(input()))[0];
       const names = ['add', 'rename'].includes(kind) ? [listRead('trainees')] : [];
       return [getRead('meta/cycle'), ...names, ...(kind === 'add' ? [] : traineeReads(tid))];
@@ -103,10 +105,10 @@ Object.assign(PLANNED, {
       return [getRead('meta/cycle'), getRead('meta/skills'), listRead('playbook'), ...from];
     },
   },
-  'retire-playbook-item': { reads: ({ args: [id] }) => [getRead('meta/cycle'), getRead(`playbook/${id}`)] },
+  'retire-playbook-item': { needs: '<item id>', reads: ({ args: [id] }) => [getRead('meta/cycle'), getRead(`playbook/${id}`)] },
   // Hiding checks the item against the base Playbook of the Cycle's Skills.
-  'hide-playbook-item': { reads: () => [getRead('meta/cycle'), getRead('meta/skills'), getRead('commander/hides')] },
-  'unhide-playbook-item': { reads: () => [getRead('meta/cycle'), getRead('commander/hides')] },
+  'hide-playbook-item': { needs: '<base item id>', reads: () => [getRead('meta/cycle'), getRead('meta/skills'), getRead('commander/hides')] },
+  'unhide-playbook-item': { needs: '<base item id>', reads: () => [getRead('meta/cycle'), getRead('commander/hides')] },
   'finish-setup': { reads: () => [getRead('meta/cycle')] },
 });
 
@@ -126,6 +128,7 @@ Object.assign(PLANNED, {
   // Settings, Skills, items and hides of the previous Cycle, copied into the new one.
   'copy-commander-scope': {
     pointer: true,
+    needs: '<previous Cycle address>',
     from: ({ args: [url] }) => url,
     reads: ({ args: [url] }) => {
       const scope = [getRead('meta/cycle'), ...SCOPE.map(getRead), listRead('playbook')];
@@ -147,6 +150,7 @@ Object.assign(PLANNED, {
   // their records need are named as missing reads), then its meta/cycle is marked archived.
   'archive-cycle': {
     pointer: true,
+    needs: '<previous Cycle address>',
     target: ({ args: [url] }) => url,
     reads: ({ args: [url] }) => atUrl(url, [getRead('meta/cycle'), listRead('entries')]),
   },
@@ -154,9 +158,14 @@ Object.assign(PLANNED, {
 
 export const plannedOperations = () => Object.keys(PLANNED);
 
-function planned(op) {
+// The operation's entry, once its arguments are there: `needs`, the first argument it cannot
+// do without (or a function of the payload giving it), is checked before any read is named.
+function planned(op, { args = [], input } = {}) {
   if (!Object.hasOwn(PLANNED, op)) throw new StoreError(`plan runs ${Object.keys(PLANNED).join(', ')}; got "${op ?? ''}"`);
-  return PLANNED[op];
+  const entry = PLANNED[op];
+  const needs = typeof entry.needs === 'function' ? entry.needs({ args, input }) : entry.needs;
+  if (needs && !args[0]) throw new StoreError(`${op} needs ${needs}`);
+  return entry;
 }
 
 // The reads manifest: the reads `op` needs for these arguments and payload, each once.
@@ -165,7 +174,7 @@ function planned(op) {
 // folder's OTHER subfolder instead: the second snapshot.
 export function readsFor({ op, args = [], input = '', snapshot }) {
   const payload = typeof input === 'function' ? input : () => input;
-  const entry = planned(op);
+  const entry = planned(op, { args, input: payload });
   const target = entry.target?.({ args, input: payload });
   const seen = new Set();
   const key = (r) => `${r.url ?? ''} ${readKey(r)}`;
@@ -211,14 +220,14 @@ function readPointerFile(file) {
 // `cycle`: the address the snapshot was read from when it is an archived Cycle (--cycle), as on
 // the local backend: reads run, and every write is refused unless it is the pointer's current.
 export function planOperation({ snapshot, versions, out, op, args = [], input = '', insist = false, since, retracted = false, category, pointer, cycle, now, rand }) {
-  const entry = planned(op);
+  // The payload is read once (it may be stdin), for the manifest and for the operation.
+  let text;
+  const payload = () => (text ??= typeof input === 'function' ? input() : input);
+  const entry = planned(op, { args, input: payload });
   if (!snapshot || !out) throw new StoreError('plan needs --snapshot <folder> and --out <folder>');
   if (!fs.existsSync(snapshot)) throw new StoreError(`no snapshot folder ${snapshot}`);
   if (entry.pointer && !pointer) throw new StoreError(`plan ${op} needs --pointer <the pointer file>`);
   const shown = pointer ? { current: null, archived: [], ...readPointerFile(pointer) } : undefined;
-  // The payload is read once (it may be stdin), for the manifest and for the operation.
-  let text;
-  const payload = () => (text ??= typeof input === 'function' ? input() : input);
   const target = entry.target?.({ args, input: payload });
   const list = versions
     ? readList(versions, snapshot, { main: [target, cycle, shown?.current] })

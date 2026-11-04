@@ -137,3 +137,21 @@ test('a manifest read left out of the versions list is asked for with its out_di
   const reads = missingReads(() => planOperation({ snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), op: 'retract-entry', ...clock }));
   assert.deepEqual(reads, [{ ...first, out_dir: fs.realpathSync.native(snapshot.dir) }]);
 });
+
+// An argument left out is refused before any read is named (no `trainees/undefined`).
+test('an operation missing its argument is refused by name, before its reads', () => {
+  const snapshot = fs.mkdtempSync(path.join(os.tmpdir(), 'st-review-snap-'));
+  const cases = [
+    ['read-trainee', '', /read-trainee needs <tid>/],
+    ['rebuild-card', '', /rebuild-card needs <tid>/],
+    ['flip-sensitive', '', /flip-sensitive needs <evidence id>/],
+    ['archive-cycle', '', /archive-cycle needs <previous Cycle address>/],
+    ['update-trainee', 'rename: נועה ב', /update-trainee needs <tid>/],
+  ];
+  for (const [op, input, refusal] of cases) {
+    assert.throws(() => readsFor({ op, input }), refusal, `reads ${op}`);
+    const pointer = path.join(snapshot, 'cycles.json');
+    assert.throws(() => planOperation({ snapshot, versions: undefined, out: planDir(), op, input, pointer }), refusal, `plan ${op}`);
+  }
+  assert.ok(readsFor({ op: 'update-trainee', input: 'add: מאיה' }).length, 'adding a Trainee takes no tid');
+});
