@@ -138,6 +138,46 @@ test('a manifest read left out of the versions list is asked for with its out_di
   assert.deepEqual(reads, [{ ...first, out_dir: fs.realpathSync.native(snapshot.dir) }]);
 });
 
+// The local backend pays for every read: finding an Entry's records and checking cited Evidence
+// should not read a Trainee's records more often than building their card does.
+function withOlderRecords() {
+  const f = fixture();
+  const noa = f.id['נועה'];
+  const store = openStore({ dataDir: f.dataDir, ...clock, rand: seededRand(5) });
+  const older = store.recordEntry({
+    text: 'נועה פתרה את הבאג לבד. אבא שלה בבית חולים.',
+    evidence: [{ trainee: noa, kind: 'note', date: '2026-10-28', excerpt: 'נועה פתרה את הבאג לבד. [פרט אישי — בתיק]', sensitive: [{ category: 'family', excerpt: 'אבא שלה בבית חולים.' }] }],
+  });
+  return { ...f, noa, store, older: [older.evidence[0], older.sensitive[0]] };
+}
+
+// How many times each file whose name holds one of `ids` is read while `fn` runs.
+function parses(t, ids, fn) {
+  const reads = t.mock.method(fs, 'readFileSync');
+  fn();
+  const counts = ids.map((id) => reads.mock.calls.filter((c) => String(c.arguments[0]).includes(`${id}.json`)).length);
+  reads.mock.restore();
+  return counts;
+}
+
+test('a Retraction on the local backend reads the Trainee\'s other records once, for the card', (t) => {
+  const { noa, store, older } = withOlderRecords();
+  const later = store.recordEntry({ text: 'דיברתי עם נועה.', evidence: [{ trainee: noa, kind: 'talk', date: '2026-10-30', excerpt: 'דיברתי עם נועה.' }] });
+  assert.deepEqual(parses(t, older, () => store.retractEntry(later.entry)), [1, 1]);
+});
+
+test('Assessments citing several sensitive Evidence on the local backend read the sensitive records once for the cites', (t) => {
+  const { noa, store, older } = withOlderRecords();
+  const parts = store.recordEntry({
+    text: 'נועה סיפרה על הבית. אמא שלה חולה. אחיה התגייס.',
+    evidence: [{ trainee: noa, kind: 'talk', date: '2026-10-29', excerpt: '[פרט אישי — בתיק]', sensitive: [{ category: 'family', excerpt: 'אמא שלה חולה.' }, { category: 'family', excerpt: 'אחיה התגייס.' }] }],
+  }).sensitive;
+  const cites = [older[1], ...parts];
+  const counts = parses(t, [older[0], older[1]], () => store.recordAssessments(noa, [{ skill: 'impl.debugging', score: 3, author: 'agent', reason: 'פתרה לבד', evidence: cites }]));
+  // The cites (once), the display-safe check and the card: not once more per cite.
+  assert.ok(counts[1] <= 3, `the sensitive record was read ${counts[1]} times`);
+});
+
 // An argument left out is refused before any read is named (no `trainees/undefined`).
 test('an operation missing its argument is refused by name, before its reads', () => {
   const snapshot = fs.mkdtempSync(path.join(os.tmpdir(), 'st-review-snap-'));

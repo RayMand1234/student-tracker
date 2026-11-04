@@ -142,17 +142,15 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
   });
 
   // Read every source record of one Trainee (its sensitive records included) and derive the
-  // card from them, plus `extra` records ({path, data}) about to be written.
-  function derive(docs, tid, extra = [], removed = new Set()) {
+  // card from them, plus `extra` records ({path, data}) about to be written. `records`: the
+  // source records already read (recordsOf), so a caller that needed them too reads them once.
+  function derive(docs, tid, extra = [], removed = new Set(), records = recordsOf(docs, tid)) {
     const fromExtra = (prefix) => extra
       .filter((r) => r.path.startsWith(prefix) && r.data.trainee === tid)
       .map((r) => ({ id: r.path.slice(prefix.length), ...r.data }));
-    const kept = (prefix, records) => records.filter((r) => !removed.has(`${prefix}${r.id}`));
-    const sub = (name) => [
-      ...kept(`trainees/${tid}/${name}/`, flat(docs.list(`trainees/${tid}/${name}`))),
-      ...fromExtra(`trainees/${tid}/${name}/`),
-    ];
-    const sensitive = [...kept('sensitive/', sensitiveOf(docs, tid)), ...fromExtra('sensitive/')];
+    const kept = (prefix) => records.filter((r) => r.path.startsWith(prefix) && !removed.has(r.path)).map((r) => ({ id: r.id, ...r.data }));
+    const sub = (name) => [...kept(`trainees/${tid}/${name}/`), ...fromExtra(`trainees/${tid}/${name}/`)];
+    const sensitive = [...kept('sensitive/'), ...fromExtra('sensitive/')];
     const prev = docs.get(`trainees/${tid}`)?.data;
     return deriveCard({
       changes: sub('changes'), evidence: sub('evidence'), followups: sub('followups'), items: sub('items'), assessments: sub('assessments'), sensitive,
@@ -218,13 +216,14 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
   // `ids` still to withdraw, flagged or removed in one version-pinned batch with the rebuilt card.
   function withdrawChunk(docs, tid, ids, how) {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      const todo = childrenOf(docs, tid, ids).filter(how.pending);
+      const records = recordsOf(docs, tid);
+      const todo = childrenOf(records, tid, ids).filter(how.pending);
       if (!todo.length) {
         rebuildCard(docs, tid); // done earlier; make sure the card caught up
         return;
       }
       const card = docs.get(`trainees/${tid}`);
-      const next = derive(docs, tid, todo.flatMap(how.after), new Set(todo.map((r) => r.path)));
+      const next = derive(docs, tid, todo.flatMap(how.after), new Set(todo.map((r) => r.path)), records);
       interrupt('withdraw', { trainee: tid });
       try {
         docs.batch([
@@ -534,6 +533,7 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
     recordEntry({ text, evidence = [], assessments = [], items = [], changes = [], insist = false }) {
       const docs = open();
       if (!text) throw new StoreError('Entry text is required');
+      const evidenceOf = evidenceFinder(docs);
       if (!evidence.length) throw new StoreError('an Entry needs at least one Evidence');
       const preset = docs.get('meta/preset')?.data;
       const teams = flat(docs.list('teams'));
@@ -563,7 +563,7 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
           throw new StoreError(`excerpt must be copied word-for-word from the Entry: "${ev.excerpt}"`);
         }
         const fields = kindFields(ev, preset, teams);
-        if (ev.kind === 'clarification' && !evidenceOf(docs, ev.trainee, fields.clarifies)) {
+        if (ev.kind === 'clarification' && !evidenceOf(ev.trainee, fields.clarifies)) {
           throw new StoreError(`a clarification needs clarifies = the id of the ${ev.trainee} Evidence it corrects`);
         }
         checkFollowups(followups);
@@ -653,7 +653,7 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
           if (local.trainee !== tid) return null;
           return { id: local.id, date: local.data.date, kind: local.data.kind, local: true, sensitive: local.path.startsWith('sensitive/') };
         }
-        return /^#/.test(ref) ? null : evidenceOf(docs, tid, ref);
+        return /^#/.test(ref) ? null : evidenceOf(tid, ref);
       };
       const judged = checkAssessments(docs, assessments, cite).map((a) => {
         const childId = nextId();
@@ -746,7 +746,8 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
       const docs = open();
       if (!assessments.length) throw new StoreError('give at least one Assessment');
       checkActive(docs, tid, insist);
-      const checked = checkAssessments(docs, assessments.map((a) => ({ ...a, trainee: tid })), (ref) => evidenceOf(docs, tid, ref));
+      const evidenceOf = evidenceFinder(docs);
+      const checked = checkAssessments(docs, assessments.map((a) => ({ ...a, trainee: tid })), (ref) => evidenceOf(tid, ref));
       const leaks = leaksFor(docs, tid);
       checkDisplaySafe(checked.map((a) => a.reason), leaks);
       const d = now();
@@ -840,8 +841,9 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
         checkActive(docs, tid, false);
         const { to, reason, evidence = [], ...rest } = value;
         if (Object.keys(rest).length) throw new StoreError('a Status change takes only to, reason and evidence');
+        const evidenceOf = evidenceFinder(docs);
         const ids = evidence.map((ref) => {
-          if (!evidenceOf(docs, tid, ref)) throw new StoreError(`"${ref}" is no Evidence of ${tid}; cite stored Evidence ids`);
+          if (!evidenceOf(tid, ref)) throw new StoreError(`"${ref}" is no Evidence of ${tid}; cite stored Evidence ids`);
           return ref;
         });
         const from = statusMove(docs.get(`trainees/${tid}`).data, to, reason);
@@ -1215,13 +1217,18 @@ function wordForWord(text, excerpt) {
   return true;
 }
 
-// The Trainee's Evidence by that id, public or sensitive, as {id, date, kind}; null if there is none.
-function evidenceOf(docs, tid, id) {
-  const pub = docs.get(`trainees/${tid}/evidence/${id}`)?.data;
-  // Among the Trainee's sensitive records, the reads the card needs anyway.
-  const s = pub ? null : sensitiveOf(docs, tid).find((x) => x.id === id);
-  const found = pub ?? (s?.record === 'evidence' ? s : null);
-  return found?.retracted === false ? { id, date: found.date, kind: found.kind, sensitive: !pub } : null;
+// Looks up a Trainee's Evidence by id, public or sensitive: (tid, id) → {id, date, kind,
+// sensitive} or null if there is none. A sensitive one is found among the Trainee's sensitive
+// records (the reads the card needs anyway), read once per Trainee however many ids are checked.
+function evidenceFinder(docs) {
+  const sensitive = new Map();
+  return (tid, id) => {
+    const pub = docs.get(`trainees/${tid}/evidence/${id}`)?.data;
+    if (!pub && !sensitive.has(tid)) sensitive.set(tid, sensitiveOf(docs, tid));
+    const s = pub ? null : sensitive.get(tid).find((x) => x.id === id);
+    const found = pub ?? (s?.record === 'evidence' ? s : null);
+    return found?.retracted === false ? { id, date: found.date, kind: found.kind, sensitive: !pub } : null;
+  };
 }
 
 // How a Retraction and a hard delete withdraw an Entry's records: which still need it, the write
@@ -1245,16 +1252,21 @@ const RECORD_OF = { followups: 'followup', items: 'item' };
 // Subcollections that hold records cut from an Entry.
 const CHILD_KINDS = ['evidence', 'followups', 'assessments', 'items', 'changes'];
 
-// Where each of `ids` that belongs to this Trainee is now, as {path, version, data}: in their
-// subcollections, or in `sensitive/` wherever a flip has moved it.
-// Looked up among the reads the card is derived from anyway (lists and the sensitive query).
-function childrenOf(docs, tid, ids) {
-  const found = [
+// Every source record of one Trainee, the reads their card is derived from: their
+// subcollections' records and their sensitive records, each as {path, id, version, data}.
+function recordsOf(docs, tid) {
+  return [
     ...CHILD_KINDS.flatMap((k) => docs.list(`trainees/${tid}/${k}`).map((d) => ({ path: `trainees/${tid}/${k}/${d.id}`, ...d }))),
     ...docs.query('sensitive', [['trainee', '==', tid]]).map((d) => ({ path: `sensitive/${d.id}`, ...d })),
   ];
+}
+
+// Where each of `ids` that belongs to this Trainee is now, as {path, version, data}: in their
+// subcollections, or in `sensitive/` wherever a flip has moved it. Looked up among the
+// Trainee's source records (recordsOf), which the card is rebuilt from anyway.
+function childrenOf(records, tid, ids) {
   return ids.flatMap((cid) => {
-    const doc = found.find((d) => d.id === cid && d.data.trainee === tid);
+    const doc = records.find((d) => d.id === cid && d.data.trainee === tid);
     return doc ? [{ path: doc.path, version: doc.version, data: doc.data }] : [];
   });
 }
