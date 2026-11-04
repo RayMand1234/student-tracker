@@ -24,12 +24,12 @@ Storage: the pointer, its backend, the store's core and its setup commands are u
 - Backend `local` (test backend, no page): skip this step.
 - Backend `artifact`: before asking anything, check that this session can create artifacts: the `Artifact` tool is in your tool list, and ToolSearch `select:ArtifactData` finds `ArtifactData`. If either is missing, send exactly this as your whole reply (no words before or after it, not quoted) and stop:
 
-> אי אפשר להקים את המעקב בסשן הזה, כי Claude Code לא יכול ליצור כאן את דף המעקב. בדרך כלל הסיבה אחת מאלה:
-> • נדרש מנוי Pro, Max, Team או Enterprise.
-> • צריך להיות מחובר עם חשבון claude.ai: הרץ `/login` ובחר בחשבון claude.ai.
-> • בעבודה דרך API key, Bedrock או Vertex אין דפי artifact. התחבר עם חשבון claude.ai.
-> • הארגון חסם artifacts, במדיניות הארגון או ב-`enableArtifact: false` בהגדרות. פנה למנהל הארגון.
-> • Claude Code רץ במצב לא-אינטראקטיבי (`claude -p`). הרץ את ההקמה בסשן רגיל.
+אי אפשר להקים את המעקב בסשן הזה, כי Claude Code לא יכול ליצור כאן את דף המעקב. בדרך כלל הסיבה אחת מאלה:
+• נדרש מנוי Pro, Max, Team או Enterprise.
+• צריך להיות מחובר עם חשבון claude.ai: הרץ `/login` ובחר בחשבון claude.ai.
+• בעבודה דרך API key, Bedrock או Vertex אין דפי artifact. התחבר עם חשבון claude.ai.
+• הארגון חסם artifacts, במדיניות הארגון או ב-`enableArtifact: false` בהגדרות. פנה למנהל הארגון.
+• Claude Code רץ במצב לא-אינטראקטיבי (`claude -p`). הרץ את ההקמה בסשן רגיל.
 
 ## 2. Existing Cycle?
 
