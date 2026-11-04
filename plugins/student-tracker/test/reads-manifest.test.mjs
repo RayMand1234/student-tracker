@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreError } from '../lib/store.mjs';
 import { planOperation, readsFor } from '../lib/plan.mjs';
-import { NOW, seededRand, fixture, storeRoot, fetchReads, planDir } from './fixtures/plan-seam.mjs';
+import { NOW, seededRand, fixture, storeRoot, fetchReads, planDir, namesRead } from './fixtures/plan-seam.mjs';
 
 const MARK = '[פרט אישי — בתיק]';
 
@@ -65,7 +65,7 @@ test('record-entry: a snapshot of exactly the manifest\'s reads plans; without a
     assert.equal(refusal(() => plan(fetchReads(root, reads), 'record-entry', input)), null);
     for (const [i, read] of reads.entries()) {
       const message = refusal(() => plan(fetchReads(root, reads.filter((_, j) => j !== i)), 'record-entry', input));
-      assert.ok(message?.includes(JSON.stringify(read)), `without ${JSON.stringify(read)}: ${message}`);
+      assert.ok(namesRead(message, read), `without ${JSON.stringify(read)}: ${message}`);
     }
   }
 });
@@ -80,7 +80,7 @@ test('a get that found nothing is a read of an absent document; a get never made
   assert.equal(refusal(() => plan(fetchReads(root, reads), 'record-entry', input)), 'unknown Trainee t-nobody');
   const missing = refusal(() => plan(fetchReads(root, []), 'record-entry', input));
   assert.match(missing, /missing reads/);
-  assert.ok(missing.includes(JSON.stringify(card)), missing);
+  assert.ok(namesRead(missing, card), missing);
 });
 
 test('every manifest read is an ArtifactData get, list or query, and a list or query asks for a whole page', () => {

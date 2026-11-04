@@ -219,10 +219,12 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
     ? readList(versions, snapshot, { main: [target, shown?.current] })
     : { versions: new Map(), reads: new Set(), other: { versions: new Map(), reads: new Set() } };
   const isOther = (r) => r.url !== undefined && r.url !== target;
+  // Every read to make saves into its snapshot folder: the second one for another Cycle's.
   const toOther = (r) => ({ ...r, out_dir: longDir(otherSnapshot(snapshot)) });
+  const toMain = (r) => ({ ...r, out_dir: longDir(snapshot) });
   // Every read the manifest names is made first; reads it could not foresee are named as the run meets them.
   const unmade = readsFor({ op, args, input: payload }).filter((r) => !(isOther(r) ? list.other.reads : list.reads).has(readKey(r)));
-  if (unmade.length) throw new MissingReads(unmade.map((r) => (isOther(r) ? toOther(r) : r)));
+  if (unmade.length) throw new MissingReads(unmade.map((r) => (isOther(r) ? toOther(r) : toMain(r))));
   const docs = openSnapshot(snapshot, list.versions, list.reads);
   // The one other Cycle a run may read: the operation's own (`from`), else the first it asks for.
   let otherUrl = entry.from?.({ args, input: payload }) ?? list.other.url;
@@ -235,7 +237,7 @@ export function planOperation({ snapshot, versions, out, op, args = [], input = 
     return other;
   };
   const missing = () => [
-    ...docs.missing().map((r) => (target ? { ...r, url: target } : r)),
+    ...docs.missing().map((r) => toMain(target ? { ...r, url: target } : r)),
     ...(other?.missing() ?? []).map((r) => toOther({ ...r, url: otherUrl })),
   ];
   let pointerWrite;

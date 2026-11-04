@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreError } from '../lib/store.mjs';
 import { planOperation, readsFor } from '../lib/plan.mjs';
-import { seededRand, fixture, fetchReads, planDir } from './fixtures/plan-seam.mjs';
+import { seededRand, fixture, fetchReads, planDir, namesRead } from './fixtures/plan-seam.mjs';
 
 const LATER = new Date('2026-11-20T09:00:00');
 
@@ -42,7 +42,7 @@ test('reads, status, Playbook, alerts and rebuild-card: exactly the manifest\'s 
     assert.equal(refusal(() => plan(fetchReads(root, reads))), null, `${op} ${args.join(' ')}`);
     for (const [i, read] of reads.entries()) {
       const message = refusal(() => plan(fetchReads(root, reads.filter((_, j) => j !== i))));
-      assert.ok(message?.includes(JSON.stringify(read)), `${op} without ${JSON.stringify(read)}: ${message}`);
+      assert.ok(namesRead(message, read), `${op} without ${JSON.stringify(read)}: ${message}`);
     }
   }
 });

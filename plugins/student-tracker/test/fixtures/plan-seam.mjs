@@ -105,3 +105,13 @@ export function applyPlan(root, batches) {
 }
 
 export const planDir = () => tmp('st-seam-plan-');
+
+// Whether a "missing reads" refusal names `read`, whatever snapshot folder (out_dir) it gives it.
+export function namesRead(message, read) {
+  const want = JSON.stringify(read);
+  return (message ?? '').split('\n').some((line) => {
+    if (!line.startsWith('{')) return false;
+    const { out_dir: _, ...named } = JSON.parse(line);
+    return JSON.stringify(named) === want;
+  });
+}

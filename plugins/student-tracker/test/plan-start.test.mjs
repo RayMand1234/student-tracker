@@ -9,7 +9,7 @@ import { openStore } from '../lib/store.mjs';
 import { MissingReads } from '../lib/docs.mjs';
 import { runOperation } from '../lib/operations.mjs';
 import { planOperation, readsFor } from '../lib/plan.mjs';
-import { NOW, seededRand, fixture, fetchReads, applyPlan, planDir } from './fixtures/plan-seam.mjs';
+import { NOW, seededRand, fixture, fetchReads, applyPlan, planDir, namesRead } from './fixtures/plan-seam.mjs';
 
 const URL = 'https://claude.ai/artifact/current';
 const PREVIOUS = 'https://claude.ai/artifact/previous';
@@ -29,7 +29,7 @@ function planStart(root, pointer) {
       return planOperation({ snapshot: s.dir, versions: s.versions, out: planDir(), op: 'start', pointer, now: () => NOW, rand: seededRand(3) });
     } catch (e) {
       if (!(e instanceof MissingReads)) throw e;
-      reads.push(...e.reads);
+      reads.push(...e.reads.map(({ out_dir: _, ...r }) => r));
     }
   }
   throw new Error('start kept asking for reads');
@@ -97,7 +97,7 @@ test('start: without any one read of its manifest, planning refuses and names it
     const s = fetchReads(root, reads.filter((_, j) => j !== i));
     assert.throws(
       () => planOperation({ snapshot: s.dir, versions: s.versions, out: planDir(), op: 'start', pointer }),
-      (e) => e instanceof MissingReads && e.message.includes(JSON.stringify(read)),
+      (e) => e instanceof MissingReads && namesRead(e.message, read),
     );
   }
 });

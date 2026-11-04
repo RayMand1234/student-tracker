@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreError } from '../lib/store.mjs';
 import { planOperation, readsFor } from '../lib/plan.mjs';
-import { NOW, seededRand, fixture, storeRoot, fetchReads, planDir } from './fixtures/plan-seam.mjs';
+import { NOW, seededRand, fixture, storeRoot, fetchReads, planDir, namesRead } from './fixtures/plan-seam.mjs';
 
 const plan = (snapshot, op, { args, input }) => planOperation({
   snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), op, args, input, now: () => NOW, rand: seededRand(3),
@@ -28,7 +28,7 @@ function assertManifest(root, op, { args = [], input = '' } = {}) {
   assert.equal(refusal(() => plan(fetchReads(root, reads), op, { args, input })), null, `${op} ${args.join(' ')} with every read`);
   for (const [i, read] of reads.entries()) {
     const message = refusal(() => plan(fetchReads(root, reads.filter((_, j) => j !== i)), op, { args, input }));
-    assert.ok(message?.includes(JSON.stringify(read)), `${op} ${args.join(' ')} without ${JSON.stringify(read)}: ${message}`);
+    assert.ok(namesRead(message, read), `${op} ${args.join(' ')} without ${JSON.stringify(read)}: ${message}`);
   }
 }
 

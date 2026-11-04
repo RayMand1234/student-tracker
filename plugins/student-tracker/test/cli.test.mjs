@@ -591,11 +591,10 @@ test('reads record-entry prints the ArtifactData reads to send, one per line, ea
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'st-cli-plan-')), 'plan');
   const refused = run(['plan', 'record-entry', '--snapshot', snapshot, '--versions', versions, '--out', out], { cwd, input });
   assert.equal(refused.code, 1);
-  const { out_dir: _, ...sent } = skipped;
   const err = refused.err.trim().split('\n');
   const head = err.findIndex((l) => l.startsWith('missing reads'));
   assert.ok(head !== -1, refused.err);
-  assert.deepEqual(err.slice(head + 1), [JSON.stringify(sent)]);
+  assert.deepEqual(err.slice(head + 1), [JSON.stringify(skipped)], 'as `reads` printed it, out_dir included');
   assert.ok(!fs.existsSync(out), 'a refused plan writes no plan');
 
   const other = run(['reads', 'no-such-op'], { cwd });

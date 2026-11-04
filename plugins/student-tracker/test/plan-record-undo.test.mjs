@@ -9,7 +9,7 @@ import { openStore, StoreError, VersionConflict } from '../lib/store.mjs';
 import { MissingReads, MAX_BATCH_WRITES } from '../lib/docs.mjs';
 import { runOperation } from '../lib/operations.mjs';
 import { planOperation, readsFor } from '../lib/plan.mjs';
-import { NOW, seededRand, fixture, copyDataDir, storeRoot, contents, fetchReads, applyPlan, planDir } from './fixtures/plan-seam.mjs';
+import { NOW, seededRand, fixture, copyDataDir, storeRoot, contents, fetchReads, applyPlan, planDir, namesRead } from './fixtures/plan-seam.mjs';
 
 const MARK = '[פרט אישי — בתיק]';
 const clock = { now: () => NOW };
@@ -25,7 +25,7 @@ function planOver(root, op, { args = [], input = '', insist = false, category, r
       return { plan, reads };
     } catch (e) {
       if (!(e instanceof MissingReads)) throw e;
-      reads.push(...e.reads);
+      reads.push(...e.reads.map(({ out_dir: _, ...r }) => r));
     }
   }
   throw new Error(`${op} kept asking for reads`);
@@ -271,6 +271,6 @@ function assertReadsNeeded(root, { took, ...c }) {
   for (const [i, read] of reads.entries()) {
     const snapshot = fetchReads(root, reads.filter((_, j) => j !== i));
     const plan = () => planOperation({ snapshot: snapshot.dir, versions: snapshot.versions, out: planDir(), ...c, ...clock, rand: seededRand(3) });
-    assert.throws(plan, (e) => e instanceof MissingReads && e.message.includes(JSON.stringify(read)), `${c.op} without ${JSON.stringify(read)}`);
+    assert.throws(plan, (e) => e instanceof MissingReads && namesRead(e.message, read), `${c.op} without ${JSON.stringify(read)}`);
   }
 }
