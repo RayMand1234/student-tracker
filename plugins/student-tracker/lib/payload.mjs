@@ -290,7 +290,7 @@ export function parseSettings(input) {
   return out;
 }
 
-// One Cycle change, named by its first line (see store/local/roster.md).
+// One Cycle change, named by its first line (see store/roster.md).
 export function parseCycleChange(input) {
   const aliases = (key) => (c, v) => (c[key].aliases ??= []).push(v);
   return parseOne(input, {

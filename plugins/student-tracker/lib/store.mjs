@@ -319,6 +319,19 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
 
   return {
     connect() {
+      // Over a snapshot (the artifact backend's plan step): the current Cycle's page answered.
+      // Its meta/cycle missing means a setup that never seeded it. An earlier Cycle it names
+      // that the pointer lacks joins `archived` (one link: the rest of the chain is another Cycle's).
+      if (given) {
+        const pointer = readPointer();
+        if (!pointer.current) throw new StoreError(NOT_SET_UP);
+        const cycle = given.get('meta/cycle')?.data;
+        if (!cycle) return { backend: 'artifact', url: pointer.current, cycle: null, setup: 'in-progress' };
+        if (cycle.previous && cycle.previous !== pointer.current && !pointer.archived.includes(cycle.previous)) {
+          savePointer({ ...pointer, archived: [cycle.previous, ...pointer.archived] });
+        }
+        return { backend: 'artifact', url: pointer.current, cycle: cycle.name, setup: cycle.setup, ...(cycle.archived === true ? { archived: true } : {}) };
+      }
       if (!readPointer().current) adoptLocalCycle();
       const r = storeRoot();
       const cycle = openDocs(r).get('meta/cycle')?.data;

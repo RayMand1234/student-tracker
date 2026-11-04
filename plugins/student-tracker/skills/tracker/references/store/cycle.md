@@ -1,9 +1,19 @@
 # Store: Cycle setup
 
-Used only by setup.
+Setup only, in this order; each is safe to run again after an interrupted setup.
 
-- **`createCycle({commander: {name, role?, talk?}, cycle: {name, start?}, trainees, previous?})`** → `{url, trainees: [{id, name}]}`. Writes the pointer, then seeds `meta/cycle` (`setup: in-progress`, `start` default today), `meta/skills`, `meta/preset` (copy of the shipped preset), `commander/settings` (role null, Talk 10/10/14 unless given), `commander/hides`, and per Trainee an `added` change plus card. `previous` = the current, done Cycle this one follows: the new store becomes `current`, the old address moves to `archived` at once, `meta/cycle.previous` records it, and role/Talk not given come from it. Called again after an interrupted setup, it finishes the same store, keeping Trainees, Skills, preset and stored start/role/Talk unless given again. Refuses when setup is already done (unless `previous` names that Cycle), a wrong `previous`, clashing names (as `updateTrainee`), a bad `start`, Talk values `updateSettings` would refuse.
-- **`finishSetup()`** → `meta/cycle` with `setup: done`. Setup's last write. Repeating is harmless.
-- **`copyCommanderScope(fromUrl)`** → `{settings: "copied"|"kept", skills, playbook, hidden}` (ids copied). After `createCycle` of a new Cycle: copies every `playbook/` item (retired too, same id; existing ones left), hides not yet here, settings only if none here, and each Commander-added Skill a live item is tagged to (same group, id, name; if the group has a Skill of that name, the item is retagged to it). Repeating copies nothing. Refuses `fromUrl` = current, no Cycle there, or a current Cycle already done.
-- **`archiveCycle(url)`** → its `meta/cycle`. After `copyCommanderScope`: adds `url` to `archived`, finishes anything left `writing` there, marks it `archived: true, archivedAt`. Its dashboard then shows "מחזור בארכיון"; the page stays. Repeating is harmless. Refuses the current Cycle or no Cycle there.
-- **`unpinDashboard(url)`** → removes that Cycle's page from the sidebar; page and store stay. Only on the Commander's clear yes.
+- `create-cycle` → `{url, trainees: [{id, name}]}`. Payload: `commander: <name>`, `cycle: <name>`, `trainee: <name>` (repeat); optional `role:`, `start: YYYY-MM-DD`, `target:`, `yellow:`, `red:`, and `previous: <address>` for a new Cycle after the current one. Leaves the Cycle `in-progress`. Values not given come from what is stored, or from the previous Cycle.
+- `copy-commander-scope <previous address>` → `{settings, skills, playbook, hidden}`: the Commander's settings, Playbook items, hides and the Skills those items need, copied into the new Cycle.
+- `archive-cycle <previous address>` → its Cycle: archived, read-only from now on; its page stays.
+- `finish-setup` → the Cycle, `setup: done`. The last write.
+
+```
+student-tracker-store … create-cycle <<'CYCLE'
+commander: רז
+role: מפ"צ
+cycle: הצהובים
+target: 7
+trainee: נועה
+trainee: דני
+CYCLE
+```

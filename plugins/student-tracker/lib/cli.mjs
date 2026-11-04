@@ -51,7 +51,7 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <a
   update-cycle            < one change: "add-test: <name>" | "edit-test: <test>" | "remove-test: <test>" |
                             "add-project: <name>" | "remove-project: <project>" | "week: <n>" |
                             "remove-week: <last week>" | "add-skill: <name>" | "archive-skill: <id>" |
-                            "restore-skill: <id>" | "team: <name>", then its field lines (store/local/roster.md)
+                            "restore-skill: <id>" | "team: <name>", then its field lines (store/roster.md)
   resume-pending
   rebuild-card <tid>
 artifact backend (no --data):
@@ -72,7 +72,7 @@ artifact backend (no --data):
                             it prints "url", send the batches to that address, not the current Cycle.
                             Several batches come with "if_refused": what to do when one after the first is
                             refused (plan resume-pending).
-                            Operations: ${plannedOperations().join(', ')}`;
+                            Operations: ${plannedOperations().join(', ')} (start: connect, resume-pending, read-cycle and read-team over one snapshot)`;
 
 export async function main(argv) {
   const args = [...argv];

@@ -4,8 +4,8 @@
 
 ## "איך לעזור לנועה בדיבאג?"
 
-1. Trainee by name (ask if unknown or shared). Focus, if named → Skill ids from `readCycle` → `skills`; a name in several Stages ("סדר וארגון") → the ids their Evidence is about, or all; no Skill matches ("ניהול זמן") → keep their words as the theme.
-2. `readTrainee(tid, since: 6 weeks back)` and `readPlaybook(tid, skills: <focus ids>)`. Nothing rated and no focus → only general items: build from the Evidence.
+1. Trainee by name (ask if unknown or shared). Focus, if named → Skill ids from `read-cycle` → `skills`; a name in several Stages ("סדר וארגון") → the ids their Evidence is about, or all; no Skill matches ("ניהול זמן") → keep their words as the theme.
+2. `read-trainee <tid> --since <6 weeks back>` and `read-playbook <tid> <focus ids>`. Nothing rated and no focus → only general items: build from the Evidence.
 3. Choose 2–3, never more, from target items (Commander's own preferred) and general items. Skip what the Evidence shows was tried without effect, or an active item or open Follow-up covers. `sign` items only help read the Evidence.
 4. Rewrite each to this Trainee, grounded in their Evidence. No bare item text, nothing unsupported, nothing sensitive beyond "מצב אישי" (others may be reading). Record nothing.
 
@@ -38,10 +38,10 @@ Their message is an Entry: read [log.md](log.md) only now, and record it (load `
 
 2–3 card questions for the next Talk (dashboard "לשיחה הבאה"). Rewrite them:
 
-- Every Entry: a `nextTalk` change in `recordEntry` per Trainee with Evidence in it, beside the Snapshot.
-- Re-rate or accepted proposal: `nextTalk` in `recordAssessments`.
-- Brief: refreshed, shown as "שאלות פתיחה", stored with `recordNextTalk`.
-- `flipSensitive` lists them in `repeats`: fresh ones with `recordNextTalk`.
+- Every Entry: a `next-talk` block in `record-entry` per Trainee with Evidence in it, beside the Snapshot.
+- Re-rate or accepted proposal: a `next-talk` block in `record-assessments`.
+- Brief: refreshed, shown as "שאלות פתיחה", stored with `record-next-talk`.
+- `flip-sensitive` lists them in `repeats`: fresh ones with `record-next-talk`.
 - Not on the Commander's Status change, a roster change or other flips.
 
 Writing them:

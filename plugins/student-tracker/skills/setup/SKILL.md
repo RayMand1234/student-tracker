@@ -17,14 +17,12 @@ Set up tracking for one Cycle. Hebrew only, short and plain. Setup creates a Cyc
 - Pointer file: `${CLAUDE_PLUGIN_DATA}/cycles.json`
 - Shipped Course preset: `${CLAUDE_PLUGIN_ROOT}/data/preset.json`; Skill framework: `${CLAUDE_PLUGIN_ROOT}/data/skills.json`
 
-Storage: after step 1 picks backend `<b>`, read from `${CLAUDE_PLUGIN_ROOT}/skills/tracker/references/store/`: `core.md`, `<b>/core.md`, `read.md`, `<b>/read.md`, `cycle.md`, `<b>/cycle.md`. Read `roster.md` + `<b>/roster.md` only if there are course changes, Skills or teams to apply; `record.md` + `<b>/record.md` only if there is Trainee info to record.
+Storage: the pointer, its backend, the store's core and its setup commands are under **Loaded** at the end; every command runs as the backend file there says. Only if there are course changes, Skills or teams to apply, also run `student-tracker-store --data "${CLAUDE_PLUGIN_DATA}" boot store/roster`.
 
-## 1. Backend and preflight
+## 1. Preflight
 
-Read the pointer file (a missing file means there is no pointer).
-
-- Pointer `current` starts with `local:` or `"backend": "local"` → `<b>` = `local` (test backend, no page); skip the rest of this step.
-- Otherwise `<b>` = `artifact`. Before asking anything, check that this session can create artifacts: the `Artifact` tool is in your tool list, and ToolSearch `select:ArtifactData` finds `ArtifactData`. If either is missing, send exactly this as your whole reply (no words before or after it, not quoted) and stop:
+- Backend `local` (test backend, no page): skip this step.
+- Backend `artifact`: before asking anything, check that this session can create artifacts: the `Artifact` tool is in your tool list, and ToolSearch `select:ArtifactData` finds `ArtifactData`. If either is missing, send exactly this as your whole reply (no words before or after it, not quoted) and stop:
 
 > אי אפשר להקים את המעקב בסשן הזה, כי Claude Code לא יכול ליצור כאן את דף המעקב. בדרך כלל הסיבה אחת מאלה:
 > • נדרש מנוי Pro, Max, Team או Enterprise.
@@ -35,15 +33,15 @@ Read the pointer file (a missing file means there is no pointer).
 
 ## 2. Existing Cycle?
 
-Run `connect`.
+Run `start` (in the same turn as step 1's check).
 - No tracking exists yet → first-time setup: step 3.
-- Several Cycles found → ask which one (by name) and stop until the Commander answers; then save that one as the pointer's `current` and run `connect` again.
+- Several Cycles found → ask which one (by name) and stop until the Commander answers; then save that one as the pointer's `current` and run `start` again.
 - `setup: done` → ask exactly "להתחבר למחזור <cycle>, או להתחיל מחזור חדש?" and wait.
-  - Connect → `connect` has already saved the pointer. Reply "מחובר למחזור <cycle>. אפשר פשוט לכתוב לי עדכונים." and stop.
-  - New Cycle → the current one is the **previous Cycle** (address = `connect`'s `url`, name = `cycle`). `readCycle` it now for the Commander's settings and counts of live Playbook items (`playbook`, not retired) and hides (`commander.hides.hidden`). Step 3.
+  - Connect → the pointer is already saved. Reply "מחובר למחזור <cycle>. אפשר פשוט לכתוב לי עדכונים." and stop.
+  - New Cycle → the current one is the **previous Cycle** (address = `connect`'s `url`, name = `cycle`). From `start`'s `cycle`: the Commander's settings and counts of live Playbook items (`playbook`, not retired) and hides (`commander.hides.hidden`). Step 3.
 - `setup: in-progress` → an earlier setup was interrupted. Never publish a second page.
-  - It is a **new Cycle** if `readCycle` shows `cycle.previous` (the previous Cycle), or, nothing seeded yet, if the pointer's `archived` has an address whose Cycle (`readCycle` with it as `cycle`) is not `archived: true`. Then read the previous name there and say you're finishing the new Cycle that continues <previous>.
-  - Read what is stored (`readCycle`, `readTeam`; nothing seeded → nothing to read), say in one line you're finishing the setup of <cycle>, treat stored values as the answers so far, and go to step 5 (a missing mandatory answer → ask first, as step 4). Use step 5's summary as written, ending "זה מה שאקים — לאשר?", never your own question. In step 6, call `createCycle` again with every answer, stored or changed.
+  - It is a **new Cycle** if `read-cycle` shows `cycle.previous` (the previous Cycle), or, nothing seeded yet, if the pointer's `archived` has an address whose Cycle (`read-cycle` at that address) is not `archived: true`. Then read the previous name there and say you're finishing the new Cycle that continues <previous>.
+  - Read what is stored (`read-cycle`, `read-team`, together; nothing seeded → nothing to read), say in one line you're finishing the setup of <cycle>, treat stored values as the answers so far, and go to step 5 (a missing mandatory answer → ask first, as step 4). Use step 5's summary as written, ending "זה מה שאקים — לאשר?", never your own question. In step 6, call `create-cycle` again with every answer, stored or changed.
 
 ## 3. Ask everything in one message
 
@@ -85,10 +83,10 @@ Partial answers are fine. Mandatory: the Commander's name and the Cycle (new Cyc
 - **New Cycle**: previous name, role and Talk values stand unless changed ("ממשיך", "בלי שינוי" = no change). The Cycle name must differ from the previous. Trainees, teams, Skills and course differences don't carry over.
 - **Talk cadence**: whole days; "כל שבוע" = target 7. Yellow 10 / red 14 unless named; a target past 10 moves yellow to the target and red to target + 4 (say so in the summary).
 - **Start date**: resolve against today (`date '+%F %A'`) as `YYYY-MM-DD`.
-- **Course differences** ("אין אצלנו Atom", "בפוב קוראים לו FOV2", "יש לנו גם תרץ Crocodile ב-OOP", "אין MZ", "הקורס 20 שבועות"): each becomes `updateCycle` preset changes: `addTest` (ask the Subject if unclear), `editTest`, `removeTest`, `addProject`, `removeProject`, `setWeek`, `removeWeek` (shorter course: drop last weeks, one call each, from the end). Only this Cycle's copy changes. Not expressible → say in the summary it can't be changed yet, and go on.
-- **Trainee info** ("נועה הגיעה ממדעי המחשב, רוצה להיות מפקדת"): an ordinary Entry, recorded in step 6 as `${CLAUDE_PLUGIN_ROOT}/skills/tracker/references/log.md` says. `text` = the Commander's answer message word for word; excerpts cut from it, sensitive parts cut out, dated today unless stated. Nothing else about a Trainee is stored beyond the display name.
-- **Project teams** ("בפאדנס נועה ודני בצוות"): `setTeam` per team, named as given, else by its members.
-- **Extra Skills**: `addSkill` to the right Stage or the Interpersonal group (ask if unclear).
+- **Course differences** ("אין אצלנו Atom", "בפוב קוראים לו FOV2", "יש לנו גם תרץ Crocodile ב-OOP", "אין MZ", "הקורס 20 שבועות"): each becomes `update-cycle` preset changes: `add-test` (ask the Subject if unclear), `edit-test`, `remove-test`, `add-project`, `remove-project`, `week`, `remove-week` (shorter course: drop last weeks, one call each, from the end). Only this Cycle's copy changes. Not expressible → say in the summary it can't be changed yet, and go on.
+- **Trainee info** ("נועה הגיעה ממדעי המחשב, רוצה להיות מפקדת"): an ordinary Entry, recorded in step 6 as the log route says. `text` = the Commander's answer message word for word; excerpts cut from it, sensitive parts cut out, dated today unless stated. Nothing else about a Trainee is stored beyond the display name.
+- **Project teams** ("בפאדנס נועה ודני בצוות"): `team` per team, named as given, else by its members.
+- **Extra Skills**: `add-skill` to the right Stage or the Interpersonal group (ask if unclear).
 
 ## 5. Confirm
 
@@ -114,18 +112,18 @@ Clear yes ("כן", "מאשר", "יאללה") → step 6. A change or addition �
 ## 6. Create
 
 **Artifact backend**, first:
-1. Publish the dashboard page through one `general-purpose` subagent (Agent tool), so the large page never enters this conversation; never read or publish it yourself. Prompt it: "Copy `${CLAUDE_PLUGIN_ROOT}/dashboard/index.html` to `<scratchpad>/student-tracker-<Cycle slug>-<YYYYMMDD-HHMM>/index.html`, read the copy, and publish it with the Artifact tool as a new page (no `url`): `file_path` = the copy, `title` = "מעקב חניכים · <Cycle>", `description` = "דף המעקב של המחזור <Cycle>: מתי הייתה השיחה האחרונה עם כל חניך.", `icon` = "people", `capabilities` = `{"db": {}, "user": {}}`, `pin: true`. Reply with only the published address, or the error." The returned address must differ from every address in the pointer; else stop and tell the Commander. Skip when finishing an interrupted setup.
+1. Publish the dashboard page through one `general-purpose` subagent (Agent tool, `model: "haiku"`), so the large page never enters this conversation; never read or publish it yourself. Prompt it: "Copy `${CLAUDE_PLUGIN_ROOT}/dashboard/index.html` to `<scratchpad>/student-tracker-<Cycle slug>-<YYYYMMDD-HHMM>/index.html`, read the copy, and publish it with the Artifact tool as a new page (no `url`): `file_path` = the copy, `title` = "מעקב חניכים · <Cycle>", `description` = "דף המעקב של המחזור <Cycle>: מתי הייתה השיחה האחרונה עם כל חניך.", `icon` = "people", `capabilities` = `{"db": {}, "user": {}}`, `pin: true`. Reply with only the published address, or the error." The returned address must differ from every address in the pointer; else stop and tell the Commander. Skip when finishing an interrupted setup.
 2. Write the pointer at once, before seeding: `current` = the page address in `${CLAUDE_PLUGIN_DATA}/cycles.json` (Write tool), keeping `archived` (`{"current": "<address>", "archived": []}` if none). New Cycle: in the same write, append the previous address to `archived`.
 
 Then, on either backend, in this order:
-1. `createCycle` with the Commander's name, role, Talk values and the start date when given, the Cycle and the Trainees; on a new Cycle also `previous` = the previous Cycle's address. (The local backend writes the pointer itself.)
-2. Each Course preset change with `updateCycle`, in the order listed; then each extra Skill (`addSkill`); then each Project team (`setTeam`, members by the ids `createCycle` returned).
-3. Trainee info, if any: one `recordEntry` by log.md (read it, including its sensitive-details rules, before cutting).
-4. New Cycle: `copyCommanderScope` from the previous address, then `archiveCycle` of it. Both safe to rerun.
-5. `finishSetup`, only after everything above went in.
-6. Artifact backend: check once that `readTeam` shows one card per Trainee.
+1. `create-cycle` with the Commander's name, role, Talk values and the start date when given, the Cycle and the Trainees; on a new Cycle also `previous:` = the previous Cycle's address. (The local backend writes the pointer itself.)
+2. Each Course preset change with `update-cycle`, in the order listed; then each extra Skill (`add-skill`); then each Project team (`team`, members by the ids `create-cycle` returned).
+3. Trainee info, if any: one `record-entry` as the log route says (`student-tracker-store --data "${CLAUDE_PLUGIN_DATA}" boot log`; read it, sensitive parts included, before cutting).
+4. New Cycle: `copy-commander-scope` from the previous address, then `archive-cycle` of it. Both safe to rerun.
+5. `finish-setup`, only after everything above went in. Each command runs on its own, in this order.
+6. Artifact backend: check once that `read-team` shows one card per Trainee.
 
-Step 5's yes confirms every change here; don't ask again. Finishing an interrupted setup: check `readCycle` and `readTrainee` first and skip what is stored (applied preset change, existing team, an Entry with the same text). A refusal → fix the input with the Commander and rerun; never `finishSetup` with something missing.
+Step 5's yes confirms every change here; don't ask again. Finishing an interrupted setup: check `read-cycle` and `read-trainee` first and skip what is stored (applied preset change, existing team, an Entry with the same text). A refusal → fix the input with the Commander and rerun; never `finish-setup` with something missing.
 
 ## 7. Hand-off
 
@@ -137,4 +135,10 @@ One short Hebrew message:
 - New Cycle: one line on what carried over (settings, <n> Playbook items, <m> hides) and that <previous> is archived, read-only, askable ("מה היה עם דני במחזור הקודם?").
 - One line: for automatic plugin updates, turn on auto-update under `/plugin` → Marketplaces.
 
-New Cycle on artifact: end with one question, asked once only: "להוריד את <previous> מהסרגל של claude.ai? הוא נשאר בארכיון, ואפשר לשאול עליו בצ'אט." Clear yes → `unpinDashboard` with the previous address; say it's done in one line. Else leave it and say nothing more.
+New Cycle on artifact: end with one question, asked once only: "להוריד את <previous> מהסרגל של claude.ai? הוא נשאר בארכיון, ואפשר לשאול עליו בצ'אט." Clear yes → unpin the previous Cycle's page (the backend file says how); say it's done in one line. Else leave it and say nothing more.
+
+## Loaded
+
+!`student-tracker-store --data "${CLAUDE_PLUGIN_DATA}" boot`
+
+!`student-tracker-store --data "${CLAUDE_PLUGIN_DATA}" boot store/cycle`

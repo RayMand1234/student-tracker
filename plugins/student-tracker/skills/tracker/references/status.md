@@ -2,8 +2,8 @@
 
 # Team status
 
-1. `readStatus`.
-2. **One team action, always** (הצעה, not stored): one concrete thing for the team this week, aimed at the first that applies: the shared weakness, the commonest thread of `declining`, the Talks owed ("לקבוע השבוע שיחות עם אור ועידו"), else what the Evidence most needs. May come from a Playbook item (`readPlaybook` of one Trainee concerned: that Skill's and `general` items), rewritten to the team.
+1. `read-status`.
+2. **One team action, always** (הצעה, not stored): one concrete thing for the team this week, aimed at the first that applies: the shared weakness, the commonest thread of `declining`, the Talks owed ("לקבוע השבוע שיחות עם אור ועידו"), else what the Evidence most needs. May come from a Playbook item (`read-playbook` of one Trainee concerned: that Skill's and `general` items), rewritten to the team.
 3. Reply in exactly this layout, nothing added (no bold, headings). Omit empty lists; team action always; `בסדר` last.
 
 ```

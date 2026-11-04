@@ -27,12 +27,13 @@ function pointer(dataDir) {
   return { file, text, backend };
 }
 
-// The route file and the store families its **Load:** line names, for this backend.
+// A store family's commands, and its backend's file if it has one.
 function family(name, backend, seen) {
   if (!/^[a-z]+$/.test(name) || !fs.existsSync(path.join(REF, `store/${name}.md`))) throw new StoreError(`unknown store family ${name}`);
   const out = [];
+  // A backend file only where the family runs differently there.
   for (const rel of [`store/${name}.md`, `store/${backend}/${name}.md`]) {
-    if (seen.has(rel)) continue;
+    if (seen.has(rel) || !fs.existsSync(path.join(REF, rel))) continue;
     seen.add(rel);
     out.push(section(`references/${rel}`, read(path.join(REF, rel))));
   }

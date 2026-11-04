@@ -6,7 +6,7 @@ You write Assessments, never a Rating.
 
 Scale: 1 לא מתפקד · 2 מתקשה, צריך ליווי צמוד · 3 סביר, עם טעויות · 4 טוב ועצמאי · 5 מצוין, יכול ללמד אחרים.
 
-Name Skills by `name` (`readCycle` → `skills`).
+Name Skills by `name` (`read-cycle` → `skills`).
 
 ## Rating rule
 
@@ -22,7 +22,7 @@ Example, today 30/10, `a` = `[["2026-09-20", 2, "agent"], ["2026-10-10", 4, "com
 
 - Only on Skills the Evidence speaks to ("מצאה לבד את הבאג עם הדפסות" → יכולות דיבאג, עצמאות), usually 0–3. Never sweep all Skills or guess.
 - A test score alone is not Skill Evidence ("קיבל 85 בפוב", "עבר את פוב", "נכשלה בתרץ 2" → none). A test or code review describing how they worked ("נתקע שעה על הדיבאג בפוב") may be.
-- Holistic: `readTrainee` (6 weeks) and the card's Skill entry, last ~4 weeks weighed most; score where they stand now.
+- Holistic: `read-trainee` (6 weeks) and the card's Skill entry, last ~4 weeks weighed most; score where they stand now.
 - Cite every Evidence used (≥1): this Entry's as `#<n>` (Evidence in order, then sensitive parts), earlier ones by id.
 - Reason: one short Hebrew sentence, display-safe ("מצב אישי" at most).
 - Write at once, no confirmation.
@@ -35,7 +35,7 @@ Example, today 30/10, `a` = `[["2026-09-20", 2, "agent"], ["2026-10-10", 4, "com
 
 Evidence speaks to it → still write yours (kept, doesn't count):
 - Same score → a "נשאר" line.
-- Different score → a proposal line "(הצעה) מציע לעדכן …" ending "לעדכן?". On yes ("כן", "תעדכן", "מאשר"): `recordAssessments` for that Trainee with one `commander` Assessment: the proposed score, the Evidence your proposal cited, reason "אישור הצעה: <your reason>", plus fresh next-Talk questions (read [advice.md](advice.md) for them). Reply with its line. Otherwise record nothing.
+- Different score → a proposal line "(הצעה) מציע לעדכן …" ending "לעדכן?". On yes ("כן", "תעדכן", "מאשר"): `record-assessments` for that Trainee with one `commander` Assessment: the proposed score, the Evidence your proposal cited, reason "אישור הצעה: <your reason>", plus fresh next-Talk questions (read [advice.md](advice.md) for them). Reply with its line. Otherwise record nothing.
 
 ## Self-assessment (רמ"ת)
 
@@ -45,13 +45,13 @@ Evidence speaks to it → still write yours (kept, doesn't count):
 
 ## Corrections
 
-A `clarification` correcting an Evidence cited by the Trainee's Assessments (`readTrainee` → `assessments`): in the same Entry, a fresh agent Assessment on each of those Skills, citing the clarification and what still stands (proposal rule if Commander-set).
+A `clarification` correcting an Evidence cited by the Trainee's Assessments (`read-trainee` → `assessments`): in the same Entry, a fresh agent Assessment on each of those Skills, citing the clarification and what still stands (proposal rule if Commander-set).
 
 ## "תדרג מחדש את X"
 
-1. `readTrainee(tid)` with no `since`.
+1. `read-trainee <tid>` with no `--since`.
 2. Judge every Skill some Evidence speaks to.
-3. Write only where you differ from the Rating, or it is unrated: one `recordAssessments` call with all, plus fresh next-Talk questions (read [advice.md](advice.md) for them). Commander-set → proposal.
+3. Write only where you differ from the Rating, or it is unrated: one `record-assessments` call with all, plus fresh next-Talk questions (read [advice.md](advice.md) for them). Commander-set → proposal.
 4. Reply: one line per Assessment written, then "ללא שינוי: <Skill names>". Nothing written → "עברתי על כל המיומנויות — אין שינוי."
 
 ## Reply lines

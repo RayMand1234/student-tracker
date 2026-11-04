@@ -10,13 +10,13 @@ Bare "בטל" right after (record nothing unless retracting):
 - an Entry you recorded: its `entry` id.
 - another write (re-rate, accepted proposal, sensitive flip): in one line, "בטל" withdraws only Entries; name what undoes it (a new Commander Rating; "זה רגיש" / "זה לא רגיש") and ask if they meant their last update, quoting its opening words.
 - a Retraction: `אי אפשר לשחזר ביטול — אפשר לכתוב את העדכון מחדש.`
-- nothing this conversation: `retractEntry` with no id; name the Entry in the reply.
+- nothing this conversation: `retract-entry` with no id; name the Entry in the reply.
 
-A named Entry: match `readTrainee` Entries by `at` or Evidence `date`. Exactly one → it; else ask which, one line each (`DD/MM HH:MM`, opening words), recording nothing.
+A named Entry: match `read-trainee` Entries by `at` or Evidence `date`. Exactly one → it; else ask which, one line each (`DD/MM HH:MM`, opening words), recording nothing.
 
 ## 2. Retract
 
-Note touched cards (run's `readTeam`); `retractEntry(eid?)` (already retracted → `הרישום הזה כבר בוטל.`). Then `readTrainee` with `retracted: true` per result `trainees` (what was withdrawn) and `readTeam` (new cards).
+Note the touched cards (from `start`'s team); `retract-entry [<entry id>]` (already retracted → `הרישום הזה כבר בוטל.`). Then `read-trainee <tid> --retracted` per result `trainees` (what was withdrawn) and `read-team` (the new cards), all together.
 
 ## 3. Reply
 
@@ -40,4 +40,4 @@ Only on an explicit "תמחק לגמרי", "מחיקה לצמיתות", "תמח�
 1. Find the Entry as in step 1, retracted ones included.
 2. Confirm, recording nothing:
    `למחוק לצמיתות את הרישום מ-30/10 09:15 ("דיברתי היום עם נועה…") וכל מה שנגזר ממנו (נועה: שיחה והערכה; דני: הערה)? אי אפשר לשחזר. (כן / לא)`
-3. Clear yes in their next message: `hardDelete(eid)`, reply `נמחק לצמיתות: הרישום מ-30/10 09:15.` Anything else: `לא נמחק.`
+3. Clear yes in their next message: `hard-delete <entry id>`, reply `נמחק לצמיתות: הרישום מ-30/10 09:15.` Anything else: `לא נמחק.`

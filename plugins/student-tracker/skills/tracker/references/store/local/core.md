@@ -1,22 +1,16 @@
-# Local backend: core
+# Local backend
 
-Test backend: JSON files driven by `student-tracker-store`. Every call:
+Test backend: JSON files on this machine. Run each command directly; it does every read and write itself:
 
 ```
-student-tracker-store --data "<plugin data dir>" <command> [args]
+student-tracker-store --data "<plugin data dir>" <command> [args] <<'X'
+<payload>
+X
 ```
 
-Archived Cycle reads: add `--cycle "<address from archived>"` before the command. Writes never take `--cycle`.
+Success prints the result as JSON; a refusal exits 1 with the reason on stderr.
 
-Success prints JSON. A refusal exits 1 with the reason on stderr and writes nothing. The command runs write/Retraction protocols and version conflicts itself.
-
-Payloads go on stdin as plain text in a quoted heredoc, never JSON (the shell check refuses `{"`): `<<'X' … X`.
-
-| Operation | Command |
-|---|---|
-| `connect` + `resumePending` + `readCycle` + `readTeam` (Start) | `start` → `{connect, resumePending, cycle, team}`; stops after `connect` unless setup is done, no `resumePending` on an archived Cycle; a refusal is `connect`'s |
-| `connect` | `connect` (no `current`: looks under `<plugin data dir>/local/`; several are refused with their names, to ask) |
-| `resumePending` | `resume-pending` |
-| `readCycle` / `readTeam` | `read-cycle` / `read-team` |
-| `rebuildCard(tid)` | `rebuild-card <tid>` |
-| `openDashboard` | none: tell the Commander the dashboard exists only on a real Cycle |
+- Start: the one `start` command, in the same message as the route's `boot`.
+- No current Cycle: `connect` looks for this machine's Cycles; several are refused with their names, to ask which.
+- An archived Cycle: `--cycle "<address>"` before the command (reads only).
+- Dashboard, unpinning: there is no page in a test setup; say so in one line.

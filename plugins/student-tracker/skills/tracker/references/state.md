@@ -2,7 +2,7 @@
 
 # Trainee state
 
-All you write here is display-safe ("מצב אישי" at most). With an Entry, it goes in its `recordEntry` call (`items`, `changes`).
+All you write here is display-safe ("מצב אישי" at most). With an Entry, it goes in its `record-entry` call (`item`, `status`, `stage`, `snapshot`, `retire`, `next-talk` blocks).
 
 ## Status
 
@@ -12,10 +12,10 @@ All you write here is display-safe ("מצב אישי" at most). With an Entry, i
 | `watch` במעקב | A Skill ↓ or at 2, missed submissions, a Follow-up undone twice, a failed Test, a personal matter weighing on them |
 | `concern` דורש טיפול | Several Skills at 1–2 or ↓, repeated failures, not functioning, serious distress, in the evaluation process |
 
-- **Judge it with every Entry** about the Trainee (card + 6 weeks of `readTrainee`); move it only for a real reason, never one bad day. First Status once there is a Talk or two Evidence.
+- **Judge it with every Entry** about the Trainee (card + 6 weeks of `read-trainee`); move it only for a real reason, never one bad day. First Status once there is a Talk or two Evidence.
 - **Yours**: a `status` change, one-sentence Hebrew `reason`, written at once.
-- **Card `status.by` is `commander`** → instead add the proposal line (below). On yes: `updateTrainee` with `status: {to, reason: "אישור הצעה: <your reason>", evidence: <the Evidence ids it cited>}`, reply `עודכן: <name> — <Status in Hebrew> (מפקד).` Otherwise record nothing.
-- **The Commander sets it** ("תעביר את דני לדורש טיפול"): ask `לשנות את הסטטוס של דני ל'דורש טיפול' (היה: במעקב)? (כן / לא)`, write nothing yet. On a clear yes: `updateTrainee` with `status: {to, reason, evidence}`: reason = their words in brief, or "החלטת המפקד" (don't ask); evidence = stored Evidence ids they point to, if any. Message also carries an update about them → record it first (read [log.md](log.md)), ask in the same reply, after the yes cite that Evidence.
+- **Card `status.by` is `commander`** → instead add the proposal line (below). On yes: `update-trainee <tid>` with `status: <to>`, `reason: אישור הצעה: <your reason>`, `evidence: <the Evidence ids it cited>`, reply `עודכן: <name> — <Status in Hebrew> (מפקד).` Otherwise record nothing.
+- **The Commander sets it** ("תעביר את דני לדורש טיפול"): ask `לשנות את הסטטוס של דני ל'דורש טיפול' (היה: במעקב)? (כן / לא)`, write nothing yet. On a clear yes: `update-trainee <tid>` with `status:`, `reason:`, `evidence:`: reason = their words in brief, or "החלטת המפקד" (don't ask); evidence = stored Evidence ids they point to, if any. Message also carries an update about them → record it first (read [log.md](log.md)), ask in the same reply, after the yes cite that Evidence.
 
 ## Evaluation process
 
@@ -29,7 +29,7 @@ Stages in order: רף מקס → רף רמד → רף מפקד היחידה → 
 
 ## Snapshot
 
-With every Entry, a fresh `snapshot` per Trainee it's about, unless theirs already says it: 1–2 short Hebrew sentences (main strength, main difficulty, direction) from card, 6 weeks of `readTrainee` and this Entry; only what Evidence supports. Not in the reply.
+With every Entry, a fresh `snapshot` per Trainee it's about, unless theirs already says it: 1–2 short Hebrew sentences (main strength, main difficulty, direction) from card, 6 weeks of `read-trainee` and this Entry; only what Evidence supports. Not in the reply.
 
 ## Improve/keep items (שיפור / שימור)
 
@@ -50,4 +50,4 @@ After the Trainee's Assessment lines:
   הוסר: "להגיע בזמן לתרגולים"
 ```
 
-A Status via `updateTrainee` is not an Entry: reply `עודכן: …`, no Retraction line.
+A Status via `update-trainee` is not an Entry: reply `עודכן: …`, no Retraction line.

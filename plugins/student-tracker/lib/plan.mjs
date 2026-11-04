@@ -109,6 +109,13 @@ Object.assign(PLANNED, {
   'finish-setup': { reads: () => [getRead('meta/cycle')] },
 });
 
+// A turn's first step (lean-turns 07): connect, resumePending, readCycle and readTeam over one
+// snapshot, so the turn sends one read message. Reads the pointer for the Cycle's address.
+const READ_CYCLE = READ_OPERATIONS['read-cycle'].reads;
+Object.assign(PLANNED, {
+  start: { pointer: true, reads: () => [...READ_CYCLE(), listRead('entries'), listRead('trainees')] },
+});
+
 // The Cycle lifecycle (lean-turns 06): operations on two Cycles. Each reads the pointer file
 // (`pointer`). `from`: the other Cycle it reads, whose reads carry its address as `url` and
 // save into the second snapshot. `target`: the Cycle it writes to when that is not the current one.

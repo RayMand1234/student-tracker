@@ -16,27 +16,23 @@
 
 | The Commander says | Confirm as | Then |
 |---|---|---|
-| A new Trainee | "להוסיף את מאיה לצוות?" | `updateTrainee` `add: {name}` |
+| A new Trainee | "להוסיף את מאיה לצוות?" | `update-trainee` `add:` |
 | A new Trainee whose first name another has | Ask a label for both (an initial at most: "נועה כ." / "נועה ל."), then "לשנות את נועה ל'נועה כ.' ולהוסיף את 'נועה ל.'?" | `rename` the existing one, then `add` |
-| A label or corrected name | "לשנות את השם של נועה ל'נועה כ.'?" | `rename: {name}` |
-| A Trainee left | Date (default today; resolve "אתמול" to a date), how (`dismissal` הדחה, `transfer` מעבר, `other` אחר), short reason, then "לסמן שדני עזב ב-29/10 (מעבר: עבר לקורס אחר)? התיעוד שלו נשמר, והוא יוצא מתצוגות הצוות." | `leave: {date, how, reason}` |
+| A label or corrected name | "לשנות את השם של נועה ל'נועה כ.'?" | `rename:` |
+| A Trainee left | Date (default today; resolve "אתמול" to a date), how (`dismissal` הדחה, `transfer` מעבר, `other` אחר), short reason, then "לסמן שדני עזב ב-29/10 (מעבר: עבר לקורס אחר)? התיעוד שלו נשמר, והוא יוצא מתצוגות הצוות." | `leave:`, `how:`, `reason:` |
 | A Trainee who left is back | "להחזיר את דני לצוות?" | `rejoin` |
-| Talk target or thresholds | New values beside old: "יעד שיחה: כל 7 ימים (היה 10). צהוב 10, אדום 14 ללא שינוי." | `updateSettings` `talk` |
-| The Commander's name or role | "לעדכן את התפקיד ל'מפ"צ'?" | `updateSettings` `name` / `role` |
-| A Test added, renamed, renumbered, aliased or removed | "להוסיף ל-FOV את הכינוי 'פוב2'?" | `updateCycle` `addTest` / `editTest` / `removeTest` |
-| A Project added or removed; a Schedule week changed or dropped | "להוסיף פרויקט Chess (OOP)?", "שבוע 6: OOP ו-DB (במקום OOP ו-DB + Interpreter)?", "הקורס 20 שבועות: להוריד את שבוע 21?" | `addProject`, `removeProject`, `setWeek`, `removeWeek` |
-| A Project team | "צוות פאדנס 'נועה, דני ומאיה': נועה, דני, מאיה. לשמור?" Named as the Commander did, else by members. A member already in another team of that Project: say so, offer to move them (replace that team without them, then this one). | `setTeam` (with `id` to change one) |
-| A new Skill for a Stage or the Interpersonal group | "להוסיף את המיומנות 'ניהול זמן' לשלב מימוש בקוד?" Ask which Stage if unclear. | `addSkill`, then offer draft Playbook items (read [playbook.md](playbook.md)) |
-| Removing a Skill | "להעביר לארכיון את 'חיפוש באינטרנט'? ההערכות שלה נשמרות, ולא ייכתבו חדשות." Never offer to delete. | `archiveSkill`; back: `restoreSkill` |
+| Talk target or thresholds | New values beside old: "יעד שיחה: כל 7 ימים (היה 10). צהוב 10, אדום 14 ללא שינוי." | `update-settings` `talk` |
+| The Commander's name or role | "לעדכן את התפקיד ל'מפ"צ'?" | `update-settings` `name` / `role` |
+| A Test added, renamed, renumbered, aliased or removed | "להוסיף ל-FOV את הכינוי 'פוב2'?" | `update-cycle` `add-test` / `edit-test` / `remove-test` |
+| A Project added or removed; a Schedule week changed or dropped | "להוסיף פרויקט Chess (OOP)?", "שבוע 6: OOP ו-DB (במקום OOP ו-DB + Interpreter)?", "הקורס 20 שבועות: להוריד את שבוע 21?" | `add-project`, `remove-project`, `week`, `remove-week` |
+| A Project team | "צוות פאדנס 'נועה, דני ומאיה': נועה, דני, מאיה. לשמור?" Named as the Commander did, else by members. A member already in another team of that Project: say so, offer to move them (replace that team without them, then this one). | `team` (with `id` to change one) |
+| A new Skill for a Stage or the Interpersonal group | "להוסיף את המיומנות 'ניהול זמן' לשלב מימוש בקוד?" Ask which Stage if unclear. | `add-skill`, then offer draft Playbook items (read [playbook.md](playbook.md)) |
+| Removing a Skill | "להעביר לארכיון את 'חיפוש באינטרנט'? ההערכות שלה נשמרות, ולא ייכתבו חדשות." Never offer to delete. | `archive-skill`; back: `restore-skill` |
 
 ## A Trainee who left
 
-An update names them → don't record it: say they left on that date and ask "לרשום בכל זאת?". Only after a yes, record it with `insist` (load `record`).
+An update names them → don't record it: say they left on that date and ask "לרשום בכל זאת?". Only after a yes, record it with `--insist` (load `record`).
 
 ## Proposing a new Skill
 
-While logging, a way of working no Skill names itself (time management, asking for help…; a stretch fit doesn't count) seen in ≥3 Evidence (this one included) in that Trainee's 6 weeks or across Trainees read this conversation → before the Retraction line add:
-
-`(הצעה) "<theme>" חוזר ב-<N> תיעודים ואין לו מיומנות — להוסיף מיומנות "<name>" ל<Stage or group name>? (כן / לא)`
-
-A yes confirms it: `addSkill`, "עודכן: …", then draft Playbook items (read [playbook.md](playbook.md)). Each theme once per conversation; never add a Skill without a yes.
+A yes to the logging route's `(הצעה) "<theme>" חוזר…` line confirms it: `update-cycle` `add-skill`, "עודכן: …", then draft Playbook items (read [playbook.md](playbook.md)). Each theme once per conversation; never add a Skill without a yes.

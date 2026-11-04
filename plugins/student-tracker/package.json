@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test 'test/*.test.mjs'",
-    "eval": "node --test --test-concurrency=1 --test-reporter=spec 'evals/*.eval.mjs'",
+    "test": "node --test \"test/*.test.mjs\"",
+    "eval": "node --test --test-concurrency=1 --test-reporter=spec \"evals/*.eval.mjs\"",
     "build": "node scripts/build-dashboard.mjs"
   }
 }

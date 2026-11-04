@@ -16,7 +16,7 @@ Ask one short Hebrew question, recording **nothing** (not even the clear parts),
 
 - A name matches no Trainee ("דיברתי עם יואב"). Never create one; you may offer to (read [roster.md](roster.md) only on a yes).
 - A first name is shared ("נועה" with "נועה כ." and "נועה ל."): ask which.
-- The Trainee left (`active: false`): say when, ask "לרשום בכל זאת?"; after a yes, record with `insist`.
+- The Trainee left (`active: false`): say when, ask "לרשום בכל זאת?"; after a yes, record with `--insist`.
 - A Test reference stays ambiguous (Tests).
 - An evaluation stage other than the card's ("נועה עלתה לרף מקס"): confirm first, by state.md.
 
@@ -24,36 +24,36 @@ After the answer, record the original message as the Entry, plus the answer only
 
 ## Steps
 
-1. **Trainees**: match names to `readTeam` cards; a mentioned one gets Evidence only if the text says something about them ("סיכמנו שתשב עם דני": no; "דני עזר לה מאוד": yes).
+1. **Trainees**: match names to the team's cards; a mentioned one gets Evidence only if the text says something about them ("סיכמנו שתשב עם דני": no; "דני עזר לה מאוד": yes).
 2. **Evidence**: one per Trainee per kind (several Tests → one each); `excerpt` = the part about that Trainee for that kind (maybe the whole message). A sentence about several Trainees or the team ("כל הצוות היה מעולה בפאדנס") → that sentence for each Trainee covered.
 3. **Kind** and fields.
 4. **Date** it happened (`YYYY-MM-DD`, default today). Run `date '+%F %A'`; resolve "אתמול", "שלשום", "ביום שני", "בשבוע שעבר ביום ג׳" to the most recent such day, never future ("ביום שני" on a Monday = today).
 5. Cut **sensitive parts**; open/close **Follow-ups**.
 6. **Assessments**: read [assess.md](assess.md) only if some Evidence speaks to a Skill (incl. the Commander's own "הדיבאג של נועה זה 4", a רמ"ת, a correction).
-7. **State**: read [state.md](state.md); write per it items, retirements, a due Status, a confirmed stage, a Snapshot per Trainee with Evidence. Also per such Trainee a `nextTalk`: short Hebrew questions to them ("איך מצאת את הבאג הפעם?") on weak or declining Skills, what just happened, a goal (or a rewritten `talk-question` from a `readPlaybook` read this conversation); not an open Follow-up or one this Entry answered; personal at most "איך את מרגישה השבוע?"; never in the reply.
-8. **One `recordEntry`** with everything. Refused → fix and retry; ask only if the fix needs the Commander's word.
+7. **State**: read [state.md](state.md); write per it items, retirements, a due Status, a confirmed stage, a Snapshot per Trainee with Evidence. Also per such Trainee a `nextTalk`: short Hebrew questions to them ("איך מצאת את הבאג הפעם?") on weak or declining Skills, what just happened, a goal (or a rewritten `talk-question` from a `read-playbook` read this conversation); not an open Follow-up or one this Entry answered; personal at most "איך את מרגישה השבוע?"; never in the reply.
+8. **One `record-entry`** with everything. Refused → fix and retry; ask only if the fix needs the Commander's word.
 9. **Reply** (below); don't repeat the message back.
-10. **A recurring theme with no Skill.** Check every update. First `readTrainee` (6 weeks) for each Trainee with Evidence, unless already read this turn. Then: does the Evidence show a way of working that no Skill in `readCycle` → `skills` names itself (time management, asking for help, presenting…)? A Skill you'd stretch to fit ("ניהול זמן" under "סדר וארגון") does not count, though you may still assess it. If the theme shows up in ≥3 Evidence, this one included (that Trainee's 6 weeks of `readTrainee`, or Trainees read this conversation), add before the Retraction line:
+10. **A recurring theme with no Skill.** Check every update, with `read-trainee` (6 weeks) of each Trainee with Evidence unless read this turn: a way of working no Skill in `read-cycle` → `skills` names itself (time management, asking for help, presenting…; a Skill you'd stretch to fit doesn't count) that shows up in ≥3 Evidence, this one included → before the Retraction line:
     `(הצעה) "<theme>" חוזר ב-<N> תיעודים ואין לו מיומנות — להוסיף מיומנות "<name>" ל<Stage or group name>? (כן / לא)`
-    Never add the Skill before a yes. On a yes, read [roster.md](roster.md) § Proposing a new Skill.
+    On a yes, read [roster.md](roster.md) § Proposing a new Skill.
 
 ## Kinds
 
 - `talk`: one-on-one ("דיברתי עם", "שיחה עם", "ישבתי עם"); `topics`: a few short Hebrew words.
-- `test`: a Test (תרץ) result or how it went; `subject`, `test`, `score`, `self`, `unlisted`.
-- `code-review`: סקד, or a Test's review (סורסים); `test` if named, `subject`.
-- `project-observation`: work in a Project (Interpreter, Padens, MZ); `project`.
+- `test`: a Test (תרץ) result or how it went.
+- `code-review`: סקד, or a Test's review (סורסים).
+- `project-observation`: work in a Project (Interpreter, Padens, MZ).
 - `self-assessment`: their form (רמ"ת); a per-Test verdict goes in that `test`'s `self`.
 - `improve-keep`: שיפור / שימור points.
 - `goal` (an aspiration: "מעוניינת בפיקוד"); `background` (prior experience, origin); `note` (anything else).
 - `evaluation-event`: רף מקס, רף רמד, רף מפקד היחידה, הדחה: entering, moving, a talk within, leaving.
-- `clarification`: a correction or added detail; `clarifies`.
+- `clarification`: a correction or added detail (Corrections).
 
-### Tests (preset from `readCycle`)
+### Tests (preset from `read-cycle`)
 
 - **Name** ("פוב", "fov", "FOV"): match name or alias ignoring case and spacing; record canonical `name` and its `subject`.
 - **Number** ("תרץ 1", "תרץ 2 באופ"): Subject named → its Test with that `number`. Else week = whole weeks from `cycle.start` to the Evidence date + 1; exactly one Subject in that week's `schedule` with that Test number → it; else ask ("תרץ 1 של תבי (BaseCalculator) או של OOP (City)?").
-- **Unknown**: record as written, `unlisted: true`; ask once in the reply "<name> לא בקטלוג התרצים — להוסיף אותו? (באיזה מקצוע?)". Only on a yes: `updateCycle` `addTest` (load `roster`), with `number`/`aliases` if given.
+- **Unknown**: record as written, `unlisted: true`; ask once in the reply "<name> לא בקטלוג התרצים — להוסיף אותו? (באיזה מקצוע?)". Only on a yes: `update-cycle` `add-test` (load `roster`), with `number`/`aliases` if given.
 - **`score`** only for a given number ("עבר", "נכשל", "היה טוב" stay in the excerpt). **`self`**: the Trainee's own verdict on that Test, as written ("לא עברה").
 
 ## Follow-ups
@@ -62,7 +62,7 @@ To check later: "סיכמנו ש…", "לבדוק ש…", "לשיחה הבאה: 
 
 - **Open** on its Evidence (any kind), text = the exact words ("סיכמנו שתשב עם דני על זה").
 - **Close** (card `followups` id in that Trainee's new Evidence `closes`) only when the message clearly settles it.
-- A card Follow-up "[פרט אישי — בתיק]" is sensitive: if the message might settle it, read its words (`readTrainee` → `sensitive`, `record: "followup"`, same id).
+- A card Follow-up "[פרט אישי — בתיק]" is sensitive: if the message might settle it, read its words (`read-trainee` → `sensitive`, `record: "followup"`, same id).
 - Open/close by the sensitive part when the opening/closing words are in it, else by the public Evidence.
 
 ## Sensitive parts
@@ -84,7 +84,7 @@ Not by default: the evaluation process, course matters (hard Test, bug, missed d
 
 ## Corrections
 
-"טעות", "תיקון", "התכוונתי ל…", "זה היה פליים ולא פוב": a `clarification`, `clarifies` = the corrected Evidence (`readTrainee`), excerpt = the correction's words; never edit or re-record the original. A correction of a sensitive record is cut as sensitive too. Unclear which → ask.
+"טעות", "תיקון", "התכוונתי ל…", "זה היה פליים ולא פוב": a `clarification`, `clarifies` = the corrected Evidence (`read-trainee`), excerpt = the correction's words; never edit or re-record the original. A correction of a sensitive record is cut as sensitive too. Unclear which → ask.
 
 ## Reply
 

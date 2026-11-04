@@ -15,14 +15,14 @@ In replies: kinds סימן / טיפ / תרגיל / שאלה לשיחה; bands ר
 - **Text**: their words after the colon (or "ש…"), word-for-word: never rephrase, shorten, translate or fix. None clear → "מה לשמור, במילים שלך?".
 - Names a Trainee or tells something personal → say so, ask for wording without it.
 - **Kind**: `tip` (Commander does), `exercise` (Trainee does), `talk-question`, `sign` (what a weakness or strength looks like). Unsure → pick one, show it.
-- **Skills**: from `readCycle` → `skills`, never archived; a name in several Stages → ask which, or all. Running Talks or no Skill → `general`.
+- **Skills**: from `read-cycle` → `skills`, never archived; a name in several Stages → ask which, or all. Running Talks or no Skill → `general`.
 - **Band**: only if they give a level ("למתקדמים" → high); never on `general`.
 
 ```
 לשמור בפלייבוק שלך — יכולות דיבאג, טיפ: "לבקש להסביר לי את הקוד בקול לפני שאני מסתכל"? (כן / לא)
 ```
 
-Yes → `savePlaybookItem` → `נשמר בפלייבוק: "<text>" (יכולות דיבאג, טיפ).`
+Yes → `save-playbook-item` → `נשמר בפלייבוק: "<text>" (יכולות דיבאג, טיפ).`
 
 ## Offering to save from an update
 
@@ -34,21 +34,21 @@ When a logged update tells of a method that clearly **worked** (helping, an exer
 
 - Quote **word-for-word** the few words of what worked; no sensitive part, Trainee name, or own words.
 - At most one per update, only if the reply asks nothing else, only for a method worth reusing.
-- Yes → (load `playbook`) `savePlaybookItem` with `source` = that Entry and the text as quoted, then `נשמר בפלייבוק: …`. Anything else → save nothing. **Never save without a yes.**
+- Yes → (load `playbook`) `save-playbook-item` with `source` = that Entry and the text as quoted, then `נשמר בפלייבוק: …`. Anything else → save nothing. **Never save without a yes.**
 
 ## Editing or retiring the Commander's item
 
-Find it in `readCycle` → `playbook` (`retired: false`); ask which if several.
+Find it in `read-cycle` → `playbook` (`retired: false`); ask which if several.
 
-- **Edit**: `לשנות את הטיפ (יכולות דיבאג) מ-"<old>" ל-"<new>"? (כן / לא)` → `savePlaybookItem` with its `id` and only what changes (new text word-for-word).
-- **Retire** ("תוריד את הטיפ שלי על…"): `להוריד מהפלייבוק את "<text>"? הוא יישמר, ולא אציע אותו יותר. (כן / לא)` → `retirePlaybookItem`.
+- **Edit**: `לשנות את הטיפ (יכולות דיבאג) מ-"<old>" ל-"<new>"? (כן / לא)` → `save-playbook-item` with its `id` and only what changes (new text word-for-word).
+- **Retire** ("תוריד את הטיפ שלי על…"): `להוריד מהפלייבוק את "<text>"? הוא יישמר, ולא אציע אותו יותר. (כן / לא)` → `retire-playbook-item`.
 
 ## Hiding or un-hiding a base item
 
-Base items: `data/playbook.json` under the plugin root (`items`), or `origin: base` items read in this conversation. Hidden ids: `readCycle` → `commander.hides.hidden`.
+Base items: `data/playbook.json` under the plugin root (`items`), or `origin: base` items read in this conversation. Hidden ids: `read-cycle` → `commander.hides.hidden`.
 
-- **Hide** ("אל תציע לי יותר את…"): `להסתיר מהפלייבוק את "<text>"? אפשר להחזיר בכל זמן. (כן / לא)` → `hidePlaybookItem(id, hidden: true)`.
-- **Un-hide**: `להחזיר לפלייבוק את "<text>"? (כן / לא)` → `hidePlaybookItem(id, hidden: false)`.
+- **Hide** ("אל תציע לי יותר את…"): `להסתיר מהפלייבוק את "<text>"? אפשר להחזיר בכל זמן. (כן / לא)` → `hide-playbook-item <id>`.
+- **Un-hide**: `להחזיר לפלייבוק את "<text>"? (כן / לא)` → `unhide-playbook-item <id>`.
 - "תשנה את זה ל…" on a base item → one confirmation: hide it + save their wording as theirs.
 - "תוריד את…" unspecified: Commander's item → retire; base item → hide.
 
@@ -56,7 +56,7 @@ Their own item, suggested, "doesn't work" → offer to retire it.
 
 ## A Skill the Commander added
 
-(id has `.c-`, no base items.) Right after `addSkill`, and when Advice targets it with no items, offer drafts once per Skill per conversation:
+(id has `.c-`, no base items.) Right after `add-skill`, and when Advice targets it with no items, offer drafts once per Skill per conversation:
 
 ```
 אין עדיין פריטים לניהול זמן בפלייבוק. כמה הצעות:
@@ -66,8 +66,8 @@ Their own item, suggested, "doesn't work" → offer to retire it.
 לשמור אותן בפלייבוק שלך? (כן / רק חלק / לא)
 ```
 
-No Trainee. Yes → `savePlaybookItem` each, text as shown, tagged to it. "רק את הראשונה" → only those; own wording → theirs. Else nothing.
+No Trainee. Yes → `save-playbook-item` each, text as shown, tagged to it. "רק את הראשונה" → only those; own wording → theirs. Else nothing.
 
 ## "מה יש לי בפלייבוק?"
 
-`readCycle`: their live items by Skill, `<kind>: "<text>"`, and how many base items are hidden.
+`read-cycle`: their live items by Skill, `<kind>: "<text>"`, and how many base items are hidden.
