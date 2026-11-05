@@ -2,7 +2,8 @@
 name: research
 description: Online research on one Trainee's situation; nothing personal goes to the web ("תחקור את המצב של <שם>").
 argument-hint: "<שם החניך> [נושא]"
-allowed-tools: ArtifactData, Bash(student-tracker-store *), Bash(date *), WebSearch, WebFetch
+allowed-tools: Agent, ArtifactData, Bash(student-tracker-store *), Bash(date *), WebSearch, WebFetch
+model: opus
 disable-model-invocation: true
 metadata:
   plugin: student-tracker

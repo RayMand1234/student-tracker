@@ -58,3 +58,18 @@ test('tracker may search the web, and routes online research to its reference', 
   const research = fs.readFileSync(path.join(SKILLS, 'tracker/references/research.md'), 'utf8');
   assert.match(research, /nothing about the Trainee leaves for the web/, 'the privacy rule comes first');
 });
+
+// Cheap model for reading and recording; the judgment-heavy routes (re-rate, research, advice)
+// run on a stronger one: inline in /research, else in the plugin's analyst agent.
+test('skills run on haiku, /research and the analyst agent on opus, and the tracker hands ★ routes to the agent', () => {
+  for (const name of ['tracker', 'brief', 'status', 'dashboard']) assert.equal(skill(name).meta.model, 'haiku', name);
+  assert.equal(skill('research').meta.model, 'opus');
+  const agent = fs.readFileSync(path.join(SKILLS, '../agents/analyst.md'), 'utf8');
+  assert.match(agent, /^model: opus$/m);
+  assert.match(agent, /boot <route> --tracker/);
+  const { meta, body } = skill('tracker');
+  assert.ok(meta['allowed-tools'].split(', ').includes('Agent'));
+  assert.match(body, /subagent_type: "student-tracker:analyst"/);
+  const starred = body.split('\n').filter((l) => l.includes('★ [')).map((l) => l.match(/★ \[(\w+)\.md\]/)[1]).sort();
+  assert.deepEqual(starred, ['advice', 'assess', 'research']);
+});

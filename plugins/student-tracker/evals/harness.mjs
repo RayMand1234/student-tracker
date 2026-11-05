@@ -102,7 +102,7 @@ function run(cwd, prompt, session, output) {
       '--plugin-dir', PLUGIN,
       // Only the plugin under test: skip the user's own plugins, hooks and settings.
       '--setting-sources', 'project,local',
-      '--allowedTools', 'Bash(student-tracker-store *)', 'Bash(date *)', 'Skill', 'Read', 'WebSearch', 'WebFetch',
+      '--allowedTools', 'Agent', 'Bash(student-tracker-store *)', 'Bash(date *)', 'Skill', 'Read', 'WebSearch', 'WebFetch',
       ...output,
       ...(process.env.EVAL_MODEL ? ['--model', process.env.EVAL_MODEL] : []),
     ],

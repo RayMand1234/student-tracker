@@ -1,7 +1,8 @@
 ---
 name: tracker
 description: Personal Trainee (חניך) tracker for a course Commander, in Hebrew. Use for any update about a Trainee or the team — Talks, tests, code reviews, observations, self-assessments, Ratings, improve/keep items — and for Status and evaluation stage, briefs, team status, advice, online research, roster and settings changes, Project teams, Playbook tips (add, edit, hide, retire), the dashboard, retractions, and questions about an archived Cycle. Triggers include "דיברתי עם", "שיחה עם", "סקד", "תרץ", "רמ"ת", "תכין לי שיחה עם", "מה המצב", "תוסיף חניך", "תוסיף לפלייבוק", "אל תציע לי יותר", "תפתח דשבורד", "בטל", "תחקור את המצב של".
-allowed-tools: ArtifactData, Bash(student-tracker-store *), Bash(date *), WebSearch, WebFetch
+allowed-tools: Agent, ArtifactData, Bash(student-tracker-store *), Bash(date *), WebSearch, WebFetch
+model: haiku
 metadata:
   plugin: student-tracker
 ---
@@ -15,6 +16,10 @@ Replies: Hebrew from the first word, short and plain, only what the Commander ne
 - Plugin data dir (pass to every storage operation): `${CLAUDE_PLUGIN_DATA}`
 - Plugin root (base Playbook at `data/playbook.json`): `${CLAUDE_PLUGIN_ROOT}`
 - Pointer file: `${CLAUDE_PLUGIN_DATA}/cycles.json`
+
+## Analyst routes
+
+Routes marked ★ below need a stronger model than this one: re-rating, online research, and advice on one Trainee. Unless this turn already shows `Route loaded: <that route>` (then run it here, from Start), skip Start and the route: send one Agent call, `subagent_type: "student-tracker:analyst"`, prompt = `Route: <assess | research | advice>`, then the Commander's message word for word, then any earlier chat lines it depends on (the question it answers, which Trainee was meant). Reply with the agent's final message exactly as returned, nothing added, no re-reading. The Commander's next message (an accepted suggestion, a "לעדכן?" answer, "בטל") is routed here as usual.
 
 ## Start
 
@@ -35,7 +40,7 @@ One route per message, read through `boot <route>` (the file's name without `.md
 | An update about Trainees ("דיברתי היום עם נועה…"), or a correction ("טעות, זה היה פליים") | [log.md](references/log.md) |
 | An update phrased as a question ("נועה עברה את פוב?") | Ask in one line whether to record it; record nothing, no `לביטול`. |
 | An answer to your own question (which Trainee, add a Test, accept a "(הצעה) …", confirm a stage, which Entry, confirm a delete, save to Playbook…) | The reference that asked. |
-| "תדרג מחדש את נועה" | [assess.md](references/assess.md) |
+| "תדרג מחדש את נועה" | ★ [assess.md](references/assess.md) |
 | "זה לא רגיש", "זה רגיש", "תסתיר את זה" | [sensitive.md](references/sensitive.md) |
 | What is on record ("מה כתבתי על נועה ב-12/10?", "מה הדירוג של נועה בדיבאג?"), this or an archived Cycle ("במחזור הקודם") | [recall.md](references/recall.md) |
 | An update aimed at an archived Cycle ("תוסיף לדני מהמחזור הקודם ש…") | Record nothing: "המחזור <archived> בארכיון — אפשר רק לקרוא ממנו. עדכונים נרשמים במחזור הנוכחי, <cycle>." |
@@ -44,8 +49,9 @@ One route per message, read through `boot <route>` (the file's name without `.md
 | Status or evaluation stage ("תעביר את דני לדורש טיפול", "נועה עלתה לרף מקס"), or retiring an improve/keep item | [state.md](references/state.md) |
 | "תכין לי שיחה עם נועה", "מה המצב עם נועה?", "איך נועה?" | [brief.md](references/brief.md) |
 | "מה המצב", "סטטוס", "מה המצב בצוות?" | [status.md](references/status.md) |
-| Advice on one Trainee ("איך לעזור לנועה בדיבאג?"), or accepting your suggestion ("כן, תוסיף את השנייה לשיפור") | [advice.md](references/advice.md) |
-| Online research ("תחקור את המצב של נועה", "תמצא מאמרים על…", "מה אומר המחקר על…") | [research.md](references/research.md) |
+| Advice on one Trainee ("איך לעזור לנועה בדיבאג?") | ★ [advice.md](references/advice.md) |
+| Accepting a suggestion from advice or research ("כן, תוסיף את השנייה לשיפור"; "תשמור את הראשונה בפלייבוק" → [research.md](references/research.md)) | [advice.md](references/advice.md) |
+| Online research ("תחקור את המצב של נועה", "תמצא מאמרים על…", "מה אומר המחקר על…") | ★ [research.md](references/research.md) |
 | Playbook: add, edit, retire, hide/unhide, "מה יש לי בפלייבוק?" | [playbook.md](references/playbook.md) |
 | "תפתח דשבורד", "הדשבורד" | Open the Cycle's page (the backend file says how). |
 
