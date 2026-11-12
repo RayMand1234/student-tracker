@@ -114,7 +114,12 @@ const PLANNED = {
 
   // A turn's first step (lean-turns 07): connect, resumePending, readCycle and readTeam over one
   // snapshot, so the turn sends one read message. Reads the pointer for the Cycle's address.
-  start: { pointer: true, reads: () => [...PLANNED['read-cycle'].reads(), listRead('entries'), listRead('trainees')] },
+  start: { pointer: true, reads: () => [...PLANNED['read-cycle'].reads(), listRead('entries'), listRead('trainees'), listRead('inbox')] },
+  // A draft from the dashboard's + button, closed once recorded as an Entry (checked to exist) or dropped.
+  'close-draft': {
+    needs: '<draft id>',
+    reads: ({ args: [id, entry] }) => [getRead('meta/cycle'), getRead(`inbox/${id}`), ...(entry ? [getRead(`entries/${entry}`)] : [])],
+  },
 
   // The Cycle lifecycle (lean-turns 06): operations on two Cycles.
   // Settings, Skills, items and hides of the previous Cycle, copied into the new one.

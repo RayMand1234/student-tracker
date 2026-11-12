@@ -8,8 +8,9 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <a
   (--cycle: read a Cycle from the pointer's archived list; every write to it is refused)
   boot [<route>] [--tracker]   (plain text: the pointer, its backend's store cores; a route file and the
                             store families its Load line names; --tracker: the tracker's instructions first)
-  start                   (connect, resumePending, readCycle and readTeam in one call)
+  start                   (connect, resumePending, readCycle, readTeam and the waiting drafts in one call)
   connect
+  close-draft <draft id> [<entry id>]   (a dashboard draft recorded as that Entry; no Entry: dropped)
   create-cycle            < lines "commander: <name>", "cycle: <name>", "trainee: <name>" (repeat),
                             optional "role:", "start: YYYY-MM-DD", "target:", "yellow:", "red:",
                             "previous: <current Cycle address>" (a new Cycle after it)

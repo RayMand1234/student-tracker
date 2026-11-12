@@ -7,9 +7,12 @@ const OPERATIONS = {
   start: (store) => {
     const connect = store.connect();
     if (connect.setup !== 'done') return { connect };
-    const resumed = connect.archived ? {} : { resumePending: store.resumePending() };
-    return { connect, ...resumed, cycle: store.readCycle(), team: store.readTeam() };
+    // An archived Cycle finishes nothing and takes no drafts.
+    const live = connect.archived ? {} : { resumePending: store.resumePending() };
+    const drafts = connect.archived ? {} : { drafts: store.readDrafts() };
+    return { connect, ...live, cycle: store.readCycle(), team: store.readTeam(), ...drafts };
   },
+  'close-draft': (store, { args }) => store.closeDraft(args[0], args[1]),
   'create-cycle': (store, { input }) => store.createCycle(parseCycle(input())),
   'finish-setup': (store) => store.finishSetup(),
   'read-cycle': (store) => store.readCycle(),

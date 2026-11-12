@@ -458,6 +458,28 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
       return flat(openRead().list('trainees'));
     },
 
+    // Drafts the Commander saved on the dashboard (its + button), waiting to be recorded:
+    // `inbox/<id>` = {text, at, date, status: "new", source}, written by the page. Oldest first.
+    readDrafts() {
+      return flat(openRead().list('inbox'))
+        .filter((d) => d.status === 'new' && typeof d.text === 'string' && d.text.trim())
+        .sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? '')) || a.id.localeCompare(b.id))
+        .map(({ id, text, date, at }) => ({ id, text, date: date ?? null, at: at ?? null }));
+    },
+
+    // Closes a draft: recorded as `entry` (an Entry made from its text), or dropped (no entry)
+    // when the Commander says so. The dashboard then stops listing it.
+    closeDraft(id, entry) {
+      if (!id) throw new StoreError('close-draft needs <draft id>');
+      const docs = open();
+      if (entry && !docs.get(`entries/${entry}`)) throw new StoreError(`no Entry ${entry}: record the draft first`);
+      const data = pinned(docs, `inbox/${id}`, (current) => {
+        if (current.status !== 'new') throw new StoreError(`draft ${id} is already ${current.status === 'done' ? 'recorded' : 'closed'}`);
+        return { ...current, status: entry ? 'done' : 'dropped', entry: entry ?? null, closedAt: isoWithOffset(now()) };
+      }, `no draft ${id}`);
+      return { id, ...data };
+    },
+
     // Retracted records and Entries are left out unless `retracted` asks for them too.
     readTrainee(tid, { since, retracted = false } = {}) {
       const docs = openRead();
