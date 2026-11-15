@@ -18,8 +18,16 @@ test('the page has no <title>, so the publish title "מעקב חניכים · <C
   assert.doesNotMatch(published, /<title>/i);
 });
 
-test('the page only reads: it never writes to the database', () => {
-  assert.doesNotMatch(published, /\.(set|update|delete|add|acquire)\(/);
+test('the page writes only its drafts (inbox/), never the record itself', () => {
+  const writes = published.split('\n').filter((line) => /\.(set|update|delete|add|acquire)\(/.test(line));
+  assert.ok(writes.length, 'the + button saves and deletes drafts');
+  for (const line of writes) assert.match(line, /db\.collection\('inbox'\)/, line.trim());
+});
+
+test('the + button types a draft anywhere and dictates only where the viewer can', () => {
+  assert.match(published, /id="add-open"/);
+  assert.match(published, /claude\.use\('dictation'\)/);
+  assert.match(published, /status: 'new'/);
 });
 
 test('an archived Cycle\'s page says so: the read-only "מחזור בארכיון" banner', () => {

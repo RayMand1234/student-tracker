@@ -1,6 +1,6 @@
 # student-tracker
 
-A Claude Code plugin for Commanders in the Fullstack Course family. You write about your Trainees in Hebrew chat, the way you already talk ("דיברתי היום עם נועה…"), and the agent keeps the record: who you last had a Talk with, Evidence and Assessments per Skill, Follow-ups, improve/keep items, and Advice for the next Talk. A private dashboard page on claude.ai shows Talk circles (green → red by days since the last Talk), a window per Trainee and a full Trainee file.
+A Claude Code plugin for Commanders in the Fullstack Course family. You write about your Trainees in Hebrew chat, the way you already talk ("דיברתי היום עם נועה…"), and the agent keeps the record: who you last had a Talk with, Evidence and Assessments per Skill, Follow-ups, improve/keep items, and Advice for the next Talk. A private dashboard page on claude.ai shows Talk circles (green → red by days since the last Talk), a window per Trainee and a full Trainee file. Away from Claude Code (on your phone), its + button saves an update as a draft, typed or dictated; the next time you write to the agent it offers to record the drafts.
 
 The plugin speaks Hebrew only: setup, replies and the dashboard are all in Hebrew.
 

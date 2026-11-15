@@ -8,12 +8,14 @@ One store per Cycle, reached only through `student-tracker-store` commands; the 
 
 ## Every turn
 
-- `start` → `{connect, resumePending, cycle, team}`.
+- `start` → `{connect, resumePending, cycle, team, drafts}`.
   - `connect`: `{backend, url, cycle, setup}`, plus `archived: true` when the current Cycle is archived. The rest comes only once setup is `done`; `resumePending` not on an archived Cycle.
   - `resumePending`: `{finished: [entry ids]}`, writes an earlier session left half-done, now finished.
   - `cycle`: `{cycle, skills, preset, commander: {settings, hides}, playbook, teams}`.
   - `team`: every card with its `id`, those who left included (`active: false`). Team views count only active Trainees.
+  - `drafts`: `[{id, text, date, at}]`, oldest first: updates the Commander saved on the dashboard's + button, waiting to be recorded. Not on an archived Cycle.
 - `connect`, `resume-pending`, `read-cycle`, `read-team`: the same parts alone.
+- `close-draft <draft id> [<entry id>]` → the draft, closed: recorded as that Entry, or dropped with none. Refused when it is already closed or the Entry doesn't exist.
 - `rebuild-card <tid>` → the card recomputed from its records, when a card looks wrong.
 
 Card: `{name, active, left, status: {value, by, reason}, evalStage, lastTalk, snapshot, items, followups, nextTalk, skills: {<skill id>: {a: [[date, score, author], …], n}}}`. Status values: `good` במסלול, `watch` במעקב, `concern` דורש טיפול.

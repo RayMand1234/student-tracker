@@ -103,7 +103,10 @@ One line the agent adds to an unrelated reply when something needs the Commander
 A previous Cycle, kept read-only after the Commander starts a new one. Its artifact still opens, with a banner, and the agent can answer questions about it, but nothing new is recorded in it.
 
 **Dashboard (דשבורד)**
-The Cycle's private artifact page. It opens on the Talk circles: one circle per active Trainee, colored from green to red by the days since their last Talk. Clicking a circle opens the Trainee window (a summary), which leads to the Trainee file.
+The Cycle's private artifact page. It opens on the Talk circles: one circle per active Trainee, colored from green to red by the days since their last Talk. Clicking a circle opens the Trainee window (a summary), which leads to the Trainee file. A + button in the corner saves a Draft.
+
+**Draft (טיוטה)**
+An update the Commander typed or dictated on the dashboard's + button, for when Claude Code isn't at hand (on a phone). It waits in the Cycle's database until the next tracker turn, which offers to record it: each Draft becomes an ordinary Entry, word for word, and is then closed. The only thing the dashboard writes.
 
 **Trainee file (תיק חניך)**
 The full dashboard page for one Trainee: Snapshot, growth and trend charts, improve/keep items, open Follow-ups, every Skill's Rating history and the Evidence timeline. Read-only; changes are made in chat.

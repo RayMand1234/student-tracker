@@ -221,6 +221,35 @@ summary { cursor: pointer; }
 .feed .hd { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .kind { font-size: .72rem; font-weight: 600; padding: 1px 7px; border-radius: 3px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
 .kind.status { color: var(--fg); }
+
+/* Quick add: a + in the corner opens a sheet; what is saved waits in `inbox` as a draft. */
+.fab { position: fixed; z-index: 30; left: max(20px, env(safe-area-inset-left, 0px)); bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  width: 58px; height: 58px; border-radius: 50%; border: 0; cursor: pointer; background: var(--accent); color: var(--accent-ink);
+  font: 400 2rem/1 var(--body); display: grid; place-items: center; box-shadow: 0 2px 6px rgb(0 0 0 / .18), 0 8px 24px rgb(0 0 0 / .16); }
+.fab .badge { position: absolute; inset-block-start: -4px; inset-inline-end: -4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  background: var(--watch); color: #1b201c; font: 600 .75rem/22px var(--mono); }
+body.locked .fab { display: none; }
+.add-bg { position: fixed; inset: 0; z-index: 50; background: rgb(0 0 0 / .5); display: grid; justify-items: center; align-items: end; overflow-y: auto; overscroll-behavior: contain;
+  padding: calc(24px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
+@media (min-width: 700px) { .add-bg { align-items: center; } }
+.add-win { background: var(--bg); width: min(560px, 100%); border-radius: 14px; box-shadow: var(--shadow); display: grid; gap: 12px; padding: 18px; text-align: start; margin: 0; }
+.add-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.add-win h2 { font-family: var(--display); font-weight: 400; font-size: 1.2rem; margin: 0; }
+.add-win textarea { width: 100%; min-height: 140px; resize: vertical; font: inherit; font-size: 16px; line-height: 1.5; color: var(--fg); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.add-win textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.add-partial { margin: 0; color: var(--muted); font-style: italic; }
+.add-acts { display: flex; gap: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.add-acts .btn { padding: 9px 16px; border-radius: 8px; font-weight: 600; display: inline-flex; gap: 8px; align-items: center; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.primary:disabled { opacity: .5; cursor: default; }
+.mic[aria-pressed="true"] { background: var(--concern); color: #fff; }
+.add-win p { margin: 0; }
+.add-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.add-list li { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: start; }
+.add-list .t { white-space: pre-wrap; overflow-wrap: anywhere; }
+.add-list .w { grid-column: 1; font-size: .74rem; color: var(--muted); }
+.add-list .x { grid-row: 1 / span 2; grid-column: 2; background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit; font-size: .8rem; padding: 2px 4px; }
 </style>
 
 <main class="page" dir="rtl" lang="he" id="app">
@@ -228,6 +257,25 @@ summary { cursor: pointer; }
 </main>
 <div id="win" dir="rtl" lang="he"></div>
 <div id="tip" dir="rtl" lang="he" hidden></div>
+<div id="add" dir="rtl" lang="he" hidden>
+  <button class="fab" id="add-open" type="button" aria-label="עדכון חדש">+<span class="badge" id="add-badge" hidden></span></button>
+  <div class="add-bg" id="add-sheet" hidden>
+    <form class="add-win" id="add-form" role="dialog" aria-modal="true" aria-labelledby="add-title">
+      <div class="add-top"><h2 id="add-title">עדכון חדש</h2><button type="button" class="btn plain" id="add-close">סגירה</button></div>
+      <textarea id="add-text" rows="6" placeholder="למשל: נוהל מחלקתי ראשון - רעי שאל הרבה שאלות"></textarea>
+      <p class="add-partial" id="add-partial" hidden></p>
+      <div class="add-acts">
+        <button type="button" class="btn plain mic" id="add-mic" aria-pressed="false" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          <span id="add-mic-label">הקלטה</span></button>
+        <button type="submit" class="btn primary" id="add-save" disabled>שמירה</button>
+      </div>
+      <p class="small muted" id="add-msg" role="status"></p>
+      <p class="small muted">נשמר כטיוטה. בפעם הבאה שתכתוב ל-Claude ב-Claude Code, הוא יציע לרשום אותה כתיעוד.</p>
+      <div id="add-drafts"></div>
+    </form>
+  </div>
+</div>
 
 <script type="module">
 // Pure derivation module of the dashboard page: every view computes from these, nothing else.
@@ -908,7 +956,11 @@ let returnTo = null;
 // The Trainee whose file was just opened, until it is drawn.
 let navTo = null;
 
+// The quick-add button shows on a live, set-up Cycle once the page can write (set below).
+let syncAdd = () => {};
+
 function render() {
+  syncAdd();
   renderWindow();
   if (state.failed) return note('מעקב חניכים', 'החיבור לנתונים נקטע. רענן את העמוד.');
   if (!state.ready) return;
@@ -982,8 +1034,8 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && route().open) close(); });
 
-// Read-only and live. Subscribes once each, and to one Trainee's Evidence while their window is
-// open; never touches raw Entries or sensitive records.
+// Live. Reads the record only: subscribes once each, and to one Trainee's Evidence while their window is
+// open; never touches raw Entries or sensitive records. Its one write is drafts (Quick add, below).
 const db = window.claude?.use ? await window.claude.use('db') : null;
 if (!db) {
   note('מעקב חניכים', 'אין גישה לנתוני המעקב בתצוגה הזו. פתח את העמוד מחשבון ה-claude.ai שלך.');
@@ -1045,5 +1097,127 @@ if (!db) {
   window.addEventListener('hashchange', follow);
   follow();
   setInterval(render, 60 * 60 * 1000); // days roll over without any write
+
+  // ---------- Quick add ----------
+  // Writes only `inbox/<id>` drafts {text, at, date, status: "new", source}; Claude Code turns each
+  // into an ordinary Entry and marks it done. Typing always works; the mic shows only where the
+  // viewer can dictate (Chromium tabs and the desktop app), else the phone keyboard's mic does it.
+  const $ = (id) => document.getElementById(id);
+  const ui = { root: $('add'), open: $('add-open'), badge: $('add-badge'), sheet: $('add-sheet'), form: $('add-form'), text: $('add-text'),
+    partial: $('add-partial'), mic: $('add-mic'), micLabel: $('add-mic-label'), save: $('add-save'), msg: $('add-msg'), drafts: $('add-drafts'), close: $('add-close') };
+  let drafts = [];
+  let saving = false;
+  let dict = null;
+  let hebrew = true; // ask for Hebrew first; fall back to the viewer's language if it isn't served
+  const say = (t) => { ui.msg.textContent = t; };
+  const fresh = () => { ui.save.disabled = saving || !ui.text.value.trim(); };
+  const timeOf = (iso) => { const d = new Date(iso); return Number.isNaN(+d) ? '' : `${ddmm(d.toLocaleDateString('sv-SE'))} ${d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`; };
+
+  syncAdd = () => {
+    const c = state.meta.cycle;
+    ui.root.hidden = !(state.ready && !state.failed && c && c.setup === 'done' && !archiveOf(c));
+    if (ui.root.hidden && !ui.sheet.hidden) hideSheet();
+  };
+  const drawDrafts = () => {
+    ui.badge.hidden = !drafts.length;
+    ui.badge.textContent = drafts.length;
+    if (!drafts.length) { ui.drafts.replaceChildren(); return; }
+    const h = document.createElement('p');
+    h.className = 'small muted';
+    h.textContent = `ממתינות לרישום (${drafts.length})`;
+    const ul = document.createElement('ul');
+    ul.className = 'add-list';
+    for (const d of drafts) {
+      const li = document.createElement('li');
+      const t = document.createElement('span'); t.className = 't'; t.textContent = d.text;
+      const w = document.createElement('span'); w.className = 'w'; w.textContent = timeOf(d.at);
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.dataset.drop = d.id; x.textContent = 'מחיקה';
+      li.append(t, w, x);
+      ul.append(li);
+    }
+    ui.drafts.replaceChildren(h, ul);
+  };
+  db.collection('inbox').where('status', '==', 'new').onSnapshot((snap) => {
+    drafts = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => cmp(String(b.at), String(a.at)));
+    drawDrafts();
+  }, () => {});
+
+  const showSheet = () => {
+    ui.sheet.hidden = false;
+    document.body.classList.toggle('locked', true);
+    app.inert = true;
+    say('');
+    fresh();
+    ui.text.focus();
+  };
+  function hideSheet() {
+    if (dict?.active()) dict.stop().catch(() => {});
+    ui.sheet.hidden = true;
+    ui.partial.hidden = true;
+    if (!route().open) { document.body.classList.remove('locked'); app.inert = false; }
+    ui.open.focus();
+  }
+  ui.open.addEventListener('click', showSheet);
+  ui.close.addEventListener('click', hideSheet);
+  ui.sheet.addEventListener('click', (e) => { if (e.target === ui.sheet) hideSheet(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !ui.sheet.hidden) hideSheet(); });
+  ui.text.addEventListener('input', fresh);
+
+  ui.form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = ui.text.value.trim();
+    if (!text || saving) return;
+    if (dict?.active()) await dict.stop().catch(() => {});
+    saving = true; fresh(); say('שומר…');
+    const now = new Date();
+    const id = `q-${now.toISOString().replace(/\D/g, '').slice(0, 14)}-${Math.random().toString(36).slice(2, 6)}`;
+    try {
+      await db.collection('inbox').doc(id).set({ text: ui.text.value.trim(), at: now.toISOString(), date: localToday(), status: 'new', source: 'dashboard' });
+      ui.text.value = '';
+      say('נשמר כטיוטה ✓');
+    } catch {
+      say('השמירה נכשלה. הטקסט נשאר כאן, נסה שוב.');
+    }
+    saving = false; fresh();
+  });
+
+  ui.drafts.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-drop]');
+    if (!b) return;
+    b.disabled = true;
+    try { await db.collection('inbox').doc(b.dataset.drop).delete(); } catch { b.disabled = false; say('המחיקה נכשלה.'); }
+  });
+
+  // Dictation: start() straight from the click, nothing awaited before it.
+  ui.mic.addEventListener('click', () => {
+    if (!dict) return;
+    if (dict.active()) { dict.stop().catch(() => {}); return; }
+    say('');
+    dict.start(hebrew ? { language: 'he' } : undefined).catch((err) => {
+      const code = err?.code;
+      if (code === 'not_granted') { ui.mic.hidden = true; say('ההקלטה לא אושרה. אפשר להקליד, או ללחוץ על המיקרופון במקלדת.'); }
+      else if (code === 'unavailable' && hebrew) { hebrew = false; say('הקלטה בעברית לא זמינה כאן. לחץ שוב כדי להקליט בשפת הדפדפן.'); }
+      else if (code === 'unavailable') { ui.mic.hidden = true; say('הקלטה לא זמינה כאן. אפשר ללחוץ על המיקרופון במקלדת.'); }
+      else if (code === 'dismissed' || code === 'stopped') say('');
+      else say('ההקלטה נכשלה. נסה שוב.');
+    });
+  });
+  const dictation = await window.claude.use('dictation').catch(() => null);
+  if (dictation) {
+    dict = dictation;
+    ui.mic.hidden = false;
+    dict.onPartial(({ text }) => { ui.partial.textContent = text; ui.partial.hidden = !text; });
+    dict.onFinal(({ text }) => {
+      ui.text.value += ui.text.value ? text : text.trimStart();
+      ui.partial.hidden = true;
+      fresh();
+    });
+    dict.onState(({ state: s }) => {
+      const on = s !== 'idle';
+      ui.mic.setAttribute('aria-pressed', String(on));
+      ui.micLabel.textContent = on ? 'עצירה' : 'הקלטה';
+      if (!on) ui.partial.hidden = true;
+    });
+  }
 }
 </script>
