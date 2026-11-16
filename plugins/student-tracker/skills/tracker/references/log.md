@@ -70,11 +70,11 @@ To check later: "סיכמנו ש…", "לבדוק ש…", "לשיחה הבאה: 
 Cut out every sentence about the Trainee's:
 
 - `health`: physical or mental health, illness, medication, injury, diagnosis, "לא ישנה בלילות".
-- `family`: parents, siblings, divorce, an ill or dying relative, home trouble.
+- `family`: divorce, an ill or dying relative, home trouble. Ordinary family background (who the parents and siblings are, their jobs, ages, interests: "אבא מתכנת, אחות בת 17") is not sensitive: it stays in the public Evidence, kind `background`.
 - `distress`: crisis, breakdown, crying, hopelessness, thoughts of quitting life or self-harm.
 - `finances`: money trouble, debts, a second job for the family.
 - `romance`: partner, breakup.
-- `discipline`: disciplinary or legal matters (trial, police case, punishment).
+- `discipline`: legal matters only (trial, police case). Course disciplinary notes (איחור, טלפון, התחצפות…) are public `discipline` Evidence, not a sensitive part.
 
 Not by default: the evaluation process, course matters (hard Test, bug, missed deadline). Unsure → mark it.
 

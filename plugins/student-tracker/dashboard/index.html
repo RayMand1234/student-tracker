@@ -434,12 +434,21 @@ function traineeWindow(card, { skills, preset, teams = [], evidence, today, talk
       goal: latest('goal'),
       background: latest('background'),
       evidence: live ? { count: live.length, last: [...live].sort(byDayDesc)[0]?.date ?? null } : null,
+      discipline: disciplineOf(card, live),
     },
     next: [
       ...(card.followups ?? []).map((f) => ({ kind: 'followup', text: f.text, date: f.date })),
       ...(card.nextTalk?.questions ?? []).map((q) => ({ kind: 'question', text: q })),
     ],
   };
+}
+
+// The Trainee's Disciplinary notes (the card's, oldest first), newest first; a note's treatment
+// comes from its Evidence once that has loaded. null when there are none.
+function disciplineOf(card, live) {
+  const list = [...(card.discipline ?? [])].reverse()
+    .map((d) => ({ ...d, treatment: live?.find((e) => e.id === d.id)?.treatment ?? null }));
+  return list.length ? { count: list.length, last: list[0], list } : null;
 }
 
 const statusOf = ({ status: s }) => (s ? { value: s.value, label: STATUS_LABELS[s.value] ?? s.value, by: s.by, reason: s.reason } : null);
@@ -573,7 +582,7 @@ function fileNav(cards, { today, talk }) {
 const KIND_LABELS = {
   talk: 'שיחה', test: 'תרץ', 'code-review': 'סקד', 'project-observation': 'תצפית פרויקט', 'self-assessment': 'רמ"ת',
   'improve-keep': 'שיפור/שימור', goal: 'שאיפות', background: 'רקע', 'evaluation-event': 'תהליך הערכה',
-  clarification: 'הבהרה', note: 'הערה', status: 'שינוי סטטוס',
+  discipline: 'הערת משמעת', clarification: 'הבהרה', note: 'הערה', status: 'שינוי סטטוס',
 };
 
 // The Trainee file's timeline: their live public Evidence and Status changes (from `changes`),
@@ -589,6 +598,7 @@ function timeline(evidence, changes, { preset, kind = 'all' }) {
     }
     if (e.kind === 'code-review') return e.test ?? null;
     if (e.kind === 'project-observation') return e.project ? project(e.project) : null;
+    if (e.kind === 'discipline') return [e.type, e.severity, e.treatment].filter(Boolean).join(' · ') || null;
     return null;
   };
   const label = (k) => KIND_LABELS[k] ?? k;
@@ -731,7 +741,9 @@ function windowHtml(w) {
       ${d.goal ? `<dt>שאיפות</dt><dd>${redact(d.goal)}</dd>` : ''}
       ${d.background ? `<dt>רקע</dt><dd>${redact(d.background)}</dd>` : ''}
       <dt>תיעודים</dt><dd>${count}</dd>
-    </dl></section>
+      ${d.discipline ? `<dt>הערות משמעת</dt><dd>${d.discipline.count} · אחרונה ${ddmm(d.discipline.last.date)} · ${esc(d.discipline.last.type)} (${esc(d.discipline.last.severity)})</dd>` : ''}
+    </dl>
+    ${d.discipline ? `<ul class="q">${d.discipline.list.slice(0, 5).map((n) => `<li><span>${ddmm(n.date)} · ${esc(n.type)} (${esc(n.severity)})</span>${n.treatment ? `<span class="src">${redact(n.treatment)}</span>` : ''}</li>`).join('')}</ul>` : ''}</section>
     <section><h2>לשיחה הבאה</h2><ul class="q">${next || '<li class="muted">אין נקודות פתוחות.</li>'}</ul></section>
   </div></div>`;
 }

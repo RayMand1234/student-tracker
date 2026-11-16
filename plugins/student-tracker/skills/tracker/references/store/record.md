@@ -7,7 +7,7 @@ Keeps the message word-for-word as an Entry, writes each record under its Traine
 Payload, in order:
 - `--- entry`, then the message exactly as written.
 - Per Evidence: `--- evidence <tid> <kind> <YYYY-MM-DD>`, then `+<field>: <value>` lines, then the excerpt (copied from the message; each sensitive part replaced by "[פרט אישי — בתיק]", a wholly sensitive one just the marker).
-  - Fields: `talk` `+topics: a, b`; `test` `+subject:`, `+test:` (canonical preset name), `+score:`, `+self:`, `+unlisted: true`; `code-review` `+subject:`, `+test:`; `project-observation` `+project:` (preset Project id); `clarification` `+clarifies: <Evidence id>`; any kind `+closes: <open Follow-up ids>`.
+  - Fields: `talk` `+topics: a, b`; `test` `+subject:`, `+test:` (canonical preset name), `+score:`, `+self:`, `+unlisted: true`; `code-review` `+subject:`, `+test:`; `project-observation` `+project:` (preset Project id); `clarification` `+clarifies: <Evidence id>`; `discipline` (a Herzl Disciplinary note) `+type:` (אמינות, הפרת נוהל סגור, איחור, התחצפות, דיגום, טלפון, התנהגות בלתי הולמת, שילוב ראוי, הפרעה בשיעור, אי הבאת ציוד, בם, דוח 1, סולו, הקשב, אחר) and `+severity:` (קל, חמור, חמור מאוד), both required, `+treatment:` (optional text); any kind `+closes: <open Follow-up ids>` and `+herzl: <Herzl post id>` (optional, one word).
   - Each Follow-up it opens: `--- followup`, then its words from the message.
   - Each sensitive part: `--- sensitive <category>`, optional `+kind:` (`note` default) / `+closes:`, then its sentence(s); its Follow-ups follow as `--- followup`.
 - Then any of, about Trainees with Evidence here (refs: `#<n>` = this Entry's n-th Evidence or sensitive part, counting Evidence first; or a stored Evidence id of that Trainee):
