@@ -154,12 +154,21 @@ export function traineeWindow(card, { skills, preset, teams = [], evidence, toda
       goal: latest('goal'),
       background: latest('background'),
       evidence: live ? { count: live.length, last: [...live].sort(byDayDesc)[0]?.date ?? null } : null,
+      discipline: disciplineOf(card, live),
     },
     next: [
       ...(card.followups ?? []).map((f) => ({ kind: 'followup', text: f.text, date: f.date })),
       ...(card.nextTalk?.questions ?? []).map((q) => ({ kind: 'question', text: q })),
     ],
   };
+}
+
+// The Trainee's Disciplinary notes (the card's, oldest first), newest first; a note's treatment
+// comes from its Evidence once that has loaded. null when there are none.
+function disciplineOf(card, live) {
+  const list = [...(card.discipline ?? [])].reverse()
+    .map((d) => ({ ...d, treatment: live?.find((e) => e.id === d.id)?.treatment ?? null }));
+  return list.length ? { count: list.length, last: list[0], list } : null;
 }
 
 const statusOf = ({ status: s }) => (s ? { value: s.value, label: STATUS_LABELS[s.value] ?? s.value, by: s.by, reason: s.reason } : null);
@@ -293,7 +302,7 @@ export function fileNav(cards, { today, talk }) {
 export const KIND_LABELS = {
   talk: 'שיחה', test: 'תרץ', 'code-review': 'סקד', 'project-observation': 'תצפית פרויקט', 'self-assessment': 'רמ"ת',
   'improve-keep': 'שיפור/שימור', goal: 'שאיפות', background: 'רקע', 'evaluation-event': 'תהליך הערכה',
-  clarification: 'הבהרה', note: 'הערה', status: 'שינוי סטטוס',
+  discipline: 'הערת משמעת', clarification: 'הבהרה', note: 'הערה', status: 'שינוי סטטוס',
 };
 
 // The Trainee file's timeline: their live public Evidence and Status changes (from `changes`),
@@ -309,6 +318,7 @@ export function timeline(evidence, changes, { preset, kind = 'all' }) {
     }
     if (e.kind === 'code-review') return e.test ?? null;
     if (e.kind === 'project-observation') return e.project ? project(e.project) : null;
+    if (e.kind === 'discipline') return [e.type, e.severity, e.treatment].filter(Boolean).join(' · ') || null;
     return null;
   };
   const label = (k) => KIND_LABELS[k] ?? k;

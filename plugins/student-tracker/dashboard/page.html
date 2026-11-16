@@ -379,7 +379,9 @@ function windowHtml(w) {
       ${d.goal ? `<dt>שאיפות</dt><dd>${redact(d.goal)}</dd>` : ''}
       ${d.background ? `<dt>רקע</dt><dd>${redact(d.background)}</dd>` : ''}
       <dt>תיעודים</dt><dd>${count}</dd>
-    </dl></section>
+      ${d.discipline ? `<dt>הערות משמעת</dt><dd>${d.discipline.count} · אחרונה ${ddmm(d.discipline.last.date)} · ${esc(d.discipline.last.type)} (${esc(d.discipline.last.severity)})</dd>` : ''}
+    </dl>
+    ${d.discipline ? `<ul class="q">${d.discipline.list.slice(0, 5).map((n) => `<li><span>${ddmm(n.date)} · ${esc(n.type)} (${esc(n.severity)})</span>${n.treatment ? `<span class="src">${redact(n.treatment)}</span>` : ''}</li>`).join('')}</ul>` : ''}</section>
     <section><h2>לשיחה הבאה</h2><ul class="q">${next || '<li class="muted">אין נקודות פתוחות.</li>'}</ul></section>
   </div></div>`;
 }

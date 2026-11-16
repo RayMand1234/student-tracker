@@ -49,7 +49,11 @@ Permanently erasing an Entry and everything cut from it, sensitive records inclu
 _Avoid_: using it for a Retraction.
 
 **Sensitive Evidence**
-Evidence about health, family, distress, finances, romantic relationships, or discipline/legal matters. Kept in full but never shown on the dashboard, where it appears as "[פרט אישי — בתיק]". The agent marks it; the Commander can flip the mark. When only part of a message is sensitive, that **sensitive part** is cut out of its Evidence into its own Sensitive Evidence, and the public Evidence keeps the rest with the marker in its place.
+Evidence about health, family trouble (divorce, an ill or dying relative, home trouble; ordinary family background is not sensitive), distress, finances, romantic relationships, or legal matters (trial, police; course discipline is a **Disciplinary note**, not sensitive). Kept in full but never shown on the dashboard, where it appears as "[פרט אישי — בתיק]". The agent marks it; the Commander can flip the mark. When only part of a message is sensitive, that **sensitive part** is cut out of its Evidence into its own Sensitive Evidence, and the public Evidence keeps the rest with the marker in its place.
+
+**Disciplinary note (הערת משמעת)**
+Evidence of kind `discipline` about a Trainee, as Herzl (the external course system) records it: a type (איחור, טלפון, התחצפות…), a severity (קל, חמור, חמור מאוד) and optional treatment. An ordinary course record, so public: shown on the dashboard (count, latest, list) and in the Trainee window, and kept on the card. Legal matters (trial, police) are not Disciplinary notes: they stay Sensitive Evidence.
+_Avoid_: calling it sensitive.
 
 **Follow-up (נקודה פתוחה)**
 Something to check or raise with a Trainee later, born from any Evidence, open until a later Evidence closes it.

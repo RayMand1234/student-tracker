@@ -54,6 +54,14 @@ test('a Talk with one Evidence: the same store and result both ways', () => {
 
 const MARK = '[פרט אישי — בתיק]';
 
+test('a discipline Evidence with +herzl, and a refused one: the same both ways', () => {
+  const { dataDir, id } = fixture();
+  const entry = (severity) => `--- entry\nהגיעה באיחור לשיעור\n--- evidence ${id['נועה']} discipline 2026-11-12\n+type: איחור\n+severity: ${severity}\n+treatment: שיחה\n+herzl: 5b1e9c52-0d57-4a5c-8f0e-2b7f6c1d9a10\nהגיעה באיחור לשיעור\n`;
+  const ok = assertSame(dataDir, 'record-entry', { input: entry('קל') });
+  assert.equal(ok.local.result.evidence.length, 1);
+  assertSame(dataDir, 'record-entry', { input: entry('בינוני'), refuses: true });
+});
+
 test('a Talk with a sensitive part and Follow-ups on both sides: the same store both ways', () => {
   const { dataDir, id } = fixture();
   const text = 'דיברתי עם נועה על הפרויקט. ההורים שלה מתגרשים. לבדוק איך היא מסתדרת. לשיחה הבאה: הדיבאג';

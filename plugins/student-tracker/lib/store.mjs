@@ -28,10 +28,14 @@ const KIND_FIELDS = {
   goal: {},
   background: {},
   'evaluation-event': {},
+  discipline: { type: null, severity: null, treatment: null },
   note: {},
   clarification: { clarifies: null },
 };
 export const KINDS = Object.keys(KIND_FIELDS);
+// A Herzl Disciplinary note's type and severity (required), as Herzl names them.
+export const DISCIPLINE_TYPES = ['אמינות', 'הפרת נוהל סגור', 'איחור', 'התחצפות', 'דיגום', 'טלפון', 'התנהגות בלתי הולמת', 'שילוב ראוי', 'הפרעה בשיעור', 'אי הבאת ציוד', 'בם', 'דוח 1', 'סולו', 'הקשב', 'אחר'];
+export const DISCIPLINE_SEVERITIES = ['קל', 'חמור', 'חמור מאוד'];
 export const SENSITIVE_CATEGORIES = ['health', 'family', 'distress', 'finances', 'romance', 'discipline'];
 // The Commander may mark anything sensitive; what fits no category is `other`.
 const FLIP_CATEGORIES = [...SENSITIVE_CATEGORIES, 'other'];
@@ -1170,11 +1174,16 @@ function kindFields(ev, preset, teams = []) {
   const { trainee, kind, date, excerpt, ...fields } = ev;
   const allowed = { ...KIND_FIELDS[kind], closes: [] };
   for (const key of Object.keys(fields)) {
-    if (!(key in allowed)) throw new StoreError(`field "${key}" does not belong to a ${kind} Evidence`);
+    if (!(key in allowed) && key !== 'herzl') throw new StoreError(`field "${key}" does not belong to a ${kind} Evidence`);
   }
   const out = { ...allowed, ...fields };
   if ('score' in fields && (typeof out.score !== 'number' || Number.isNaN(out.score))) {
     throw new StoreError(`score must be a number, as the Commander gave it; leave it out when not given`);
+  }
+  if ('herzl' in fields && !/^\S+$/.test(out.herzl)) throw new StoreError('herzl is the Herzl post id: one word, no spaces');
+  if (kind === 'discipline') {
+    if (!DISCIPLINE_TYPES.includes(out.type)) throw new StoreError(`a discipline type is one of ${DISCIPLINE_TYPES.join(', ')}, got "${out.type}"`);
+    if (!DISCIPLINE_SEVERITIES.includes(out.severity)) throw new StoreError(`a discipline severity is one of ${DISCIPLINE_SEVERITIES.join(', ')}, got "${out.severity}"`);
   }
   if ('test' in allowed && out.test) out.subject = testSubject(out, preset);
   if ('project' in allowed && out.project) checkProject(preset, out.project);
@@ -1760,6 +1769,8 @@ function deriveCard({ changes, evidence, followups = [], items = [], assessments
     status: status ? { value: status.to, by: status.by, reason: status.reason, at: status.at } : null,
     evalStage: latest('stage')?.to ?? null,
     lastTalk: talks.at(-1) ?? null,
+    discipline: live(evidence).filter((e) => e.kind === 'discipline').sort(byDayThenId)
+      .map(({ id, date, type, severity }) => ({ id, date, type, severity })),
     snapshot: snapshot ? { text: snapshot.text, at: snapshot.at } : null,
     items: live([...items, ...maskedItems]).filter((i) => !retired.has(i.id))
       .sort(byDayThenId)

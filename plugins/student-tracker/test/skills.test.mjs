@@ -18,10 +18,32 @@ function skill(name) {
   return { meta, body };
 }
 
-test('the six skills are setup, tracker and the four shortcuts', () => {
-  assert.deepEqual(fs.readdirSync(SKILLS).filter((n) => !n.startsWith('.')).sort(), ['brief', 'dashboard', 'research', 'setup', 'status', 'tracker']);
+test('the skills are setup, tracker, the four shortcuts and the two Herzl skills', () => {
+  assert.deepEqual(fs.readdirSync(SKILLS).filter((n) => !n.startsWith('.')).sort(), ['brief', 'dashboard', 'hertzl-fetch', 'hertzl-post', 'research', 'setup', 'status', 'tracker']);
   assert.ok(skill('tracker').meta.description.length <= 1024);
   assert.equal(skill('tracker').meta['disable-model-invocation'], undefined, 'tracker auto-triggers');
+});
+
+// Herzl has no API of its own: both skills share one recipe (a signed-in Chrome tab), and posting
+// is the only one that touches the tracker (reads) and Herzl (a write).
+test('/hertzl-fetch and /hertzl-post are user-only, share the api recipe, and /hertzl-fetch never writes to Herzl', () => {
+  const api = fs.readFileSync(path.join(SKILLS, 'hertzl-fetch/references/api.md'), 'utf8');
+  for (const name of ['hertzl-fetch', 'hertzl-post']) {
+    const { meta, body } = skill(name);
+    assert.equal(meta.name, name);
+    assert.equal(meta['disable-model-invocation'], 'true');
+    assert.equal(meta.model, 'sonnet', 'Hebrew writing and merge judgment: not haiku');
+    assert.match(body, /skills\/hertzl-fetch\/references\/api\.md/);
+    assert.ok(meta['allowed-tools'].split(', ').includes('mcp__claude-in-chrome__javascript_tool'));
+  }
+  assert.doesNotMatch(skill('hertzl-fetch').body, /H\.post/, 'fetch never writes to Herzl');
+  assert.match(skill('hertzl-fetch').body, /boot log`$/m, 'fetch records through the tracker\'s logging rules');
+  assert.match(skill('hertzl-fetch').body, /`discipline`.*`\+herzl:`|`\+herzl:`/s);
+  assert.match(skill('hertzl-post').body, /boot recall`$/m);
+  assert.match(skill('hertzl-post').body, /already posted|כבר ברצל/);
+  assert.match(api, /interactions\/staff/);
+  assert.match(api, /isEncoded: true/);
+  assert.doesNotMatch(api, /eyJ/, 'no token in the recipe');
 });
 
 // Each shortcut injects the tracker's instructions (and its route) at load time through `boot`,
