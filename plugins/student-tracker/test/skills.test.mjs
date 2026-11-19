@@ -46,16 +46,25 @@ test('/hertzl-fetch and /hertzl-post are user-only, share the api recipe, and /h
   assert.doesNotMatch(api, /eyJ/, 'no token in the recipe');
 });
 
-// Weboneh is read-only and has its own recipe (a signed-in Chrome tab, bare token header); it
-// reuses Herzl's browser steps and never touches the tracker's store.
-test('/weboneh-fetch is user-only, read-only, and its recipe parses and holds no token', () => {
+// Weboneh has its own recipe (a signed-in Chrome tab, bare token header) and reuses Herzl's browser
+// steps. It never writes to Weboneh; it records into the tracker (Evidence, then Ratings and
+// conclusions) under the tracker's own rules, which it loads rather than restates.
+test('/weboneh-fetch is user-only, records through the tracker\'s rules, and its recipe parses and holds no token', () => {
   const { meta, body } = skill('weboneh-fetch');
   const api = fs.readFileSync(path.join(SKILLS, 'weboneh-fetch/references/api.md'), 'utf8');
   assert.equal(meta.name, 'weboneh-fetch');
   assert.equal(meta['disable-model-invocation'], 'true');
+  assert.equal(meta.model, 'sonnet', 'Hebrew writing and judgment: not haiku');
   assert.match(body, /skills\/weboneh-fetch\/references\/api\.md/);
   assert.ok(meta['allowed-tools'].split(', ').includes('mcp__claude-in-chrome__javascript_tool'));
-  assert.doesNotMatch(meta['allowed-tools'], /student-tracker-store|ArtifactData/, 'nothing written to the tracker');
+  assert.ok(meta['allowed-tools'].split(', ').includes('Bash(student-tracker-store *)'), 'records into the tracker');
+  assert.match(body, /boot log`$/m, 'records through the tracker\'s logging rules');
+  assert.match(body, /`\+weboneh:`/, 'a re-run finds what it already recorded');
+  for (const rule of ['assess.md', 'state.md']) {
+    assert.match(body, new RegExp(`references/${rule.replace('.', '\\.')}`));
+    assert.ok(fs.existsSync(path.join(SKILLS, 'tracker/references', rule)), `${rule} exists`);
+  }
+  assert.doesNotMatch(body, /W\.post|method:\s*'(POST|PUT|PATCH|DELETE)'/, 'Weboneh is never written to');
   assert.match(api, /skills\/hertzl-fetch\/references\/api\.md/);
   assert.match(api, /no `Bearer `/);
   assert.doesNotMatch(api, /eyJ/, 'no token in the recipe');
