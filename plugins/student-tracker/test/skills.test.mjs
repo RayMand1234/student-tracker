@@ -18,8 +18,8 @@ function skill(name) {
   return { meta, body };
 }
 
-test('the skills are setup, tracker, the four shortcuts and the two Herzl skills', () => {
-  assert.deepEqual(fs.readdirSync(SKILLS).filter((n) => !n.startsWith('.')).sort(), ['brief', 'dashboard', 'hertzl-fetch', 'hertzl-post', 'research', 'setup', 'status', 'tracker']);
+test('the skills are setup, tracker, the four shortcuts, the two Herzl skills and weboneh-fetch', () => {
+  assert.deepEqual(fs.readdirSync(SKILLS).filter((n) => !n.startsWith('.')).sort(), ['brief', 'dashboard', 'hertzl-fetch', 'hertzl-post', 'research', 'setup', 'status', 'tracker', 'weboneh-fetch']);
   assert.ok(skill('tracker').meta.description.length <= 1024);
   assert.equal(skill('tracker').meta['disable-model-invocation'], undefined, 'tracker auto-triggers');
 });
@@ -44,6 +44,24 @@ test('/hertzl-fetch and /hertzl-post are user-only, share the api recipe, and /h
   assert.match(api, /interactions\/staff/);
   assert.match(api, /isEncoded: true/);
   assert.doesNotMatch(api, /eyJ/, 'no token in the recipe');
+});
+
+// Weboneh is read-only and has its own recipe (a signed-in Chrome tab, bare token header); it
+// reuses Herzl's browser steps and never touches the tracker's store.
+test('/weboneh-fetch is user-only, read-only, and its recipe parses and holds no token', () => {
+  const { meta, body } = skill('weboneh-fetch');
+  const api = fs.readFileSync(path.join(SKILLS, 'weboneh-fetch/references/api.md'), 'utf8');
+  assert.equal(meta.name, 'weboneh-fetch');
+  assert.equal(meta['disable-model-invocation'], 'true');
+  assert.match(body, /skills\/weboneh-fetch\/references\/api\.md/);
+  assert.ok(meta['allowed-tools'].split(', ').includes('mcp__claude-in-chrome__javascript_tool'));
+  assert.doesNotMatch(meta['allowed-tools'], /student-tracker-store|ArtifactData/, 'nothing written to the tracker');
+  assert.match(api, /skills\/hertzl-fetch\/references\/api\.md/);
+  assert.match(api, /no `Bearer `/);
+  assert.doesNotMatch(api, /eyJ/, 'no token in the recipe');
+  assert.doesNotMatch(api, /method:\s*'(POST|PUT|PATCH|DELETE)'/, 'Weboneh is never written to');
+  const code = api.match(/```js\n([\s\S]*?)```/)[1];
+  assert.doesNotThrow(() => new Function(code), 'the helper block is valid JavaScript');
 });
 
 // Each shortcut injects the tracker's instructions (and its route) at load time through `boot`,
