@@ -33,6 +33,8 @@ const KIND_FIELDS = {
   clarification: { clarifies: null },
 };
 export const KINDS = Object.keys(KIND_FIELDS);
+// Any Evidence may name the outside record it was imported from, so a re-import finds it again.
+const SOURCE_LINKS = { herzl: 'Herzl post', weboneh: 'Weboneh source' };
 // A Herzl Disciplinary note's type and severity (required), as Herzl names them.
 export const DISCIPLINE_TYPES = ['אמינות', 'הפרת נוהל סגור', 'איחור', 'התחצפות', 'דיגום', 'טלפון', 'התנהגות בלתי הולמת', 'שילוב ראוי', 'הפרעה בשיעור', 'אי הבאת ציוד', 'בם', 'דוח 1', 'סולו', 'הקשב', 'אחר'];
 export const DISCIPLINE_SEVERITIES = ['קל', 'חמור', 'חמור מאוד'];
@@ -1174,13 +1176,15 @@ function kindFields(ev, preset, teams = []) {
   const { trainee, kind, date, excerpt, ...fields } = ev;
   const allowed = { ...KIND_FIELDS[kind], closes: [] };
   for (const key of Object.keys(fields)) {
-    if (!(key in allowed) && key !== 'herzl') throw new StoreError(`field "${key}" does not belong to a ${kind} Evidence`);
+    if (!(key in allowed) && !SOURCE_LINKS[key]) throw new StoreError(`field "${key}" does not belong to a ${kind} Evidence`);
   }
   const out = { ...allowed, ...fields };
   if ('score' in fields && (typeof out.score !== 'number' || Number.isNaN(out.score))) {
     throw new StoreError(`score must be a number, as the Commander gave it; leave it out when not given`);
   }
-  if ('herzl' in fields && !/^\S+$/.test(out.herzl)) throw new StoreError('herzl is the Herzl post id: one word, no spaces');
+  for (const [key, what] of Object.entries(SOURCE_LINKS)) {
+    if (key in fields && !/^\S+$/.test(out[key])) throw new StoreError(`${key} is the ${what} id: one word, no spaces`);
+  }
   if (kind === 'discipline') {
     if (!DISCIPLINE_TYPES.includes(out.type)) throw new StoreError(`a discipline type is one of ${DISCIPLINE_TYPES.join(', ')}, got "${out.type}"`);
     if (!DISCIPLINE_SEVERITIES.includes(out.severity)) throw new StoreError(`a discipline severity is one of ${DISCIPLINE_SEVERITIES.join(', ')}, got "${out.severity}"`);

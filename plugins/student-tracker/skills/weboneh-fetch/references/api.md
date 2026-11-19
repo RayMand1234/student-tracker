@@ -34,27 +34,34 @@ window.W = (() => {
   };
   // a comment as [line, type, severity, text]; the text is the stock text plus the checker's own addition
   const comment = x => [+x.serialize.split(':')[0], x.comment.type.name, x.comment.severity, (x.comment.text + (x.personalAddition || '')).trim()];
-  // fills W.res with one record per student's source (all of them, or the one student); page it out with W.page
+  const day = iso => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Asia/Jerusalem' });
+  // lists the tar's sources into W.res (all of them, or the one student) without their comments:
+  // sid = the student's row in the course (what the tracker mapping keys on), mine = the Commander is its checker
   const run = async (tarId, student = '') => {
     const t = await get('/api/Tars/' + tarId), words = norm(student).split(' ').filter(Boolean);
+    const mine = new Set((await get('/api/Guide/Source')).map(s => s.id));
     const name = s => s.student.user.first_name + ' ' + s.student.user.last_name;
     const ss = t.sources.filter(s => words.every(w => norm(name(s)).includes(w)));
     if (student && ss.length !== 1) return { matches: ss.map(name) };
-    const out = ss.map(s => ({ id: s.id, student: name(s), team: s.student.organizational_unit && s.student.organizational_unit.hebrew_name, checker: s.checker && s.checker.first_name + ' ' + s.checker.last_name, started: s.isStarted, done: s.isDone, published: s.isPublished }));
-    for (let i = 0; i < out.length; i += 10) await Promise.all(out.slice(i, i + 10).map(async o => {
+    W.res = ss.map(s => ({ id: s.id, sid: s.studentId, student: name(s), team: s.student.organizational_unit && s.student.organizational_unit.hebrew_name, checker: s.checker && s.checker.first_name + ' ' + s.checker.last_name, mine: mine.has(s.id), started: s.isStarted, done: s.isDone, published: s.isPublished }))
+      .sort((a, b) => a.student.localeCompare(b.student, 'he'));
+    return { tar: t.name.trim(), students: W.res.length, started: W.res.filter(o => o.started).length, done: W.res.filter(o => o.done).length, names: W.res.map(o => [o.sid, o.student, o.team]) };
+  };
+  // the full records of the chosen students (sids), with `summary`, `comments` and `at` (the day the check was written)
+  const load = async sids => {
+    const out = W.res.filter(o => sids.includes(o.sid));
+    await Promise.all(out.map(async o => {
       if (!o.started) return;
-      const cs = (await get('/api/Source/' + o.id + '/comments')).filter(x => !x.comment.isDeleted).map(comment);
+      const raw = (await get('/api/Source/' + o.id + '/comments')).filter(x => !x.comment.isDeleted);
+      const cs = raw.map(comment);
       o.summary = cs.filter(c => c[1] === 'סיכום').map(c => c[3]).join('\n') || null;
       o.comments = cs.filter(c => c[1] !== 'סיכום').sort((a, b) => a[0] - b[0]);
+      const sum = raw.find(x => x.comment.type.name === 'סיכום') || raw.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      o.at = sum ? day(sum.createdAt) : null;
     }));
-    out.sort((a, b) => a.student.localeCompare(b.student, 'he'));
-    W.res = out;
-    return { tar: t.name.trim(), students: out.length, started: out.filter(o => o.started).length };
+    return out;
   };
-  const tally = cs => cs.reduce((m, c) => (m[c[1]] = (m[c[1]] || 0) + 1, c[2] === 'Major' && (m.Major = (m.Major || 0) + 1), m), {});
-  // brief: comments become a count plus counts by type (and Major)
-  const page = (from, n = 10, brief = false) => W.res.slice(from, from + n).map(o => brief && o.comments ? { ...o, comments: o.comments.length, counts: tally(o.comments) } : o);
-  return { C, courseName: JSON.parse(sessionStorage.getItem('selectedCourse')).hebrew_name, get, tars, pick, run, page };
+  return { C, courseName: JSON.parse(sessionStorage.getItem('selectedCourse')).hebrew_name, get, tars, pick, run, load };
 })();
 ({ course: W.courseName });
 ```
@@ -66,6 +73,7 @@ Say which course it is ("הקורס: …") once, so the Commander can catch a wr
 - Tar list: `GET /api/Tars/Cycles/<course id>` → `[{id, tar: {id, name}, deadline, totalSources, doneSources, …}]`. `id` is the tar's instance in this cycle (the number in `/tar/2296`); `tar.id` is the template. Names are uneven (`תרץ 0 - Goldstar`, `תר"ץ 1 - BaseCalculator `): hence `norm`.
 - One tar: `GET /api/Tars/<id>` → `sources[]`, one per student: `{id, student: {user: {first_name, last_name}, organizational_unit (the team), student: {student_number}}, checker, syncer, isStarted, isDone, isPublished, grades, …}`. The source `id` (e.g. 146983) is what the check page opens: `/source/<id>/check`.
 - Comments of one source: `GET /api/Source/<source id>/comments` → `[{id, serialize: "line:col,line:col", personalAddition, isSuggestion, comment: {text, severity: None|Minor|Major, type: {name}, isDeleted}}]`. Shown text = `comment.text` + `personalAddition` (the addition often starts with " - "). Types seen: מימוש, קריאות - תכנות, Best Practice, נקודה חיובית, and **סיכום** = the summary comment (anchored at `1:1`, severity None, its words are all in `personalAddition`). A source may have none.
+- `GET /api/Guide/Source` → the Commander's own sources across tars (`id`, `tar.id`, `studentId`, …): `mine` is membership in it. `GET /api/Guide/isCommander` → `true` for a Commander.
 - The code itself: `GET /api/Source/<source id>/Code`. Not fetched by default; `serialize` gives the line.
 - `/api/Source/<source id>/specialComments` and `/api/specialComments/<tar id>` exist and were empty on every source checked; look there only if a comment the Commander expects is missing.
 - `isStarted` false = nobody has opened it yet (no comments). `isStarted` true and `isDone` false = a check in progress: its comments exist but may be partial. `isPublished` = the Trainee can already see it.
