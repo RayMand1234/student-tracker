@@ -210,6 +210,13 @@ export function parseSnapshot(input) {
   return { trainee: m[1], text: m[2].trim() };
 }
 
+// record-mind: one "--- mind <tid>" block, the whole page below, and nothing else.
+export function parseMind(input) {
+  const m = input.trim().match(/^--- mind (\S+)\n([\s\S]+)$/);
+  if (!m || /^--- /m.test(m[2])) throw new StoreError('record-mind takes one "--- mind <tid>" block with the whole page, and nothing else');
+  return { trainee: m[1], text: m[2].trim() };
+}
+
 function assessmentBlock(line, body) {
   const [trainee, skill, score, author, ...extra] = line.slice('--- assessment '.length).trim().split(/\s+/);
   if (!author || extra.length) throw new StoreError(`an assessment header is "--- assessment <tid> <skill id> <score> <author>": "${line}"`);

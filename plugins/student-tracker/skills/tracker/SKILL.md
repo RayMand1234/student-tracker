@@ -2,7 +2,7 @@
 name: tracker
 description: Personal Trainee (חניך) tracker for a course Commander, in Hebrew. Use for any update about a Trainee or the team — Talks, tests, code reviews, observations, self-assessments, Ratings, improve/keep items — and for Status and evaluation stage, briefs, team status, advice, online research, roster and settings changes, Project teams, Playbook tips (add, edit, hide, retire), the dashboard, retractions, and questions about an archived Cycle. Triggers include "דיברתי עם", "שיחה עם", "סקד", "תרץ", "רמ"ת", "תכין לי שיחה עם", "מה המצב", "תוסיף חניך", "תוסיף לפלייבוק", "אל תציע לי יותר", "תפתח דשבורד", "בטל", "תחקור את המצב של".
 allowed-tools: Agent, ArtifactData, Bash(student-tracker-store *), Bash(date *), WebSearch, WebFetch
-model: haiku
+model: sonnet
 metadata:
   plugin: student-tracker
 ---
@@ -54,6 +54,7 @@ One route per message, read through `boot <route>` (the file's name without `.md
 | Accepting a suggestion from advice or research ("כן, תוסיף את השנייה לשיפור"; "תשמור את הראשונה בפלייבוק" → [research.md](references/research.md)) | [advice.md](references/advice.md) |
 | Online research ("תחקור את המצב של נועה", "תמצא מאמרים על…", "מה אומר המחקר על…") | ★ [research.md](references/research.md) |
 | Playbook: add, edit, retire, hide/unhide, "מה יש לי בפלייבוק?" | [playbook.md](references/playbook.md) |
+| "תבנה/תרענן את ה-Mind" (of a Trainee, or all) | [mind.md](references/mind.md) § Building pages |
 | "תפתח דשבורד", "הדשבורד" | Open the Cycle's page (the backend file says how). |
 
 Unsure whether it's an update or a question → ask one short question, record nothing.

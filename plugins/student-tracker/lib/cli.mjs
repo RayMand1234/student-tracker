@@ -36,6 +36,8 @@ const USAGE = `usage: student-tracker-store --data <plugin data dir> [--cycle <a
                             optional "--- next-talk <tid>" + one question per line
                           (--insist: the Commander asked to record about a Trainee who left)
   record-next-talk        < "--- next-talk <tid>" + one question per line (the brief's questions)
+  read-mind <tid>         (the Trainee's Mind page: {trainee, text, at}; text null = none yet)
+  record-mind             < "--- mind <tid>" + the whole page, replacing the old one (not an Entry: "בטל" doesn't withdraw it)
   record-snapshot         < "--- snapshot <tid>" + text (a fresh Snapshot after marking something sensitive)
   save-playbook-item [<item id>]
                           < "+kind:", "+skills:", "+band: low|mid|high|none", "+source: <entry id>" lines,

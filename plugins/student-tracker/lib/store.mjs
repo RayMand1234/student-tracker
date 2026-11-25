@@ -835,6 +835,25 @@ export function openStore({ dataDir, docs: given, cycles = () => null, pointer: 
       return { change: id, card };
     },
 
+    // The Trainee's Mind: one page the agent rewrites whole as Evidence arrives. Not derived from
+    // records, not on the card, never read by the dashboard; null text = none yet.
+    readMind(tid) {
+      const docs = openRead();
+      if (!docs.get(`trainees/${tid}`)) throw new StoreError(`unknown Trainee ${tid}`);
+      const mind = docs.get(`mind/${tid}`)?.data;
+      return { trainee: tid, text: mind?.text ?? null, at: mind?.at ?? null };
+    },
+
+    recordMind(tid, text) {
+      const docs = open();
+      if (!docs.get(`trainees/${tid}`)) throw new StoreError(`unknown Trainee ${tid}`);
+      checkActive(docs, tid, false);
+      if (typeof text !== 'string' || !text.trim()) throw new StoreError('a Mind page needs its text');
+      const at = isoWithOffset(now());
+      upsert(docs, `mind/${tid}`, { trainee: tid, text: text.trim(), by: 'agent', at });
+      return { trainee: tid, at, bytes: Buffer.byteLength(text.trim()) };
+    },
+
     // A roster change, written as a `changes` record with the card in one pinned batch. Only after
     // the Commander confirms. `add` takes no tid and creates the Trainee.
     updateTrainee(tid, change = {}) {

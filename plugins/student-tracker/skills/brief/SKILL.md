@@ -3,7 +3,7 @@ name: brief
 description: Pre-Talk brief on one Trainee ("תכין לי שיחה עם <שם>").
 argument-hint: "<שם החניך>"
 allowed-tools: Agent, ArtifactData, Bash(student-tracker-store *), Bash(date *)
-model: haiku
+model: sonnet
 disable-model-invocation: true
 metadata:
   plugin: student-tracker

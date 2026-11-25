@@ -10,7 +10,7 @@ const TRACKER = path.join(ROOT, 'skills/tracker');
 const REF = path.join(TRACKER, 'references');
 // The tracker's SKILL.md line that injects this output; --tracker prints the body with it replaced.
 // Routes whose reply skips the alert (tracker SKILL.md, End); every other route gets alerts.md.
-const NO_ALERT = ['brief', 'status', 'research', 'alerts'];
+const NO_ALERT = ['brief', 'status', 'research', 'alerts', 'mind'];
 const INJECT = /^!`student-tracker-store [^`]* boot`$/m;
 
 // CRLF (a Windows checkout) would hide the **Load:** line, the frontmatter and the inject line.

@@ -18,8 +18,8 @@ function skill(name) {
   return { meta, body };
 }
 
-test('the skills are setup, tracker, the four shortcuts, the two Herzl skills and weboneh-fetch', () => {
-  assert.deepEqual(fs.readdirSync(SKILLS).filter((n) => !n.startsWith('.')).sort(), ['brief', 'dashboard', 'hertzl-fetch', 'hertzl-post', 'research', 'setup', 'status', 'tracker', 'weboneh-fetch']);
+test('the skills are setup, tracker, the five shortcuts, the two Herzl skills and weboneh-fetch', () => {
+  assert.deepEqual(fs.readdirSync(SKILLS).filter((n) => !n.startsWith('.')).sort(), ['brief', 'dashboard', 'hertzl-fetch', 'hertzl-post', 'mind', 'research', 'setup', 'status', 'tracker', 'weboneh-fetch']);
   assert.ok(skill('tracker').meta.description.length <= 1024);
   assert.equal(skill('tracker').meta['disable-model-invocation'], undefined, 'tracker auto-triggers');
 });
@@ -75,7 +75,7 @@ test('/weboneh-fetch is user-only, records through the tracker\'s rules, and its
 
 // Each shortcut injects the tracker's instructions (and its route) at load time through `boot`,
 // so the slash command spends no model turn on the Skill tool or on reading files.
-const ROUTE = { brief: 'brief', status: 'status', dashboard: '', research: 'research' };
+const ROUTE = { brief: 'brief', status: 'status', dashboard: '', research: 'research', mind: 'mind' };
 for (const name of Object.keys(ROUTE)) {
   test(`/${name} is a user-only shortcut that loads tracker through boot, passing its arguments`, () => {
     const { meta, body } = skill(name);
@@ -108,10 +108,11 @@ test('tracker may search the web, and routes online research to its reference', 
   assert.match(research, /nothing about the Trainee leaves for the web/, 'the privacy rule comes first');
 });
 
-// Cheap model for reading and recording; the judgment-heavy routes (re-rate, research, advice)
+// Sonnet for tracking, recording and summaries (Haiku was too weak at both); the judgment-heavy routes (re-rate, research, advice)
 // run on a stronger one: inline in /research, else in the plugin's analyst agent.
-test('skills run on haiku, /research and the analyst agent on opus, and the tracker hands ★ routes to the agent', () => {
-  for (const name of ['tracker', 'brief', 'status', 'dashboard']) assert.equal(skill(name).meta.model, 'haiku', name);
+test('tracker, brief and status run on sonnet, dashboard on haiku, /research and the analyst agent on opus, and the tracker hands ★ routes to the agent', () => {
+  for (const name of ['tracker', 'brief', 'status', 'mind']) assert.equal(skill(name).meta.model, 'sonnet', name);
+  assert.equal(skill('dashboard').meta.model, 'haiku');
   assert.equal(skill('research').meta.model, 'opus');
   const agent = fs.readFileSync(path.join(SKILLS, '../agents/analyst.md'), 'utf8');
   assert.match(agent, /^model: opus$/m);

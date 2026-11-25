@@ -15,3 +15,7 @@ The Assessments written while logging an update (0–3 Skills the Evidence speak
 - The analyst can't see the chat. The tracker passes it the message word for word, plus the earlier lines it depends on. The analyst's reply comes back into the main chat, so follow-ups ("כן, את השנייה") work there as before.
 - Run the full eval suite before release. Each turn's model comes from the skill frontmatter, so `EVAL_MODEL` no longer decides it.
 - The docs don't say whether Claude Cowork honours a skill's `model:`. Where it doesn't, the session model runs.
+
+## Later note (2026-11-25): Sonnet replaces Haiku for tracking and summaries
+
+Haiku kept weak records and weak summaries of Trainees, so the Commander moved `tracker`, `brief` and `status` to `model: sonnet`. `dashboard` stays on `haiku`: it only opens a page. The analyst agent and `/research` stay on `opus`. This reverses the "Haiku by default" choice above, and the Assessments written while logging an update now run on Sonnet too. Cost per turn goes up; the eval suite is still the check.
