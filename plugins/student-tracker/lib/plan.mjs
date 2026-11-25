@@ -5,7 +5,7 @@ import path from 'node:path';
 import { openStore, StoreError, entryOfRecord } from './store.mjs';
 import { openSnapshot, checkBatch, getRead, listRead, queryRead, readKey, MissingReads } from './docs.mjs';
 import { runOperation } from './operations.mjs';
-import { parseEntry, parseAssessments, parseNextTalk, parseSnapshot, parseTraineeChange, parseCycleChange, parsePlaybookItem, parseCycle } from './payload.mjs';
+import { parseEntry, parseAssessments, parseNextTalk, parseSnapshot, parseMind, parseTraineeChange, parseCycleChange, parsePlaybookItem, parseCycle } from './payload.mjs';
 
 // The Cycle's own documents: what read-cycle shows, what a new Cycle's seed starts from.
 const CYCLE_DOCS = () => ['meta/cycle', 'meta/skills', 'meta/preset', 'commander/settings', 'commander/hides'].map(getRead);
@@ -52,6 +52,9 @@ const PLANNED = {
   'record-assessments': { reads: (a) => [getRead('meta/cycle'), getRead('meta/skills'), ...traineeReads(tidOf(parseAssessments)(a))] },
   'record-next-talk': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseNextTalk)(a))] },
   'record-snapshot': { reads: (a) => [getRead('meta/cycle'), ...traineeReads(tidOf(parseSnapshot)(a))] },
+  // The Mind page is one document per Trainee, outside the card: nothing else reads or rebuilds it.
+  'record-mind': { reads: (a) => { const tid = tidOf(parseMind)(a); return [getRead('meta/cycle'), getRead(`trainees/${tid}`), getRead(`mind/${tid}`)]; } },
+  'read-mind': { needs: '<tid>', reads: ({ args: [tid] }) => [getRead(`trainees/${tid}`), getRead(`mind/${tid}`)] },
   // The record's id names its Entry, and the Entry names its Trainees.
   'flip-sensitive': {
     needs: '<evidence id>',

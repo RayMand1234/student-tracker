@@ -91,6 +91,10 @@ The Cycle's week-by-week plan of which Subjects run when. Lets an ambiguous refe
 **Talk (שיחה)**
 A one-on-one conversation between the Commander and a Trainee, held on a target cadence the Commander sets. A kind of Evidence.
 
+**Mind (מוח)**
+One Hebrew page per Trainee that the agent keeps rewriting as Evidence arrives: strengths, recurring patterns with counts, trend per Subject, personal background, agreements with the Trainee, and open contradictions. The long memory behind the Snapshot (which is only the short "now"). Never Evidence, never shown on the dashboard, and read silently by the brief and Advice; its sensitive lines are the Commander's alone.
+_Avoid_: calling it the Snapshot or the card.
+
 **Next-Talk questions (שאלות לשיחה הבאה)**
 Two or three questions the agent suggests the Commander ask a Trainee in their next Talk, marked "הצעה". They are a form of Advice, kept on the Trainee's card so the dashboard can show them, and replaced whenever that Trainee's records change. They are not Follow-ups; a question becomes a Follow-up only when the Commander adopts it.
 

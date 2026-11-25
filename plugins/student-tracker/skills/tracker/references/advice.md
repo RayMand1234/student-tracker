@@ -5,7 +5,7 @@
 ## "איך לעזור לנועה בדיבאג?"
 
 1. Trainee by name (ask if unknown or shared). Focus, if named → Skill ids from `read-cycle` → `skills`; a name in several Stages ("סדר וארגון") → the ids their Evidence is about, or all; no Skill matches ("ניהול זמן") → keep their words as the theme.
-2. `read-trainee <tid> --since <6 weeks back>` and `read-playbook <tid> <focus ids>`. Nothing rated and no focus → only general items: build from the Evidence.
+2. `read-trainee <tid> --since <6 weeks back>`, `read-playbook <tid> <focus ids>` and `read-mind <tid>` (its patterns show what was already tried; its `(רגיש)` lines never reach this reply, [mind.md](mind.md) § Using it). Nothing rated and no focus → only general items: build from the Evidence.
 3. Choose 2–3, never more, from target items (Commander's own preferred) and general items. Skip what the Evidence shows was tried without effect, or an active item or open Follow-up covers. `sign` items only help read the Evidence.
 4. Rewrite each to this Trainee, grounded in their Evidence. No bare item text, nothing unsupported, nothing sensitive beyond "מצב אישי" (others may be reading). Record nothing.
 

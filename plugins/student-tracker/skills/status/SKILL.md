@@ -3,7 +3,7 @@ name: status
 description: Team status: who needs a Talk, who is declining, shared weaknesses ("מה המצב").
 argument-hint: ""
 allowed-tools: Agent, ArtifactData, Bash(student-tracker-store *), Bash(date *)
-model: haiku
+model: sonnet
 disable-model-invocation: true
 metadata:
   plugin: student-tracker

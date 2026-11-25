@@ -1,6 +1,6 @@
 // The store operations by their CLI names, each from its arguments and text payload. Shared by
 // the local commands and the plan step, so both backends run the same call with the same parsing.
-import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings, parsePlaybookItem, parseNextTalk, parseSnapshot } from './payload.mjs';
+import { parseCycle, parseEntry, parseAssessments, parseCycleChange, parseTraineeChange, parseSettings, parsePlaybookItem, parseNextTalk, parseSnapshot, parseMind } from './payload.mjs';
 
 const OPERATIONS = {
   connect: (store) => store.connect(),
@@ -25,6 +25,11 @@ const OPERATIONS = {
   'record-next-talk': (store, { input }) => {
     const { trainee, questions } = parseNextTalk(input());
     return store.recordNextTalk(trainee, questions);
+  },
+  'read-mind': (store, { args }) => store.readMind(args[0]),
+  'record-mind': (store, { input }) => {
+    const { trainee, text } = parseMind(input());
+    return store.recordMind(trainee, text);
   },
   'record-snapshot': (store, { input }) => {
     const { trainee, text } = parseSnapshot(input());

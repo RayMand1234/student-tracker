@@ -59,3 +59,4 @@ ENTRY
 - `record-assessments [--insist]` → `{assessments}` (+`changes`): a re-rate or an accepted proposal. `--- assessment` blocks of one Trainee citing stored Evidence ids, then optionally one `--- next-talk <tid>` block.
 - `record-next-talk` → `{change, card}`: one `--- next-talk <tid>` block (the brief's questions). Not an Entry: "בטל" doesn't withdraw it.
 - `record-snapshot` → `{change, card}`: one `--- snapshot <tid>` block (a fresh Snapshot after a sensitive flip).
+- `record-mind` → `{trainee, at, bytes}`: one `--- mind <tid>` block, the whole page below it, replacing the old page ([mind.md](../mind.md)). Not an Entry: "בטל" doesn't withdraw it. Refused for an unknown or departed Trainee, an empty page, or one over 256 KiB (condense it).

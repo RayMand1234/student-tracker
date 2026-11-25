@@ -53,6 +53,19 @@ To update by hand instead: `/plugin marketplace update student-tracker`, then `/
 
 The plugin has no version number on purpose: every commit to this repo is a new version, so auto-update always brings you the latest.
 
+### After updating an existing setup
+
+Your Cycles need no migration: the data stays in your artifact, and the dashboard page is unchanged, so there is nothing to republish. What an update brings that you may notice:
+
+- **Sonnet** now runs the tracker, `/brief`, `/status` and `/mind` (Haiku kept weak records and summaries). It uses more of your plan than Haiku did.
+- **The Mind**: a Hebrew page per Trainee that grows with every update you log, read silently by the brief and Advice. Pages appear on their own for each Trainee you write about next. To build them for everyone from what is already on record, run once:
+
+```
+/student-tracker:mind
+```
+
+  Add a name (`/student-tracker:mind נועה`) to rebuild one page from the records. It reads all of a Trainee's Evidence, so it takes a while on a long Cycle.
+
 ## Using it
 
 Just write in chat. A few ways to start:
@@ -65,7 +78,7 @@ Just write in chat. A few ways to start:
 - "תחקור את המצב של נועה בדיבאג" — online research: working hypotheses from what is on record, good sources from the web (with links) and 2–3 suggestions that join the two. Search queries carry only generic words (the Skill, "programming bootcamp"), never a name, a quote from your notes or anything personal; the reply ends with the queries it ran ("חיפשתי:").
 - "תפתח דשבורד" — opens the dashboard.
 
-Shortcuts: `/student-tracker:brief <שם>`, `/student-tracker:status`, `/student-tracker:dashboard`, `/student-tracker:research <שם> [נושא]`.
+Shortcuts: `/student-tracker:brief <שם>`, `/student-tracker:status`, `/student-tracker:dashboard`, `/student-tracker:research <שם> [נושא]`, `/student-tracker:mind [<שם>]`.
 
 A new Cycle: run `/student-tracker:setup` again and choose to start a new Cycle. Your name, role, Talk thresholds and Playbook items carry over; the previous Cycle is kept as a read-only archive you can still ask about ("מה היה עם דני במחזור הקודם?").
 
@@ -95,7 +108,7 @@ Porting to another agent means replacing that layer, mainly with a new storage b
 
 - `.claude-plugin/marketplace.json` — the marketplace (one plugin, relative path).
 - `plugins/student-tracker/` — the plugin:
-  - `skills/` — `setup`, `tracker` (handles all free text; one reference file per capability) and the `brief`, `status`, `dashboard` shortcuts.
+  - `skills/` — `setup`, `tracker` (handles all free text; one reference file per capability) and the `brief`, `status`, `dashboard`, `research`, `mind` shortcuts.
   - `data/` — the Skill framework, the Fullstack Course preset and the base Playbook.
   - `dashboard/` — the page (`page.html` + `derive.mjs`, built into `index.html`).
   - `lib/`, `bin/` — a local JSON backend used only by tests and evals.

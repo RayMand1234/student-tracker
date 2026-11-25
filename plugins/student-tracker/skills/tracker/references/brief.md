@@ -3,7 +3,7 @@
 # Pre-Talk brief
 
 1. Trainee by name; ask if none, unknown or shared. Left → `<name> עזב/ה ב-DD/MM.` and offer recall (read [recall.md](recall.md) only on a yes).
-2. `read-trainee <tid> --since <6 weeks back>` (wider only on request), `read-playbook <tid>`.
+2. `read-trainee <tid> --since <6 weeks back>` (wider only on request), `read-playbook <tid>`, `read-mind <tid>` (its patterns, agreements and open questions feed מיקוד, לבדוק and אישי, [mind.md](mind.md) § Using it; no page → ignore).
 3. Reply ~15 lines in this layout, sections in order, empty ones omitted; nothing else (no bold, headings, remarks on little data, closing advice).
 
 ```

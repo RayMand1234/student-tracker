@@ -32,8 +32,9 @@ After the answer, record the original message as the Entry, plus the answer only
 6. **Assessments**: read [assess.md](assess.md) only if some Evidence speaks to a Skill (incl. the Commander's own "הדיבאג של נועה זה 4", a רמ"ת, a correction).
 7. **State**: read [state.md](state.md); write per it items, retirements, a due Status, a confirmed stage, a Snapshot per Trainee with Evidence. Also per such Trainee a `nextTalk`: short Hebrew questions to them ("איך מצאת את הבאג הפעם?") on weak or declining Skills, what just happened, a goal (or a rewritten `talk-question` from a `read-playbook` read this conversation); not an open Follow-up or one this Entry answered; personal at most "איך את מרגישה השבוע?"; never in the reply.
 8. **One `record-entry`** with everything. Refused → fix and retry; ask only if the fix needs the Commander's word.
-9. **Reply** (below); don't repeat the message back.
-10. **A recurring theme with no Skill.** Check every update, with `read-trainee` (6 weeks) of each Trainee with Evidence unless read this turn: a way of working no Skill in `read-cycle` → `skills` names itself (time management, asking for help, presenting…; a Skill you'd stretch to fit doesn't count) that shows up in ≥3 Evidence, this one included → before the Retraction line:
+9. **Mind**: once `record-entry` succeeded, update each Trainee's Mind page by [mind.md](mind.md) (read it only now).
+10. **Reply** (below); don't repeat the message back.
+11. **A recurring theme with no Skill.** Check every update, with `read-trainee` (6 weeks) of each Trainee with Evidence unless read this turn: a way of working no Skill in `read-cycle` → `skills` names itself (time management, asking for help, presenting…; a Skill you'd stretch to fit doesn't count) that shows up in ≥3 Evidence, this one included → before the Retraction line:
     `(הצעה) "<theme>" חוזר ב-<N> תיעודים ואין לו מיומנות — להוסיף מיומנות "<name>" ל<Stage or group name>? (כן / לא)`
     On a yes, read [roster.md](roster.md) § Proposing a new Skill.
 

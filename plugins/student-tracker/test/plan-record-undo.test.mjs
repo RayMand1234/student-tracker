@@ -111,6 +111,24 @@ test('record-next-talk and record-snapshot: the change record and card match, an
   assertSame(dataDir, 'record-snapshot', { input: `--- snapshot ${noa}\nאבא שלה בבית חולים.\n`, refuses: true });
 });
 
+test('record-mind and read-mind: the page is stored whole, replaced on the next write, and both backends refuse alike', () => {
+  const { dataDir, noa } = withHistory();
+  const page = '# נועה\n\n## דפוסים חוזרים\n- דיבאג: נתקעת בלי לבודד — 28/10\n';
+  assertSame(dataDir, 'read-mind', { args: [noa] });
+  assertSame(dataDir, 'record-mind', { input: `--- mind ${noa}\n${page}` });
+  assertSame(dataDir, 'record-mind', { input: `--- mind t-nobody\n${page}`, refuses: true });
+  assertSame(dataDir, 'record-mind', { input: `--- mind ${noa}\n`, refuses: true });
+  assertSame(dataDir, 'record-mind', { input: `--- mind ${noa}\n${'א'.repeat(140000)}`, refuses: true });
+  assertSame(dataDir, 'read-mind', { args: ['t-nobody'], refuses: true });
+  const store = openStore({ dataDir, ...clock });
+  assert.equal(store.readMind(noa).text, null);
+  store.recordMind(noa, page);
+  assert.equal(store.readMind(noa).text, page.trim());
+  store.recordMind(noa, 'דף חדש');
+  assert.equal(store.readMind(noa).text, 'דף חדש', 'the second write replaces the first');
+  assert.equal(store.readTrainee(noa).card.mind, undefined, 'not on the card');
+});
+
 test('flip-sensitive: marking public Evidence sensitive and back moves it with its Follow-ups, as on the local backend', () => {
   const { dataDir, earlier } = withHistory();
   const [pub] = earlier.evidence;
@@ -249,6 +267,8 @@ test('reads: each operation plans over exactly the reads it took, and without an
     { op: 'record-assessments', input: `--- assessment ${noa} impl.debugging 4 agent\n+evidence: ${pub}, ${part}\nבדיקה מחדש\n--- next-talk ${noa}\nאיך הולך?\nמה למדת?\n` },
     { op: 'record-next-talk', input: `--- next-talk ${noa}\nאיך הולך?\nמה למדת?\n` },
     { op: 'record-snapshot', input: `--- snapshot ${noa}\nמתקדמת יפה.\n` },
+    { op: 'record-mind', input: `--- mind ${noa}\n# נועה\n` },
+    { op: 'read-mind', args: [noa] },
     { op: 'flip-sensitive', args: [pub], category: 'health', took: [noa, dani] },
     { op: 'flip-sensitive', args: [part], took: [noa, dani] },
     // An Entry's Trainees are read once the Entry is: their cards, records and sensitive query.

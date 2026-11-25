@@ -1,4 +1,4 @@
-**Load:** read, undo
+**Load:** read, record, undo
 
 # Retraction
 
@@ -17,6 +17,8 @@ A named Entry: match `read-trainee` Entries by `at` or Evidence `date`. Exactly 
 ## 2. Retract
 
 Note the touched cards (from `start`'s team); `retract-entry [<entry id>]` (already retracted → `הרישום הזה כבר בוטל.`). Then `read-trainee <tid> --retracted` per result `trainees` (what was withdrawn) and `read-team` (the new cards), all together.
+
+Then, per touched Trainee, fix their Mind page by [mind.md](mind.md) § After a Retraction (read it only now).
 
 ## 3. Reply
 
@@ -40,4 +42,4 @@ Only on an explicit "תמחק לגמרי", "מחיקה לצמיתות", "תמח�
 1. Find the Entry as in step 1, retracted ones included.
 2. Confirm, recording nothing:
    `למחוק לצמיתות את הרישום מ-30/10 09:15 ("דיברתי היום עם נועה…") וכל מה שנגזר ממנו (נועה: שיחה והערכה; דני: הערה)? אי אפשר לשחזר. (כן / לא)`
-3. Clear yes in their next message: `hard-delete <entry id>`, reply `נמחק לצמיתות: הרישום מ-30/10 09:15.` Anything else: `לא נמחק.`
+3. Clear yes in their next message: `hard-delete <entry id>`, then fix each touched Trainee's Mind page as after a Retraction; reply `נמחק לצמיתות: הרישום מ-30/10 09:15.` Anything else: `לא נמחק.`
